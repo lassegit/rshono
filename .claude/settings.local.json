@@ -1,11 +1,13 @@
 {
-  "permissions": {
-    "allow": [
-      "Bash(ls examples/basic/node_modules/.bin/tsc)",
-      "Bash(ls node_modules/.bin/tsc)",
-      "WebSearch",
-      "WebFetch(domain:hono.dev)",
-      "Bash(pnpm install *)"
-    ]
-  }
+    "$schema": "https://json.schemastore.org/claude-code-settings.json",
+    "permissions": {
+        "defaultMode": "auto",
+        "allow": [
+            "Bash(ls examples/basic/node_modules/.bin/tsc)",
+            "Bash(ls node_modules/.bin/tsc)",
+            "WebSearch",
+            "WebFetch(domain:hono.dev)",
+            "Bash(pnpm install *)"
+        ]
+    }
 }

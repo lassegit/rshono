@@ -25,6 +25,21 @@ pnpm install
 pnpm dev          # → rs-hono dev on http://localhost:3000
 ```
 
+## This Repository
+
+| Path                      | What it is                                                                                              |
+| ------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `packages/rs-hono`        | The framework: CLI (`dev`/`build`/`start`), SSR + hydration runtime, Rspack integration, `*.server` boundary |
+| `packages/create-rs-hono` | The scaffolder behind `pnpm create rs-hono` — copies the starter template into a new project             |
+| `examples/basic`          | Test app exercising every feature: static/dynamic pages, loaders, inline endpoints, a `server.ts` sub-app, and `db.server.ts` |
+
+Try the example app:
+
+```bash
+pnpm install
+pnpm --filter rs-hono-example dev   # → http://localhost:3000
+```
+
 ## Project Structure
 
 ```
