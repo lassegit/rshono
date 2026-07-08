@@ -13,20 +13,18 @@
  */
 
 export {
-  defineRoutes,
-  type Route,
-  type StaticRoute,
-  type DynamicRoute,
-  type EndpointRoute,
-  type PageProps,
-  type HTTPMethod,
-} from "./router.js";
+    defineRoutes,
+    isPageRoute,
+    type DynamicRoute,
+    type EndpointRoute,
+    type HTTPMethod,
+    type PageProps,
+    type PageRoute,
+    type Route,
+    type StaticRoute,
+} from './router.js';
 
-export type { RsHonoConfig } from "./config.js";
+export type { RsHonoConfig } from './config.js';
 
-export type {
-  Context,
-  MiddlewareHandler,
-  Env,
-  Input,
-} from "./router.js";
+// Hono types, re-exported so routes.ts needs no direct hono import.
+export type { Context, Env, Handler, Input, MiddlewareHandler } from 'hono';

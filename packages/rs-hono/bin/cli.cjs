@@ -9,7 +9,7 @@
  * `rs-hono dev` runs under `tsx watch`: editing any file the server
  * imports (routes, loaders, pages) restarts the dev server.
  */
-const { spawnSync } = require("node:child_process");
+const { spawn } = require("node:child_process");
 const path = require("node:path");
 
 let tsxCli;
@@ -24,14 +24,21 @@ const cliEntry = path.join(__dirname, "..", "src", "cli", "index.ts");
 const userArgs = process.argv.slice(2);
 const watch = userArgs[0] === "dev" ? ["watch", "--clear-screen=false"] : [];
 
-const result = spawnSync(
-  process.execPath,
-  [tsxCli, ...watch, cliEntry, ...userArgs],
-  { stdio: "inherit" }
-);
+const child = spawn(process.execPath, [tsxCli, ...watch, cliEntry, ...userArgs], {
+  stdio: "inherit",
+});
 
-if (result.error) {
-  console.error("rs-hono: failed to start:", result.error.message);
-  process.exit(1);
+// Forward termination signals so supervisors (docker stop, systemd, kill)
+// reach the server and trigger its graceful shutdown. Ctrl+C already goes
+// to the whole process group; forwarding twice is harmless.
+for (const signal of ["SIGINT", "SIGTERM"]) {
+  process.on(signal, () => child.kill(signal));
 }
-process.exit(result.status ?? 1);
+
+child.on("error", (err) => {
+  console.error("rs-hono: failed to start:", err.message);
+  process.exit(1);
+});
+child.on("exit", (code, signal) => {
+  process.exit(signal ? 1 : code ?? 1);
+});

@@ -7,13 +7,10 @@
  * 3. Builds the complete Hono application
  * 4. Returns the fetch handler
  */
-import { existsSync } from "node:fs";
-import { join } from "node:path";
-import { pathToFileURL } from "node:url";
 import { Hono } from "hono";
 import type { RsHonoConfig } from "../config.js";
-import type { Route } from "../router.js";
 import { buildApp } from "./app.js";
+import { loadRoutes, loadServerApp } from "./load.js";
 
 interface HandlerOptions {
   config: RsHonoConfig;
@@ -24,54 +21,22 @@ interface HandlerOptions {
 export async function createAppHandler(options: HandlerOptions) {
   const { config, rootDir, isDev } = options;
 
-  // ── Load user routes ──────────────────────────────────────────────────
-
-  const routesPath = join(rootDir, "src", "routes.ts");
-  let routes: Route[] = [];
-
-  if (existsSync(routesPath)) {
-    try {
-      const mod = await import(pathToFileURL(routesPath).href);
-      // Support both `export const routes` and `export default routes`
-      routes = mod.routes ?? mod.default ?? [];
-      if (!Array.isArray(routes)) {
-        routes = [];
-        console.warn(
-          "  ⚠ routes.ts did not export an array. Expected `export const routes = defineRoutes([...])`"
-        );
-      }
-    } catch (err) {
-      console.error("  ✗ Failed to load src/routes.ts:");
-      console.error(err);
-      throw err;
-    }
-  } else {
+  let routes;
+  try {
+    routes = await loadRoutes(rootDir);
+  } catch (err) {
+    console.error("  ✗ Failed to load src/routes.ts:");
+    console.error(err);
+    throw err;
+  }
+  if (routes === null) {
     console.log("  • No src/routes.ts found — no pages will be served.");
   }
 
-  // ── Load user server sub-app (optional) ───────────────────────────────
-
-  let subApp: Hono | undefined;
-  const serverPath = join(rootDir, "src", "server.ts");
-
-  if (existsSync(serverPath)) {
-    try {
-      const serverMod = await import(pathToFileURL(serverPath).href);
-      subApp = serverMod.default ?? serverMod;
-      if (typeof subApp !== "object" || typeof (subApp as any).fetch !== "function") {
-        console.warn("  ⚠ server.ts did not default-export a Hono app. Skipping.");
-        subApp = undefined;
-      }
-    } catch (err) {
-      console.warn("  ⚠ Failed to load src/server.ts:");
-      console.warn(err);
-    }
-  }
-
-  // ── Assemble ──────────────────────────────────────────────────────────
+  const subApp = await loadServerApp(rootDir);
 
   let app = buildApp({
-    routes,
+    routes: routes ?? [],
     subApp,
     rootDir,
     publicDir: config.publicDir ?? "public",

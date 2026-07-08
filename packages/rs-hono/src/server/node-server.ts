@@ -1,10 +1,13 @@
 /**
- * Node HTTP ↔ Web fetch adapter.
+ * HTTP server lifecycle around @hono/node-server.
  *
- * One small, shared bridge between Node's http.createServer and a Hono
- * fetch handler — used by both `rs-hono dev` and `rs-hono start`.
+ * The official adapter does the Node ↔ fetch bridging (request/response
+ * streaming, set-cookie handling, backpressure). This wrapper adds what
+ * the CLI commands need on top: port retry under `tsx watch`, and
+ * graceful vs fast shutdown.
  */
-import { createServer, type Server, type IncomingMessage, type ServerResponse } from "node:http";
+import { serve as nodeServe } from "@hono/node-server";
+import type { Server } from "node:http";
 
 export interface ServeOptions {
   fetch: (req: Request) => Response | Promise<Response>;
@@ -24,100 +27,28 @@ export interface ServeOptions {
 export async function serve(options: ServeOptions): Promise<Server> {
   const { fetch, port, hostname, onShutdown, graceful = true } = options;
 
-  const server = createServer((req, res) => {
-    handleRequest(fetch, req, res).catch((err) => {
-      console.error("[rs-hono] Request error:", err);
-      if (!res.headersSent) {
-        res.statusCode = 500;
-        res.setHeader("Content-Type", "text/plain; charset=utf-8");
-      }
-      if (!res.writableEnded) res.end("Internal Server Error");
-    });
-  });
+  const server = await new Promise<Server>((resolve, reject) => {
+    const srv = nodeServe({ fetch, port, hostname }, () => resolve(srv)) as Server;
 
-  // A few retries so a dev-server restart can grab the port the previous
-  // process is still releasing.
-  const maxAttempts = graceful ? 1 : 10;
-  await new Promise<void>((resolve, reject) => {
+    // A few retries so a dev-server restart can grab the port the
+    // previous process is still releasing.
     let attempt = 0;
-    server.on("error", (err: NodeJS.ErrnoException) => {
-      if (err.code === "EADDRINUSE" && ++attempt < maxAttempts) {
-        setTimeout(() => server.listen(port, hostname), 200);
-        return;
-      }
+    srv.on("error", (err: NodeJS.ErrnoException) => {
       if (err.code === "EADDRINUSE") {
+        if (!graceful && ++attempt < 10) {
+          setTimeout(() => srv.listen(port, hostname), 200);
+          return;
+        }
         console.error(`  ✗ Port ${port} is already in use.`);
         console.error(`    Try: --port ${port + 1}`);
         process.exit(1);
       }
       reject(err);
     });
-    server.listen(port, hostname, resolve);
   });
 
   installShutdown(server, onShutdown, graceful);
   return server;
-}
-
-async function handleRequest(
-  fetch: ServeOptions["fetch"],
-  req: IncomingMessage,
-  res: ServerResponse
-): Promise<void> {
-  // ── Node request → Web Request ──────────────────────────────────────
-  const host = req.headers.host ?? "localhost";
-  const url = new URL(req.url ?? "/", `http://${host}`);
-
-  const headers = new Headers();
-  for (const [key, value] of Object.entries(req.headers)) {
-    if (value === undefined) continue;
-    if (Array.isArray(value)) value.forEach((v) => headers.append(key, v));
-    else headers.set(key, value);
-  }
-
-  let body: BodyInit | null = null;
-  if (req.method !== "GET" && req.method !== "HEAD") {
-    const chunks: Buffer[] = [];
-    for await (const chunk of req) chunks.push(chunk as Buffer);
-    body = Buffer.concat(chunks);
-  }
-
-  const webRes = await fetch(new Request(url, { method: req.method, headers, body }));
-
-  // ── Web Response → Node response ────────────────────────────────────
-  res.statusCode = webRes.status;
-  for (const [key, value] of webRes.headers) {
-    // set-cookie must not be joined — handled below via getSetCookie().
-    if (key !== "set-cookie") res.setHeader(key, value);
-  }
-  const cookies = webRes.headers.getSetCookie();
-  if (cookies.length > 0) res.setHeader("set-cookie", cookies);
-
-  if (!webRes.body) {
-    res.end();
-    return;
-  }
-
-  const reader = webRes.body.getReader();
-
-  // Stop rendering/streaming when the client disconnects mid-response.
-  res.on("close", () => {
-    if (!res.writableFinished) reader.cancel().catch(() => {});
-  });
-
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!res.write(value)) {
-        await new Promise<void>((resolve) => res.once("drain", resolve));
-      }
-    }
-    res.end();
-  } catch (err) {
-    console.error("[rs-hono] Response stream error:", err);
-    if (!res.writableEnded) res.end();
-  }
 }
 
 function installShutdown(

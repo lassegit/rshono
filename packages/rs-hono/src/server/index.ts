@@ -8,4 +8,4 @@
 
 export { buildApp, type BuildAppOptions } from "./app.js";
 export { createAppHandler } from "./handler.js";
-export { renderToStream } from "../renderer/ssr.js";
+export { renderToStream } from "./ssr.js";

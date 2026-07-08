@@ -7,11 +7,10 @@ export default function AboutPage() {
         lightning-fast Rspack bundler to give you:
       </p>
       <ul>
-        <li>Server-Side Rendering (SSR)</li>
-        <li>Static Site Generation (SSG)</li>
-        <li>API endpoints</li>
-        <li>File-based page routing</li>
-        <li>Zero-config by default</li>
+        <li>Server-Side Rendering (SSR) with streaming & hydration</li>
+        <li>One explicit route manifest — src/routes.ts</li>
+        <li>API endpoints as plain Hono handlers</li>
+        <li>A real server/client boundary: *.server.ts files never reach the browser</li>
       </ul>
     </div>
   );

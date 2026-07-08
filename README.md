@@ -2,7 +2,7 @@
 
 ## The Idea
 
-Next.js is ~1,500 dependencies. rs-hono is **4 runtime dependencies** (hono, @rspack/core, commander, tsx) plus your React. Only ~1,500 lines of source.
+Next.js is ~1,500 dependencies. rs-hono is **4 runtime dependencies** (hono, @hono/node-server, @rspack/core, tsx) plus your React. Only ~1,500 lines of source.
 
 It gives you the essentials:
 
@@ -114,6 +114,8 @@ export const routes = defineRoutes([
         component: () => import('./features/profile/Profile'),
         loader: async (c) => {
             const user = await db.getUser(c.req.param('id')!);
+            // Loaders may return a Response to short-circuit rendering:
+            if (!user) return c.text('Not found', 404); // or c.redirect(...)
             return { user }; // Profile receives: { params, url, user }
         },
     },
@@ -187,7 +189,7 @@ No magic `app/layout.tsx` file — pages compose layouts directly via React comp
 | --------------- | ------------------------------------------------------------------ |
 | `rs-hono dev`   | Dev server on localhost: bundle watcher + server restart on change |
 | `rs-hono build` | Production client bundle (hydration + page chunks) + static assets |
-| `rs-hono start` | Start the production server                                        |
+| `rs-hono start` | Start the production server (`--port` flag > `PORT` env > config)  |
 
 In dev, the server binds to `127.0.0.1` only and restarts automatically
 when any file it imports changes (`tsx watch`); the client bundle rebuilds
@@ -219,8 +221,9 @@ export default defineConfig({
 - Error pages escape all interpolated values; stack traces are shown in
   dev only. Production responses say nothing about internals.
 - The dev server binds to localhost only.
-- `/_static` file serving decodes, then rejects path traversal (including
-  the `startsWith` sibling-directory bypass).
+- `/_static` file serving (via `@hono/node-server`'s `serveStatic`)
+  rejects path traversal — `..` segments, backslashes and double slashes
+  never reach the filesystem.
 
 ## Design Principles
 

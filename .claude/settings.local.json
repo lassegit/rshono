@@ -1,13 +1,28 @@
 {
-    "$schema": "https://json.schemastore.org/claude-code-settings.json",
-    "permissions": {
-        "defaultMode": "auto",
-        "allow": [
-            "Bash(ls examples/basic/node_modules/.bin/tsc)",
-            "Bash(ls node_modules/.bin/tsc)",
-            "WebSearch",
-            "WebFetch(domain:hono.dev)",
-            "Bash(pnpm install *)"
-        ]
-    }
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(ls examples/basic/node_modules/.bin/tsc)",
+      "Bash(ls node_modules/.bin/tsc)",
+      "WebSearch",
+      "WebFetch(domain:hono.dev)",
+      "Bash(pnpm install *)",
+      "Bash(pnpm remove *)",
+      "Bash(pnpm add *)",
+      "Bash(mkdir -p /private/tmp/claude-501/-Users-lasse-Playground-rshono/50ce2ef6-2744-4ef0-aff4-84cdd3d742f0/scratchpad/statictest)",
+      "Bash(echo \"body{}\")",
+      "Bash(node --input-type=module -e ' *)",
+      "Bash(node /Users/lasse/Playground/rshono/packages/create-rs-hono/dist/index.js \"My Test App\")",
+      "Bash(echo \"exit: $?\")",
+      "Bash(pnpm --filter create-rs-hono build)",
+      "Bash(echo \"non-empty guard exit: $?\")",
+      "Bash(node /Users/lasse/Playground/rshono/packages/create-rs-hono/dist/index.js foo -t nope)",
+      "Bash(echo \"bad template exit: $?\")",
+      "Bash(pnpm --filter rs-hono typecheck)",
+      "Bash(npx tsc *)",
+      "Bash(../../packages/rs-hono/node_modules/.bin/tsc --noEmit)",
+      "Bash(pnpm build *)"
+    ],
+    "defaultMode": "auto"
+  }
 }
