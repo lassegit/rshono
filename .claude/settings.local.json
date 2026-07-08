@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls examples/basic/node_modules/.bin/tsc)",
+      "Bash(ls node_modules/.bin/tsc)",
+      "WebSearch",
+      "WebFetch(domain:hono.dev)",
+      "Bash(pnpm install *)"
+    ]
+  }
+}

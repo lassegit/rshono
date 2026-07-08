@@ -1,0 +1,103 @@
+/**
+ * Rspack Configuration Builder — CLIENT bundle only.
+ *
+ * The user's routes.ts is the client manifest: it is aliased into the
+ * framework-owned client entry ("rs-hono:routes"), so its `import()`
+ * calls become Rspack's code-split points — one chunk per page.
+ *
+ * The server/client boundary is enforced here, not by tree shaking:
+ * every module whose request matches *.server.* is replaced with a
+ * throwing stub in the client bundle (NormalModuleReplacementPlugin).
+ * That makes "server code never reaches the browser" a build guarantee
+ * instead of an optimizer best-effort.
+ *
+ * There is no server bundle: the server runs the TypeScript source
+ * directly via tsx (dev and prod alike).
+ */
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
+import { rspack, type RspackOptions } from "@rspack/core";
+
+const FRAMEWORK_SRC = join(dirname(fileURLToPath(import.meta.url)), "..");
+
+/** Matches ./db.server, ./db.server.ts, secrets.server.mjs, ... */
+export const SERVER_MODULE_PATTERN = /\.server(\.[cm]?[tj]sx?)?$/;
+
+interface ClientConfigOptions {
+  rootDir: string;
+  outDir: string;
+  isDev: boolean;
+}
+
+export function createClientRspackConfig(options: ClientConfigOptions): RspackOptions {
+  const { rootDir, outDir, isDev } = options;
+  const srcDir = join(rootDir, "src");
+
+  return {
+    mode: isDev ? "development" : "production",
+    devtool: isDev ? "cheap-module-source-map" : false,
+    entry: {
+      main: join(FRAMEWORK_SRC, "client-entry.tsx"),
+    },
+    output: {
+      path: join(rootDir, outDir, "client"),
+      // Wipe stale hashed chunks from previous builds. Safe: the build
+      // command copies public/ assets in AFTER the compiler has run.
+      clean: true,
+      publicPath: "/_static/",
+      // Stable entry name so the SSR shell can always reference
+      // /_static/chunks/main.js; async page chunks are content-hashed.
+      filename: "chunks/main.js",
+      chunkFilename: "chunks/[name].[contenthash].js",
+      assetModuleFilename: "assets/[name].[hash][ext]",
+    },
+    resolve: {
+      extensions: [".tsx", ".ts", ".jsx", ".js", ".json"],
+      // Framework source uses ESM-style ".js" specifiers for .ts/.tsx files.
+      extensionAlias: {
+        ".js": [".ts", ".tsx", ".js"],
+      },
+      alias: {
+        // The user's route manifest, imported by the framework client entry.
+        // (No colon in the name — Rspack would parse it as a URI scheme.)
+        "@rs-hono/routes$": join(srcDir, "routes.ts"),
+        "@": srcDir,
+      },
+    },
+    module: {
+      rules: [
+        {
+          test: /\.tsx?$/,
+          use: {
+            loader: "builtin:swc-loader",
+            options: {
+              jsc: {
+                parser: { syntax: "typescript", tsx: true },
+                transform: {
+                  react: { runtime: "automatic", development: isDev },
+                },
+              },
+            },
+          },
+          type: "javascript/auto",
+        },
+        {
+          test: /\.css$/,
+          use: [{ loader: "builtin:lightningcss-loader" }],
+          type: "css/auto",
+        },
+      ],
+    },
+    plugins: [
+      new rspack.DefinePlugin({
+        "process.env.NODE_ENV": JSON.stringify(isDev ? "development" : "production"),
+      }),
+      // The server/client boundary: *.server.* never reaches the browser.
+      new rspack.NormalModuleReplacementPlugin(
+        SERVER_MODULE_PATTERN,
+        join(FRAMEWORK_SRC, "builder", "server-stub.cjs")
+      ),
+    ],
+    experiments: { css: true },
+  };
+}

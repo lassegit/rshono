@@ -1,0 +1,21 @@
+{
+  "name": "my-rs-hono-app",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "rs-hono dev",
+    "build": "rs-hono build",
+    "start": "rs-hono start"
+  },
+  "dependencies": {
+    "rs-hono": "^0.1.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "hono": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0"
+  }
+}

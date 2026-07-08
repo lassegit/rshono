@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "paths": {
+      "rs-hono": ["../../packages/rs-hono/src"],
+      "rs-hono/config": ["../../packages/rs-hono/src/config.ts"]
+    }
+  },
+  "include": ["src", "rs-hono.config.ts"],
+  "exclude": ["node_modules"]
+}
