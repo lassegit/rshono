@@ -1,8 +1,14 @@
+/** @jsxRuntime automatic @jsxImportSource react */
 /**
  * App Builder
  *
  * Builds the complete Hono application from user routes, optional
  * server sub-app, and framework internals (static files, error pages).
+ *
+ * The pragma above pins the JSX transform for this file. It runs under
+ * tsx from the USER's project, whose tsconfig doesn't cover framework
+ * sources — without it, esbuild falls back to the classic transform
+ * and the render crashes with "React is not defined".
  */
 import { Hono } from 'hono';
 import { routePath } from 'hono/route';

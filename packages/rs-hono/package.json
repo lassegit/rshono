@@ -1,55 +1,56 @@
 {
-  "name": "rs-hono",
-  "version": "0.1.0",
-  "description": "Ultra-minimalist SSR framework — Hono + Rspack",
-  "type": "module",
-  "exports": {
-    ".": {
-      "types": "./src/index.ts",
-      "import": "./src/index.ts"
+    "name": "rs-hono",
+    "version": "0.1.0",
+    "description": "Ultra-minimalist SSR framework — Hono + Rspack",
+    "type": "module",
+    "exports": {
+        ".": {
+            "types": "./src/index.ts",
+            "import": "./src/index.ts"
+        },
+        "./server": {
+            "types": "./src/server/index.ts",
+            "import": "./src/server/index.ts"
+        },
+        "./config": {
+            "types": "./src/config.ts",
+            "import": "./src/config.ts"
+        },
+        "./package.json": "./package.json"
     },
-    "./server": {
-      "types": "./src/server/index.ts",
-      "import": "./src/server/index.ts"
+    "bin": {
+        "rs-hono": "./bin/cli.cjs"
     },
-    "./config": {
-      "types": "./src/config.ts",
-      "import": "./src/config.ts"
+    "files": [
+        "src",
+        "bin"
+    ],
+    "scripts": {
+        "typecheck": "tsc --noEmit"
     },
-    "./package.json": "./package.json"
-  },
-  "bin": {
-    "rs-hono": "./bin/cli.cjs"
-  },
-  "files": [
-    "src",
-    "bin"
-  ],
-  "scripts": {
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "@hono/node-server": "^2.0.8",
-    "@rspack/core": "^1.0.0",
-    "hono": "^4.8.0",
-    "tsx": "^4.19.0"
-  },
-  "devDependencies": {
-    "@types/node": "^22.0.0",
-    "@types/react": "^18.3.0",
-    "@types/react-dom": "^18.3.0",
-    "typescript": "^5.5.0"
-  },
-  "peerDependencies": {
-    "react": "^18.0.0 || ^19.0.0",
-    "react-dom": "^18.0.0 || ^19.0.0"
-  },
-  "peerDependenciesMeta": {
-    "react": {
-      "optional": true
+    "dependencies": {
+        "@hono/node-server": "^2.0.8",
+        "@rspack/core": "^1.0.0",
+        "tsx": "^4.19.0"
     },
-    "react-dom": {
-      "optional": true
+    "devDependencies": {
+        "@types/node": "^22.0.0",
+        "@types/react": "^18.3.0",
+        "@types/react-dom": "^18.3.0",
+        "hono": "^4.8.0",
+        "typescript": "^5.5.0"
+    },
+    "peerDependencies": {
+        "hono": "^4.8.0",
+        "react": "^18.0.0 || ^19.0.0",
+        "react-dom": "^18.0.0 || ^19.0.0"
+    },
+    "peerDependenciesMeta": {
+        "react": {
+            "optional": true
+        },
+        "react-dom": {
+            "optional": true
+        }
     }
-  }
 }

@@ -5,72 +5,62 @@
  * (Loader return types do not flow into component props yet — a per-route
  * `route()` helper is planned; see the README status section.)
  */
-import type { Context, Handler } from "hono";
-import type { ComponentType } from "react";
+import type { Context, Handler } from 'hono';
+import type { ComponentType } from 'react';
 
 // ─── Page Props ───────────────────────────────────────────────────────────
 
 export interface PageProps {
-  params: Record<string, string>;
-  url: string;
+    params: Record<string, string>;
+    url: string;
 }
 
 // ─── Route Types ──────────────────────────────────────────────────────────
 
 interface PageRouteBase<TLoaderData> {
-  path: string;
-  component: () => Promise<{
-    default: ComponentType<PageProps & TLoaderData>;
-  }>;
-  /**
-   * Runs on the server before rendering; the returned object is passed
-   * to the component as props. Return a `Response` instead to
-   * short-circuit rendering entirely (404, redirect, ...).
-   */
-  loader?: (c: Context) => Promise<TLoaderData | Response>;
+    path: string;
+    component: () => Promise<{
+        default: ComponentType<PageProps & TLoaderData>;
+    }>;
+    /**
+     * Runs on the server before rendering; the returned object is passed
+     * to the component as props. Return a `Response` instead to
+     * short-circuit rendering entirely (404, redirect, ...).
+     */
+    loader?: (c: Context) => Promise<TLoaderData | Response>;
 }
 
 /**
  * A static page — pre-rendered at build time (SSG).
  */
-export interface StaticRoute<TLoaderData = Record<string, unknown>>
-  extends PageRouteBase<TLoaderData> {
-  kind: "static";
+export interface StaticRoute<TLoaderData = Record<string, unknown>> extends PageRouteBase<TLoaderData> {
+    kind: 'static';
 }
 
 /**
  * A dynamic page — server-rendered on each request (SSR).
  */
-export interface DynamicRoute<TLoaderData = Record<string, unknown>>
-  extends PageRouteBase<TLoaderData> {
-  kind: "dynamic";
+export interface DynamicRoute<TLoaderData = Record<string, unknown>> extends PageRouteBase<TLoaderData> {
+    kind: 'dynamic';
 }
 
 /**
  * An API endpoint — pure Hono handler.
  */
 export interface EndpointRoute {
-  kind: "endpoint";
-  path: string;
-  method?: HTTPMethod;
-  handler: Handler;
+    kind: 'endpoint';
+    path: string;
+    method?: HTTPMethod;
+    handler: Handler;
 }
 
-export type HTTPMethod =
-  | "get"
-  | "post"
-  | "put"
-  | "patch"
-  | "delete"
-  | "head"
-  | "options"
-  | "all";
+export type HTTPMethod = 'get' | 'post' | 'put' | 'patch' | 'delete' | 'head' | 'options' | 'all';
 
 export type PageRoute = StaticRoute | DynamicRoute;
 export type Route = PageRoute | EndpointRoute;
 
 export function isPageRoute(route: Route): route is PageRoute {
-  return route.kind === "static" || route.kind === "dynamic";
+    return route.kind === 'static' || route.kind === 'dynamic';
 }
 
 // ─── defineRoutes ─────────────────────────────────────────────────────────
@@ -97,8 +87,6 @@ export function isPageRoute(route: Route): route is PageRoute {
  *   },
  * ]);
  */
-export function defineRoutes<const TRoutes extends Route[]>(
-  userRoutes: TRoutes
-): TRoutes {
-  return userRoutes;
+export function defineRoutes<const TRoutes extends Route[]>(userRoutes: TRoutes): TRoutes {
+    return userRoutes;
 }

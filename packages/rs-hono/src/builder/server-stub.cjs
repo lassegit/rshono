@@ -10,16 +10,16 @@
  * ESM/CJS interop checks don't trip the trap at import time.
  */
 module.exports = new Proxy(
-  {},
-  {
-    get(_target, prop) {
-      if (prop === "__esModule" || prop === "default" || typeof prop === "symbol") {
-        return undefined;
-      }
-      throw new Error(
-        `[rs-hono] "${String(prop)}" comes from a *.server file and is not available in the browser. ` +
-          "Server-only modules are stripped from the client bundle."
-      );
+    {},
+    {
+        get(_target, prop) {
+            if (prop === '__esModule' || prop === 'default' || typeof prop === 'symbol') {
+                return undefined;
+            }
+            throw new Error(
+                `[rs-hono] "${String(prop)}" comes from a *.server file and is not available in the browser. ` +
+                    'Server-only modules are stripped from the client bundle.',
+            );
+        },
     },
-  }
 );
