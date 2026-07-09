@@ -21,7 +21,20 @@
       "Bash(pnpm --filter rs-hono typecheck)",
       "Bash(npx tsc *)",
       "Bash(../../packages/rs-hono/node_modules/.bin/tsc --noEmit)",
-      "Bash(pnpm build *)"
+      "Bash(pnpm build *)",
+      "Bash(grep -c '^ [a-zA-Z@].*:$' /Users/lasse/Playground/rshono/pnpm-lock.yaml)",
+      "Bash(awk '/^packages:/{flag=1;next}/^[a-z]/{flag=0}flag && /^ \\\\x27?[^ ]/' /Users/lasse/Playground/rshono/pnpm-lock.yaml)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.npmjs.com)",
+      "WebFetch(domain:tanstack.com)",
+      "Bash(node -e \"console.log\\(process.version\\)\")",
+      "Bash(curl -s https://registry.npmjs.org/honox/latest)",
+      "Bash(curl -s https://registry.npmjs.org/next/latest)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(d['version']\\); print\\(len\\(d.get\\('dependencies',{}\\)\\), 'deps:', list\\(d.get\\('dependencies',{}\\).items\\(\\)\\)\\)\")",
+      "Bash(curl -s https://registry.npmjs.org/@tanstack%2Freact-start/latest)",
+      "Bash(HOME=/private/tmp/claude-501/-Users-lasse-Playground-rshono/881a9bc1-a53b-43e4-85a0-059bd44122c9/scratchpad/fakehome npx -y create-next-app@latest cna-test --yes --use-npm --ts --tailwind --eslint --app --no-src-dir --no-import-alias --turbopack)",
+      "Bash(npm ls *)",
+      "Bash(node -e \"const p=require\\('./package.json'\\);console.log\\(JSON.stringify\\({deps:p.dependencies,dev:p.devDependencies}\\)\\)\")"
     ],
     "defaultMode": "auto"
   }
