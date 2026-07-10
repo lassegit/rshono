@@ -31,6 +31,17 @@ const posts: Post[] = [
   { id: "p2", title: "Breaking the Code", excerpt: "How pattern recognition shaped modern..." },
 ];
 
+export interface Doc {
+  slug: string;
+  title: string;
+  body: string;
+}
+
+const docs: Doc[] = [
+  { slug: "getting-started", title: "Getting Started", body: "Install, create routes.ts, run the dev server." },
+  { slug: "deployment", title: "Deployment", body: "Run `rs-hono build`, then `rs-hono start` on your server." },
+];
+
 export const fakeDB = {
   async getUser(id: string): Promise<User | undefined> {
     return users.find((u) => u.id === id);
@@ -48,5 +59,13 @@ export const fakeDB = {
     const user: User = { id: String(users.length + 1), ...data, avatar: "✨" };
     users.push(user);
     return user;
+  },
+
+  async listDocs(): Promise<Doc[]> {
+    return docs;
+  },
+
+  async getDoc(slug: string): Promise<Doc | undefined> {
+    return docs.find((d) => d.slug === slug);
   },
 };

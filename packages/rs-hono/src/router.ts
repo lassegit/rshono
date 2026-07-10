@@ -35,6 +35,16 @@ interface PageRouteBase<TLoaderData> {
  */
 export interface StaticRoute<TLoaderData = Record<string, unknown>> extends PageRouteBase<TLoaderData> {
     kind: 'static';
+    /**
+     * Required for paths with params (e.g. "/docs/:slug"): the param
+     * sets to prerender. Each set is interpolated into `path` and the
+     * resulting page rendered to HTML at build time. Requests for paths
+     * not returned here fall back to per-request SSR.
+     *
+     * Runs on the server only — like loaders, its data must come from
+     * `*.server` imports.
+     */
+    staticPaths?: () => Promise<Array<Record<string, string>>>;
 }
 
 /**

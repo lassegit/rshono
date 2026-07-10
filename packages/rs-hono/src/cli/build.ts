@@ -5,17 +5,17 @@
  * 1. Validate project structure & load routes (for reporting)
  * 2. Compile the client bundle via Rspack (hydration + page chunks)
  * 3. Copy public/ assets into <outDir>/client
- *
- * SSG pre-rendering of `kind: "static"` routes is not implemented yet —
- * static routes are currently rendered per request, like dynamic ones.
+ * 4. Pre-render `kind: "static"` routes to <outDir>/ssg (SSG)
  */
 import { rspack, type Stats } from '@rspack/core';
-import { cpSync, existsSync } from 'node:fs';
+import { cpSync, existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { createClientRspackConfig } from '../builder/rspack-config.js';
 import { resolveConfig } from '../config.js';
 import type { Route } from '../router.js';
+import { createAppHandler } from '../server/handler.js';
 import { loadRoutes } from '../server/load.js';
+import { prerenderStaticRoutes } from '../server/ssg.js';
 
 export async function buildCommand() {
     const config = await resolveConfig();
@@ -71,12 +71,35 @@ export async function buildCommand() {
         console.log('  ○ No public/ directory');
     }
 
+    // ── SSG pre-rendering ─────────────────────────────────────────────
     if (counts.static > 0) {
-        console.log(`  ○ Note: SSG pre-rendering is not implemented yet;`);
-        console.log('    static routes are server-rendered per request for now.');
+        const ssgDir = join(rootDir, outDir, 'ssg');
+        // Clear BEFORE creating the handler: the prod app snapshots
+        // prerendered HTML at startup, and a stale ssg dir from a
+        // previous build would get served back to the prerenderer.
+        rmSync(ssgDir, { recursive: true, force: true });
+
+        // Render through the real app so loaders, middleware and the
+        // hydration payload behave exactly as they would at runtime.
+        const handler = await createAppHandler({ config, rootDir, isDev: false });
+        try {
+            const { written } = await prerenderStaticRoutes({
+                routes,
+                fetch: handler,
+                ssgDir,
+            });
+            console.log(`  ✓ ${written.length} static page(s) pre-rendered from ${counts.static} static route(s)`);
+        } catch (err) {
+            console.error('  ✗ SSG pre-rendering failed:');
+            console.error(err);
+            process.exit(1);
+        }
     }
 
     console.log('');
     console.log('✅ Build complete. Run `rs-hono start` to serve.');
     console.log('');
+    // The prerender step imports user code (routes, server.ts, onStart)
+    // that may hold the event loop open (DB pools, timers) — exit explicitly.
+    process.exit(0);
 }

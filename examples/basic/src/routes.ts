@@ -33,6 +33,20 @@ export const routes = defineRoutes([
         component: () => import('./features/signup/Signup'),
     },
 
+    // Static + params: staticPaths() lists the pages to pre-render at
+    // build time. Slugs it doesn't return fall back to SSR per request.
+    {
+        kind: 'static',
+        path: '/docs/:slug',
+        component: () => import('./features/docs/Doc'),
+        staticPaths: async () => (await fakeDB.listDocs()).map(({ slug }) => ({ slug })),
+        loader: async (c) => {
+            const doc = await fakeDB.getDoc(c.req.param('slug')!);
+            if (!doc) return c.text(`Doc ${c.req.param('slug')} not found`, 404);
+            return { doc };
+        },
+    },
+
     // ═══════════════════════════════════════════════════════════════════════
     // DYNAMIC PAGES — server-rendered on each request (SSR)
     // ═══════════════════════════════════════════════════════════════════════

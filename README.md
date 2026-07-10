@@ -85,12 +85,15 @@ fails loudly in the browser console:
 
 | Kind         | Behavior                                 | Use case                         |
 | ------------ | ---------------------------------------- | -------------------------------- |
-| `"static"`   | Pre-rendered HTML (SSG)¹                 | Landing pages, docs, changelogs  |
+| `"static"`   | Pre-rendered HTML at build time (SSG)¹   | Landing pages, docs, changelogs  |
 | `"dynamic"`  | Server-rendered on each request (SSR)    | Dashboards, profiles, auth pages |
 | `"endpoint"` | Quick inline API handler                 | One-off JSON endpoints, webhooks |
 
-¹ Build-time pre-rendering is not implemented yet — `static` routes are
-currently server-rendered per request, same as `dynamic`.
+¹ `rs-hono build` renders each `static` route once and writes the HTML to
+`<outDir>/ssg/`; the production server serves those files from memory.
+Static routes with path params (`/docs/:slug`) can't be enumerated at build
+time and fall back to per-request SSR (the build warns about them). In dev,
+static routes are always rendered live so edits show up immediately.
 
 ## How It Works
 
@@ -240,7 +243,8 @@ export default defineConfig({
 Honest notes on what is and isn't there yet:
 
 - ✅ SSR streaming, hydration, per-page code splitting, `*.server` stripping
-- ⏳ SSG pre-rendering at build time (`static` routes render per request for now)
+- ✅ SSG pre-rendering at build time (param-free `static` routes; paths with
+  params fall back to SSR — a `getStaticPaths`-style API is not there yet)
 - ⏳ HMR (currently: server restart + manual browser refresh)
 - ⏳ Loader→props type inference (loaders are typed, but their return types
   don't flow into component props yet — a per-route `route()` helper is planned)
@@ -256,9 +260,7 @@ Honest notes on what is and isn't there yet:
 | API Routes    | Hono (full power)     | Limited           | Limited          |
 | Layout system | Component composition | Magic files       | Nested files     |
 | Bundler       | Rspack (Rust)         | Turbopack/webpack | esbuild/Vite     |
-| SSG           | Per-route opt-in¹     | Default           | Per-route opt-in |
-
-¹ Planned — see Status.
+| SSG           | Per-route opt-in      | Default           | Per-route opt-in |
 
 ## License
 

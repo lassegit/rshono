@@ -10,12 +10,13 @@
  * sources — without it, esbuild falls back to the classic transform
  * and the render crashes with "React is not defined".
  */
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { routePath } from 'hono/route';
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ComponentType } from 'react';
 import { isPageRoute, type EndpointRoute, type PageRoute, type Route } from '../router.js';
+import { readPrerendered } from './ssg.js';
 import { renderToStream } from './ssr.js';
 import { createStaticMiddleware } from './static.js';
 
@@ -135,7 +136,9 @@ export function buildApp(options: BuildAppOptions): Hono {
 
     app.route('/', internalApp);
     app.route('/', createEndpointApp(endpointRoutes));
-    app.route('/', createPageApp(pageRoutes, isDev));
+    // In prod, static routes prerendered by `rs-hono build` are served
+    // from <outDir>/ssg; anything else falls back to per-request SSR.
+    app.route('/', createPageApp(pageRoutes, isDev, isDev ? undefined : join(rootDir, outDir, 'ssg')));
     if (subApp) {
         app.route('/', subApp);
     }
@@ -169,11 +172,11 @@ export function buildApp(options: BuildAppOptions): Hono {
 
 // ─── Page App ─────────────────────────────────────────────────────────────
 
-function createPageApp(routes: PageRoute[], isDev: boolean): Hono {
+function createPageApp(routes: PageRoute[], isDev: boolean, ssgDir?: string): Hono {
     const app = new Hono();
 
     for (const route of routes) {
-        app.get(route.path, async (c) => {
+        const render = async (c: Context) => {
             // Run loader if defined. A loader may return a Response to
             // short-circuit rendering (404, redirect, ...).
             let loaderData: Record<string, unknown> = {};
@@ -257,7 +260,20 @@ function createPageApp(routes: PageRoute[], isDev: boolean): Hono {
                 console.error(`[rs-hono] Render error for ${route.path}:`, err);
                 return c.html(errorPage('500 — Render Error', err, isDev), 500);
             }
-        });
+        };
+
+        // Prerendered static pages are looked up per request — no
+        // per-page route registration, no HTML held in memory. Anything
+        // not prerendered (params without staticPaths, build-time skips,
+        // content added since the build) falls back to live SSR.
+        if (ssgDir && route.kind === 'static') {
+            app.get(route.path, async (c) => {
+                const html = await readPrerendered(ssgDir, c.req.path);
+                return html !== null ? c.html(html) : render(c);
+            });
+        } else {
+            app.get(route.path, render);
+        }
     }
 
     return app;
