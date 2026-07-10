@@ -206,13 +206,16 @@ inline scripts are ordinary props and elements, no head-manager API:
 
 ```tsx
 // layout.tsx — just a component; have as many layouts as you like
+import { Assets } from 'rs-hono';
+import './styles.css'; // global CSS, bundled by Rspack
+
 export function Layout({ title, children }: { title: string; children: ReactNode }) {
     return (
         <html lang="en">
             <head>
                 <meta charSet="utf-8" />
                 <title>{title}</title>
-                <link rel="stylesheet" href="/_static/styles.css" />
+                <Assets /> {/* links the bundled, content-hashed CSS */}
             </head>
             <body>{children}</body>
         </html>
@@ -236,6 +239,34 @@ No magic `app/layout.tsx` file — pages compose layouts directly via React
 composition. The framework appends its hydration scripts to `<body>`
 automatically, and warns at request time if a page forgets to render
 `<html>`.
+
+## CSS
+
+`import './styles.css'` from any component (typically the layout) and the
+client bundle takes it from there: Rspack merges **all** imported CSS into
+one minified stylesheet (content-hashed in prod for immutable caching),
+and `<Assets />` — rendered in your layout's `<head>` — links it. Because
+the link is in the server-rendered document, styles are present before
+hydration; no flash of unstyled content, in dev, prod and prerendered
+SSG pages alike.
+
+On the server (which runs your source via tsx, not the bundler), CSS
+imports are made inert by a Node loader hook — they never crash SSR.
+
+CSS modules work too, with named imports (matching Rspack's native CSS
+support — there is no default export):
+
+```tsx
+import * as styles from './Button.module.css';
+// styles.hero === "Button.module__hero" — identical on server and client
+```
+
+Class names are derived from the filename (`[name]__[local]`), so
+server-rendered markup matches hydration exactly. Only classes that are
+valid JS identifiers are exported (use `camelCase`, not `kebab-case`).
+
+Files in `public/` are still served verbatim under `/_static/` — use that
+for assets that should skip the bundler entirely.
 
 ## Commands
 

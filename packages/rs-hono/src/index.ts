@@ -13,6 +13,8 @@
  *   import { defineConfig } from "rs-hono/config"
  */
 
+export { Assets, type AssetManifest } from './assets.js';
+
 export {
     defineLoader,
     defineRoutes,

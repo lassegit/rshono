@@ -1,8 +1,13 @@
 import { createRequire } from 'node:module';
 import { parseArgs } from 'node:util';
+import { registerCssHooks } from '../builder/css-hooks.mjs';
 import { buildCommand } from './build.js';
 import { devCommand } from './dev.js';
 import { startCommand } from './start.js';
+
+// Before any user code loads: layouts/pages import CSS, which the server
+// (running raw source via tsx) cannot parse without these hooks.
+registerCssHooks();
 
 const { version } = createRequire(import.meta.url)('../../package.json');
 

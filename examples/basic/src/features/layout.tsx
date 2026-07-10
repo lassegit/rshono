@@ -1,4 +1,9 @@
+import { Assets } from 'rs-hono';
 import type { ReactNode } from 'react';
+// Bundled by Rspack (merged, minified, content-hashed) and linked via
+// <Assets/> below — inert on the server. Global CSS can be imported from
+// any component; it all ends up in the same stylesheet.
+import '../styles.css';
 
 interface LayoutProps {
     /** Document title — every page passes its own. */
@@ -30,7 +35,7 @@ export function Layout({ title = 'rs-hono', description, children }: LayoutProps
                     rel="icon"
                     href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>"
                 />
-                <link rel="stylesheet" href="/_static/styles.css" />
+                <Assets />
             </head>
             <body>
                 <header>
@@ -50,9 +55,7 @@ export function Layout({ title = 'rs-hono', description, children }: LayoutProps
 
                 <footer>
                     <p>
-                        Built with{' '}
-                        <a href="https://github.com/example/rs-hono">rs-hono</a> — Hono +
-                        Rspack
+                        Built with <a href="https://github.com/example/rs-hono">rs-hono</a> — Hono + Rspack
                     </p>
                 </footer>
             </body>

@@ -22,11 +22,12 @@
 import { hydrateRoot } from 'react-dom/client';
 // @ts-expect-error — virtual alias resolved by the framework's Rspack config
 import { routes } from '@rs-hono/routes';
+import { setAssets, type AssetManifest } from './assets.js';
 import { isPageRoute, type Route } from './router.js';
 
 declare global {
     interface Window {
-        __RSH?: { route: string; props: Record<string, unknown> };
+        __RSH?: { route: string; props: Record<string, unknown>; assets?: AssetManifest };
     }
 }
 
@@ -45,6 +46,9 @@ async function bootstrap() {
     try {
         const mod = await route.component();
         const Component = mod.default;
+        // Populate the registry BEFORE rendering, so the layout's
+        // <Assets/> hydrates against the <link> tags the server emitted.
+        setAssets(data.assets ?? { css: [] });
         hydrateRoot(document, <Component {...(data.props as any)} />);
         if (process.env.NODE_ENV === 'development') {
             console.log(`[rs-hono] hydrated ${data.route}`);

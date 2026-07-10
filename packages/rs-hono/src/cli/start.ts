@@ -6,6 +6,8 @@
  */
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { setAssets } from '../assets.js';
+import { loadAssetManifest } from '../builder/assets-manifest.js';
 import { resolveConfig } from '../config.js';
 import { createAppHandler } from '../server/handler.js';
 import { serve } from '../server/node-server.js';
@@ -24,6 +26,13 @@ export async function startCommand(portArg?: number) {
         console.error(`  ✗ No client bundle found in ${outDir}/client.`);
         console.error('    Run `rs-hono build` first.');
         process.exit(1);
+    }
+
+    const assetManifest = loadAssetManifest(rootDir, outDir);
+    if (assetManifest) {
+        setAssets(assetManifest);
+    } else {
+        console.log('  ○ No assets.json in the build output — <Assets/> will render nothing. Re-run `rs-hono build`.');
     }
 
     const handler = await createAppHandler({ config, rootDir, isDev: false });

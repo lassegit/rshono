@@ -10,6 +10,8 @@
 import { rspack, type Stats } from '@rspack/core';
 import { cpSync, existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { setAssets } from '../assets.js';
+import { assetManifestFromStats, writeAssetManifest } from '../builder/assets-manifest.js';
 import { createClientRspackConfig } from '../builder/rspack-config.js';
 import { resolveConfig } from '../config.js';
 import type { Route } from '../router.js';
@@ -61,6 +63,12 @@ export async function buildCommand() {
         process.exit(1);
     }
     console.log('  ✓ Client bundle compiled');
+
+    // Record the emitted CSS: assets.json for `start`, and the live
+    // registry so the SSG prerender below links it too.
+    const assetManifest = stats ? assetManifestFromStats(stats) : { css: [] };
+    writeAssetManifest(rootDir, outDir, assetManifest);
+    setAssets(assetManifest);
 
     // ── Static assets ─────────────────────────────────────────────────
     const publicDir = join(rootDir, config.publicDir ?? 'public');

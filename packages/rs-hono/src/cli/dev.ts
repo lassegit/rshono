@@ -10,6 +10,8 @@
  * file restarts the whole process.
  */
 import { rspack } from "@rspack/core";
+import { setAssets } from "../assets.js";
+import { assetManifestFromStats } from "../builder/assets-manifest.js";
 import { createAppHandler } from "../server/handler.js";
 import { createClientRspackConfig } from "../builder/rspack-config.js";
 import { serve } from "../server/node-server.js";
@@ -35,6 +37,9 @@ export async function devCommand(portArg?: number) {
       console.error(stats.toString({ preset: "errors-warnings", colors: true }));
       return;
     }
+    // Requests served before the first compile finishes render without
+    // CSS links — refresh once the bundle is ready.
+    if (stats) setAssets(assetManifestFromStats(stats));
     console.log("  ✓ Client bundle ready");
   });
 

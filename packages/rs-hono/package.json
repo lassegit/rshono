@@ -16,6 +16,9 @@
             "types": "./src/config.ts",
             "import": "./src/config.ts"
         },
+        "./client": {
+            "types": "./src/client.d.ts"
+        },
         "./package.json": "./package.json"
     },
     "bin": {

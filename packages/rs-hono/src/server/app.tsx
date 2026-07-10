@@ -15,6 +15,7 @@ import { routePath } from 'hono/route';
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ComponentType } from 'react';
+import { getAssets } from '../assets.js';
 import { isPageRoute, type EndpointRoute, type PageRoute, type PageServerModule, type Route } from '../router.js';
 import { readPrerendered } from './ssg.js';
 import { renderToStream } from './ssr.js';
@@ -248,6 +249,9 @@ function createPageApp(routes: PageRoute[], isDev: boolean, ssgDir?: string): Ho
                 bootstrapScript = `window.__RSH = ${toInlineJson({
                     route: routePath(c),
                     props,
+                    // The client re-renders <Assets/> during hydration, so it
+                    // needs the same asset list the server rendered with.
+                    assets: getAssets(),
                 })};`;
             } catch (err) {
                 console.error(`[rs-hono] Loader data for ${route.path} is not JSON-serializable:`, err);

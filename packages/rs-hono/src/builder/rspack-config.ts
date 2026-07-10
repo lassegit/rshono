@@ -50,6 +50,28 @@ export function createClientRspackConfig(options: ClientConfigOptions): RspackOp
             filename: 'chunks/main.js',
             chunkFilename: 'chunks/[name].[contenthash].js',
             assetModuleFilename: 'assets/[name].[hash][ext]',
+            // Emitted CSS (see the "styles" cache group below). Hashed in
+            // prod for immutable caching; stable in dev for simple reloads.
+            cssFilename: isDev ? 'chunks/[name].css' : 'chunks/[name].[contenthash].css',
+            cssChunkFilename: isDev ? 'chunks/[name].css' : 'chunks/[name].[contenthash].css',
+        },
+        optimization: {
+            splitChunks: {
+                cacheGroups: {
+                    // Merge ALL imported CSS into one "styles" chunk. Without
+                    // this, CSS imported by a shared layout is duplicated
+                    // into every async page chunk and never appears in a
+                    // form the SSR document can link — one merged file is
+                    // what <Assets/> puts in <head>, so styles are present
+                    // before hydration (no flash of unstyled content).
+                    styles: {
+                        name: 'styles',
+                        test: /\.css$/,
+                        chunks: 'all',
+                        enforce: true,
+                    },
+                },
+            },
         },
         resolve: {
             extensions: ['.tsx', '.ts', '.jsx', '.js', '.json'],
@@ -93,6 +115,16 @@ export function createClientRspackConfig(options: ClientConfigOptions): RspackOp
                     type: 'asset',
                 },
             ],
+            generator: {
+                // Deterministic CSS-module class names, derived from the
+                // filename alone ("Button.module.css" + ".hero" →
+                // "Button.module__hero"). The server-side CSS hook
+                // (builder/css-hooks.mjs) generates the SAME names, so
+                // SSR markup matches hydration without sharing state.
+                'css/auto': {
+                    localIdentName: '[name]__[local]',
+                },
+            },
         },
         plugins: [
             // NODE_ENV is defined automatically from `mode` (optimization.nodeEnv).
