@@ -1,19 +1,19 @@
 # rs-hono vs Next.js, TanStack Start, and HonoX
 
-A comparison of [`packages/rs-hono`](packages/rs-hono) — an ultra-minimalist SSR framework built on Hono + Rspack (~1,350 lines of source, 3 runtime dependencies) — against the three frameworks it most naturally competes with. Facts are as of **July 2026**: Next.js 16.2, TanStack Start 1.0 RC, HonoX 0.1.58. Install sizes were measured locally (npm, macOS arm64; native binaries vary by platform).
+A comparison of [`packages/rs-hono`](packages/rs-hono) — an ultra-minimalist SSR/SSG framework built on Hono + Rspack (~1,550 lines of source, 3 runtime dependencies) — against the three frameworks it most naturally competes with. Facts are as of **July 2026**: Next.js 16.2, TanStack Start 1.0 RC, HonoX 0.1.58. Install sizes were measured locally (npm, macOS arm64; native binaries vary by platform).
 
 ## Comparison table
 
 | | **rs-hono** | **Next.js 16** | **TanStack Start** | **HonoX** |
 |---|---|---|---|---|
 | **Maturity** | Proof of concept | Stable — 16.2 (major since Oct 2025), 140k★ | v1.0 **RC** since Sept 2025, stable still not cut | **Alpha** — 0.1.58, on 0.x for 2.5 years, breaking changes allowed |
-| **Framework source** | ~1,350 lines | ~72 MB of source in the monorepo (order of ~2M lines incl. tests) | ~400–450k lines monorepo (Router + Start) | Small (85 kB package) |
+| **Framework source** | ~1,550 lines | ~72 MB of source in the monorepo (order of ~2M lines incl. tests) | ~400–450k lines monorepo (Router + Start) | Small (85 kB package) |
 | **Direct runtime deps** | 3 (`@hono/node-server`, `@rspack/core`, `tsx`) + `hono`/React as peers | 6 (+9 optional native binaries) | 9 | 7 (incl. four `@babel/*` packages) |
 | **Bare install (measured)** | **11 packages / 64 MB** (40 MB is Rspack's binary) | 22 packages / **329 MB** (SWC binary 129 MB) | 109 packages / 94 MB | 94 packages / 89 MB (with Vite) |
 | **Default scaffold install** | — (minimal template) | 363 packages / 464 MB | ~260 packages / 234 MB | — |
 | **Routing** | **Explicit manifest** (`routes.ts`, single source of truth) | File conventions (`app/` dir, magic filenames) | File-based + generated route tree (code-based possible) | File-based (`app/routes/`, `_renderer.tsx`, `_middleware.ts`) |
 | **Rendering** | Streaming SSR + Suspense | RSC-first, streaming, Cache Components (`"use cache"`) | Streaming SSR, per-route selective SSR, RSC experimental (Apr 2026) | Per-request SSR (hono/jsx default; React opt-in), streaming via `jsxRenderer` |
-| **SSG** | Declared (`kind: 'static'`) but **not implemented yet** | Mature, default for static pages | Prerender + link crawling, SPA mode | Via `@hono/vite-ssg` plugin (two-pass build) |
+| **SSG** | **Build-time prerender** (`kind: 'static'`; param routes enumerate pages via `staticPaths()`), per-request SSR fallback for anything not prerendered | Mature, default for static pages | Prerender + link crawling, SPA mode | Via `@hono/vite-ssg` plugin (two-pass build) |
 | **Data loading** | Per-route server `loader`, may return a `Response` | RSC async components + Server Actions + fetch cache | Isomorphic loaders + `createServerFn` RPC + first-class TanStack Query | None — write Hono handler code inline |
 | **Loader → props typing** | **Not yet** — components cast props manually | Manual (you type your own boundaries) | **Full end-to-end inference** (headline feature) | n/a (no loader concept) |
 | **Server/client boundary** | `*.server.*` module replacement — **build-time guarantee**, fails loudly in browser | `"use client"` / `"use server"` directives + `server-only` package | Compiler extracts server functions from shared files | Islands convention (`app/islands/`, `$` prefix); islands can't access Hono context |
@@ -27,7 +27,7 @@ A comparison of [`packages/rs-hono`](packages/rs-hono) — an ultra-minimalist S
 
 ## Where rs-hono wins
 
-- **Comprehensibility.** At ~1,350 lines a single developer can read the entire framework in an afternoon. When something breaks, you debug real stack traces through code you can read — the exact opposite of the Next.js experience, where "because of all of the abstraction required to function, debugging is a nightmare" ([Kyle Gill](https://www.kylegill.com/essays/next-vs-tanstack/)). There is no cache hierarchy, no compiler transform, no RSC serialization layer between you and the bug.
+- **Comprehensibility.** At ~1,550 lines a single developer can read the entire framework in an afternoon. When something breaks, you debug real stack traces through code you can read — the exact opposite of the Next.js experience, where "because of all of the abstraction required to function, debugging is a nightmare" ([Kyle Gill](https://www.kylegill.com/essays/next-vs-tanstack/)). There is no cache hierarchy, no compiler transform, no RSC serialization layer between you and the bug.
 - **Supply chain and upgrade surface.** 11 packages / 64 MB installed vs 363 packages for a default Next.js scaffold. Fewer packages means fewer CVE exposures, faster CI installs, and near-zero upgrade churn. Next.js's worst recent bug (CVE-2025-29927, CVSS 9.1) lived precisely in framework magic — an internal header nobody knew existed bypassed middleware auth entirely. rs-hono has no hidden internal protocol to spoof.
 - **Explicit routing beats convention magic.** `routes.ts` is greppable, refactorable, and type-checked. There are no magic filenames to memorize and no "can't ⌘-search a file convention" discoverability problem. Next.js and HonoX both encode behavior in filesystem conventions; TanStack Start generates a route tree; rs-hono routes are just data.
 - **The strongest server/client boundary of the four.** `*.server.*` modules are physically replaced with a throwing stub in the client bundle — a build-time guarantee enforced by module replacement, not a lint rule (`server-only`), directive discipline (`"use server"`), or tree-shaking best effort. Accidental leaks fail loudly in the browser console instead of silently shipping secrets.
@@ -40,7 +40,7 @@ A comparison of [`packages/rs-hono`](packages/rs-hono) — an ultra-minimalist S
 - **Dev feedback loop is the worst of the four.** Rspack rebuilds fast, but the server does a full `tsx watch` restart and you refresh the browser by hand. Both Vite-based competitors and Next.js keep component state across edits with HMR/Fast Refresh. This is the gap you feel hundreds of times a day.
 - **No client-side navigation.** Every link is a full page load. Fine for content sites and dashboards with few transitions; wrong for app-like UIs. TanStack Start's typed `<Link>` + prefetch + client cache is a different league here. (HonoX shares this MPA limitation.)
 - **Type-safety gap.** TanStack Start infers loader data, path params, and search params end-to-end. rs-hono loaders are typed, but their return types don't reach component props — pages cast `props as unknown as {...}` (see `examples/basic/src/features/profile/Profile.tsx`). For a TypeScript-first audience this is the most visible daily papercut.
-- **Promised features that don't exist yet.** `kind: 'static'` currently renders per request — the SSG the README promises isn't implemented. Head/meta management doesn't exist at all: the HTML shell (with its hardcoded stylesheet link and no `<title>` API) lives inside the framework.
+- **No head/meta management.** The HTML shell (with its hardcoded stylesheet link and no `<title>` API) lives inside the framework, so titles and OG tags currently require forking it. (SSG, the other gap formerly listed here, has since shipped — see the table.)
 - **Node-only.** `node:fs`, `node:stream`, `@hono/node-server`, and running TS via tsx bind rs-hono to Node servers. HonoX deploys to Cloudflare Workers first-class; TanStack Start reaches most hosts via Nitro. rs-hono also ships TypeScript source to production and needs `tsx` + Rspack in the production image.
 - **Bus factor of one.** HonoX at least has the Hono org behind it; Next.js and TanStack have full-time teams. rs-hono is maintained by its author.
 
@@ -116,8 +116,8 @@ resolve(Readable.toWeb(pass) as ReadableStream<Uint8Array>);
 **8. Set `NODE_ENV=production` in `rs-hono start`.**
 Nothing sets `NODE_ENV` for the production server (`cli/start.ts`, `bin/cli.cjs`), so unless the user exports it themselves, **react-dom/server runs in development mode during SSR** — dev-only checks typically cost 2–5× render throughput. Three lines in `bin/cli.cjs` (set it in the child env for `start`, before Node loads React) is likely the single largest cheap performance win in the codebase.
 
-**9. Cache `'static'` routes at runtime (then real SSG).**
-Until build-time prerendering lands, `static` routes pay full React SSR per request. An in-memory render-once cache in `createPageApp` (`app.tsx:172`) — buffer the stream on first hit, replay it (plus ETag) afterwards — delivers the static promise in ~25 lines with no build pipeline changes: landing pages go from "React render per request" to "memcpy per request". Build-time SSG can follow naturally: `cli/build.ts` already loads the routes, so it can render each loader-less `static` path through the existing `renderToStream` and write HTML into `dist/client`.
+**9. ~~Cache `'static'` routes at runtime (then real SSG)~~ — ✅ shipped as build-time SSG.**
+`rs-hono build` now prerenders every `kind: 'static'` route to `<outDir>/ssg` (`server/ssg.ts`) by issuing real requests against the assembled app, so loaders, the hydration payload, and streaming SSR are reused unchanged. Param routes enumerate their pages via `staticPaths()`; in production, prerendered HTML is served straight from disk with per-request SSR as the fallback (params without `staticPaths()`, build-time skips, paths added since the build). The interim runtime render-cache proposed here was skipped in favor of going straight to build-time prerendering.
 
 **10. Parallelize and pre-warm page modules.**
 `createPageApp` awaits the loader, *then* awaits `route.component()` (`app.tsx:180-205`), though the two are independent — `Promise.all` them. And in production, fire-and-forget `pageRoutes.map(r => r.component())` at startup so the ESM module cache is warm before the first request instead of during it. Both are a few lines; they mainly cut first-hit latency.
@@ -133,11 +133,11 @@ The client bundle is served uncompressed, and the entry chunk `main.js` delibera
 | 1 | Loader → props inference | High (DX, headline gap) | Small |
 | 3 | Dev auto-reload (SSE) | High (daily DX) | Small |
 | 2 | Per-page `<head>` | High (unblocks real sites) | Small |
-| 9 | Static-route caching → SSG | High (perf, honesty of `static`) | Small → Medium |
+| ~~9~~ | ~~Static-route caching → SSG~~ ✅ shipped (`server/ssg.ts`) | High (perf, honesty of `static`) | Done |
 | 4 | Rspack config hook | Medium (prevents forks) | Trivial |
 | 11 | Precompression + hashed entry | Medium (page weight) | Small → Medium |
 | 6, 7 | Stream bridge + middleware wrapper cleanup | Code size/clarity | Small |
 | 10 | Parallel loader/import + pre-warm | Low–Medium (latency) | Trivial |
 | 5 | Papercuts (routes.tsx, method arrays) | Low | Trivial |
 
-Notably absent: client-side navigation, RSC, and edge-runtime support. Each would multiply the framework's size and complexity — the moment rs-hono grows a client router and a serialization protocol, its comparison column starts looking like TanStack Start's, without the team to maintain it. The improvements above all fit the existing ~1,350-line budget (roughly +200 lines total, some of it offset by items 6–7) while removing the four disadvantages users hit first: prop casting, manual refresh, missing titles, and slow production SSR.
+Notably absent: client-side navigation, RSC, and edge-runtime support. Each would multiply the framework's size and complexity — the moment rs-hono grows a client router and a serialization protocol, its comparison column starts looking like TanStack Start's, without the team to maintain it. The remaining improvements all fit the existing ~1,550-line budget (roughly +150 lines total, some of it offset by items 6–7) while removing the four disadvantages users hit first: prop casting, manual refresh, missing titles, and slow production SSR.
