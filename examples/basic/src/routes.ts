@@ -1,20 +1,22 @@
 import { defineRoutes } from 'rs-hono';
-import { fakeDB } from './db.server';
 
 // ─── Route Definitions ────────────────────────────────────────────────────
 //
 // This is the SINGLE source of truth for your application routing, and it
 // is shared with the browser: the client bundle imports this file to know
-// which component to hydrate, and the `import()` calls below are what the
-// bundler code-splits into per-page chunks.
+// which component to hydrate, and the `component: () => import(...)` calls
+// below are what the bundler code-splits into per-page chunks.
 //
-// The rule that keeps this safe:
-//   • everything in routes.ts is PUBLIC (shipped to the browser as code)
-//   • everything in *.server.ts files is PRIVATE — the bundler replaces
-//     those modules with a stub in the client bundle
+// That is why routes.ts contains NO server code — only route data:
+//   • `component:` → the page module (PUBLIC, shipped to the browser)
+//   • `server:`    → the route's *.server module (loader, staticPaths,
+//     endpoint handler) — PRIVATE. The bundler replaces *.server modules
+//     with a throwing stub in the client bundle, so server code and the
+//     secrets it touches physically never ship.
 //
-// So loaders may live inline here, as long as the data they touch comes
-// from a *.server.ts import (like ./db.server below).
+// defineRoutes validates at compile time that each route's path matches
+// the pattern its loader was declared with, and that the component's
+// props are satisfied by PageProps + the loader's data.
 
 export const routes = defineRoutes([
     // ═══════════════════════════════════════════════════════════════════════
@@ -33,18 +35,14 @@ export const routes = defineRoutes([
         component: () => import('./features/Signup'),
     },
 
-    // Static + params: staticPaths() lists the pages to pre-render at
-    // build time. Slugs it doesn't return fall back to SSR per request.
+    // Static + params: staticPaths() in Doc.server.ts lists the pages to
+    // pre-render at build time. Slugs it doesn't return fall back to SSR
+    // per request.
     {
         kind: 'static',
         path: '/docs/:slug',
         component: () => import('./features/Doc'),
-        staticPaths: async () => (await fakeDB.listDocs()).map(({ slug }) => ({ slug })),
-        loader: async (c) => {
-            const doc = await fakeDB.getDoc(c.req.param('slug')!);
-            if (!doc) return c.text(`Doc ${c.req.param('slug')} not found`, 404);
-            return { doc };
-        },
+        server: () => import('./features/Doc.server'),
     },
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -55,37 +53,26 @@ export const routes = defineRoutes([
         kind: 'dynamic',
         path: '/profile/:id',
         component: () => import('./features/Profile'),
-        loader: async (c) => {
-            const id = c.req.param('id')!;
-            const user = await fakeDB.getUser(id);
-            // A loader may return a Response to short-circuit rendering —
-            // a proper 404 instead of a 500 error page (redirects work too).
-            if (!user) return c.text(`User ${id} not found`, 404);
-            const posts = await fakeDB.getUserPosts(id);
-            return { user, posts };
-        },
+        server: () => import('./features/Profile.server'),
     },
 
     {
         kind: 'dynamic',
         path: '/users',
         component: () => import('./features/UserList'),
-        loader: async () => {
-            const users = await fakeDB.listUsers();
-            return { users };
-        },
+        server: () => import('./features/UserList.server'),
     },
 
     // ═══════════════════════════════════════════════════════════════════════
     // API ENDPOINTS
     //
+    // The handler lives in a *.server module (exported as `handler`).
     // For more complex APIs, create src/server.ts and export a Hono app.
-    // These inline endpoints are for quick one-offs.
     // ═══════════════════════════════════════════════════════════════════════
 
     {
         kind: 'endpoint',
         path: '/api/quick-health',
-        handler: (c) => c.json({ inline: true, uptime: process.uptime() }),
+        server: () => import('./health.server'),
     },
 ]);

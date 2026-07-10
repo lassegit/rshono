@@ -2,66 +2,156 @@
  * Route Definition
  *
  * `defineRoutes` is the single source of truth for all application routes.
- * (Loader return types do not flow into component props yet — a per-route
- * `route()` helper is planned; see the README status section.)
+ *
+ * routes.ts is shared with the browser (it is the hydration manifest and
+ * its `import()` calls are the code-split points), so it must contain NO
+ * server code. Loaders, staticPaths and endpoint handlers live in
+ * co-located `*.server.*` modules referenced via a lazy `server:` thunk —
+ * the bundler physically replaces those modules with a throwing stub in
+ * the client bundle, so server code never ships.
+ *
+ * Loader → component props inference: declare the loader with
+ * `defineLoader(path, fn)` in the server module, then type the component
+ * with `LoaderProps<typeof loader>` via a type-only import. `defineRoutes`
+ * validates (at compile time) that the route's path matches the loader's
+ * declared pattern and that the component's props are satisfied by
+ * `PageProps` + the loader's data.
  */
-import type { Context, Handler } from 'hono';
+import type { Context, Env, Handler } from 'hono';
+import type { ParamKeys, ParamKeyToRecord } from 'hono/types';
 import type { ComponentType } from 'react';
+
+type Simplify<T> = { [K in keyof T]: T[K] } & {};
+type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never) extends (k: infer I) => void ? I : never;
+
+// ─── Path params ──────────────────────────────────────────────────────────
+
+/**
+ * The params object for a route pattern, derived with Hono's own
+ * template-literal machinery so `:id`, `:id?` and `:id{[0-9]+}` behave
+ * exactly like `c.req.param()`.
+ */
+export type PathParams<P extends string> = ParamKeys<P> extends never
+    ? Record<string, never>
+    : Simplify<UnionToIntersection<ParamKeyToRecord<ParamKeys<P>>>>;
 
 // ─── Page Props ───────────────────────────────────────────────────────────
 
-export interface PageProps {
-    params: Record<string, string>;
+/**
+ * Props every page component receives. Generic over the route pattern:
+ * `PageProps<'/profile/:id'>` types `params` as `{ id: string }`. Bare
+ * `PageProps` keeps the untyped `Record<string, string>` params.
+ */
+export interface PageProps<Path extends string = string> {
+    params: string extends Path ? Record<string, string> : PathParams<Path>;
     url: string;
+}
+
+// ─── Loaders (defined in *.server modules) ────────────────────────────────
+
+/**
+ * A loader declared with `defineLoader`. The path pattern is carried in
+ * the type so `defineRoutes` can detect drift between the route's `path`
+ * and the pattern the loader was written against.
+ */
+export type Loader<Path extends string, TData> = ((c: Context<Env, Path>) => Promise<TData>) & { readonly path: Path };
+
+/**
+ * Declare a page loader inside a `*.server.*` module. The path pattern
+ * types `c` — `c.req.param('id')` is `string`, not `string | undefined` —
+ * and is validated against the route's `path` by `defineRoutes`.
+ *
+ * Runs on the server before rendering; the resolved object is passed to
+ * the component as props. Return a `Response` instead to short-circuit
+ * rendering entirely (404, redirect, ...).
+ *
+ * @example
+ * // features/Profile.server.ts
+ * export const loader = defineLoader('/profile/:id', async (c) => {
+ *   const user = await db.getUser(c.req.param('id'));
+ *   if (!user) return c.notFound();
+ *   return { user };
+ * });
+ */
+export function defineLoader<const Path extends string, TData>(path: Path, fn: (c: Context<Env, Path>) => Promise<TData>): Loader<Path, TData> {
+    return Object.assign(fn, { path } as const);
+}
+
+/** The data a loader resolves to, with `Response` short-circuits excluded. */
+export type LoaderData<L> = L extends (c: never) => Promise<infer D> ? Simplify<Exclude<D, Response>> : Record<string, never>;
+
+/**
+ * Full props for a page component, derived from its co-located loader.
+ * Import the loader TYPE-ONLY so the reference is erased from the client
+ * bundle:
+ *
+ * @example
+ * // features/Profile.tsx
+ * import type { loader } from './Profile.server';
+ * export default function Profile({ user, params }: LoaderProps<typeof loader>) { ... }
+ */
+export type LoaderProps<L extends { path: string }> = L extends { path: infer P extends string } ? PageProps<P> & LoaderData<L> : never;
+
+// ─── Server modules ───────────────────────────────────────────────────────
+
+/**
+ * What a page route's `*.server.*` module may export. Types are loose on
+ * purpose — real checking happens in `defineLoader`/`defineRoutes`; this
+ * only describes what the server runtime consumes.
+ */
+export interface PageServerModule {
+    /** A loader declared with `defineLoader(path, fn)`. */
+    loader?: ((c: any) => Promise<unknown>) & { path?: string };
+    /**
+     * For `kind: 'static'` routes with params (e.g. "/docs/:slug"): the
+     * param sets to prerender at build time. Requests for paths not
+     * returned here fall back to per-request SSR.
+     */
+    staticPaths?: () => Promise<Array<Record<string, string>>>;
+}
+
+/** What an endpoint route's `*.server.*` module must export. */
+export interface EndpointServerModule {
+    handler: Handler;
 }
 
 // ─── Route Types ──────────────────────────────────────────────────────────
 
-interface PageRouteBase<TLoaderData> {
+interface PageRouteBase {
     path: string;
-    component: () => Promise<{
-        default: ComponentType<PageProps & TLoaderData>;
-    }>;
+    /** Lazy component import — Rspack code-splits one chunk per page. */
+    component: () => Promise<{ default: ComponentType<any> }>;
     /**
-     * Runs on the server before rendering; the returned object is passed
-     * to the component as props. Return a `Response` instead to
-     * short-circuit rendering entirely (404, redirect, ...).
+     * Lazy reference to the route's co-located `*.server.*` module
+     * (loader and/or staticPaths). Stubbed out of the client bundle.
      */
-    loader?: (c: Context) => Promise<TLoaderData | Response>;
+    server?: () => Promise<PageServerModule>;
 }
 
 /**
  * A static page — pre-rendered at build time (SSG).
  */
-export interface StaticRoute<TLoaderData = Record<string, unknown>> extends PageRouteBase<TLoaderData> {
+export interface StaticRoute extends PageRouteBase {
     kind: 'static';
-    /**
-     * Required for paths with params (e.g. "/docs/:slug"): the param
-     * sets to prerender. Each set is interpolated into `path` and the
-     * resulting page rendered to HTML at build time. Requests for paths
-     * not returned here fall back to per-request SSR.
-     *
-     * Runs on the server only — like loaders, its data must come from
-     * `*.server` imports.
-     */
-    staticPaths?: () => Promise<Array<Record<string, string>>>;
 }
 
 /**
  * A dynamic page — server-rendered on each request (SSR).
  */
-export interface DynamicRoute<TLoaderData = Record<string, unknown>> extends PageRouteBase<TLoaderData> {
+export interface DynamicRoute extends PageRouteBase {
     kind: 'dynamic';
 }
 
 /**
- * An API endpoint — pure Hono handler.
+ * An API endpoint. The handler lives in a `*.server.*` module (exported
+ * as `handler`) so no server code ships to the browser. For more than a
+ * couple of endpoints, use a `server.ts` Hono sub-app instead.
  */
 export interface EndpointRoute {
     kind: 'endpoint';
     path: string;
     method?: HTTPMethod;
-    handler: Handler;
+    server: () => Promise<EndpointServerModule>;
 }
 
 export type HTTPMethod = 'get' | 'post' | 'put' | 'patch' | 'delete' | 'head' | 'options' | 'all';
@@ -76,6 +166,27 @@ export function isPageRoute(route: Route): route is PageRoute {
 // ─── defineRoutes ─────────────────────────────────────────────────────────
 
 /**
+ * Compile-time validation of one route entry, derived entirely from the
+ * manifest: (1) the server module's loader must have been declared with
+ * this route's path pattern; (2) the component's props must be satisfied
+ * by `PageProps<path>` + the loader's data. On failure the offending
+ * property's type becomes an error-message string literal.
+ */
+type ValidateRoute<R> = R extends {
+    path: infer P extends string;
+    component: () => Promise<{ default: ComponentType<infer CP> }>;
+    server: () => Promise<infer M>;
+}
+    ? M extends { loader: infer L extends { path: string } }
+        ? L['path'] extends P
+            ? [PageProps<P> & LoaderData<L>] extends [CP]
+                ? R
+                : R & { component: `component props are not satisfied by PageProps & loader data for '${P}'` }
+            : R & { server: `loader was declared with path '${L['path']}' but the route is '${P}'` }
+        : R
+    : R;
+
+/**
  * Define all application routes — the single source of truth.
  *
  * @example
@@ -83,20 +194,16 @@ export function isPageRoute(route: Route): route is PageRoute {
  *   {
  *     kind: 'dynamic',
  *     path: '/profile/:id',
- *     component: () => import('./features/profile/Profile'),
- *     loader: async (c) => {
- *       const user = await db.getUser(c.req.param('id'));
- *       if (!user) return c.notFound();
- *       return { user };
- *     },
+ *     component: () => import('./features/Profile'),
+ *     server: () => import('./features/Profile.server'),
  *   },
  *   {
  *     kind: 'endpoint',
  *     path: '/api/health',
- *     handler: (c) => c.json({ ok: true }),
+ *     server: () => import('./health.server'),
  *   },
  * ]);
  */
-export function defineRoutes<const TRoutes extends Route[]>(userRoutes: TRoutes): TRoutes {
+export function defineRoutes<const TRoutes extends readonly Route[]>(userRoutes: TRoutes & { [K in keyof TRoutes]: ValidateRoute<TRoutes[K]> }): TRoutes {
     return userRoutes;
 }

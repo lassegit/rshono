@@ -1,16 +1,15 @@
+import type { LoaderProps } from 'rs-hono';
+import type { loader } from './Doc.server';
 import { Layout } from './layout';
 
 /**
  * Doc page — static with params (SSG via staticPaths).
  *
- * Every slug returned by staticPaths() in routes.ts is rendered to
+ * Every slug returned by staticPaths() in Doc.server.ts is rendered to
  * HTML at build time; unknown slugs fall back to SSR at request time.
+ * Props are inferred from the loader via the type-only import above.
  */
-export default function Doc(props: Record<string, unknown>) {
-    const { doc } = props as unknown as {
-        doc: { slug: string; title: string; body: string };
-    };
-
+export default function Doc({ doc }: LoaderProps<typeof loader>) {
     return (
         <Layout>
             <div className="docs-page">

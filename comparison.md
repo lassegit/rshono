@@ -14,8 +14,8 @@ A comparison of [`packages/rs-hono`](packages/rs-hono) — an ultra-minimalist S
 | **Routing** | **Explicit manifest** (`routes.ts`, single source of truth) | File conventions (`app/` dir, magic filenames) | File-based + generated route tree (code-based possible) | File-based (`app/routes/`, `_renderer.tsx`, `_middleware.ts`) |
 | **Rendering** | Streaming SSR + Suspense | RSC-first, streaming, Cache Components (`"use cache"`) | Streaming SSR, per-route selective SSR, RSC experimental (Apr 2026) | Per-request SSR (hono/jsx default; React opt-in), streaming via `jsxRenderer` |
 | **SSG** | **Build-time prerender** (`kind: 'static'`; param routes enumerate pages via `staticPaths()`), per-request SSR fallback for anything not prerendered | Mature, default for static pages | Prerender + link crawling, SPA mode | Via `@hono/vite-ssg` plugin (two-pass build) |
-| **Data loading** | Per-route server `loader`, may return a `Response` | RSC async components + Server Actions + fetch cache | Isomorphic loaders + `createServerFn` RPC + first-class TanStack Query | None — write Hono handler code inline |
-| **Loader → props typing** | **Not yet** — components cast props manually | Manual (you type your own boundaries) | **Full end-to-end inference** (headline feature) | n/a (no loader concept) |
+| **Data loading** | Per-route `loader` in a co-located `*.server` module, may return a `Response` | RSC async components + Server Actions + fetch cache | Isomorphic loaders + `createServerFn` RPC + first-class TanStack Query | None — write Hono handler code inline |
+| **Loader → props typing** | **Full inference** — `LoaderProps<typeof loader>`, typed path params from the pattern, compile-time route validation | Manual (you type your own boundaries) | **Full end-to-end inference** (headline feature) | n/a (no loader concept) |
 | **Server/client boundary** | `*.server.*` module replacement — **build-time guarantee**, fails loudly in browser | `"use client"` / `"use server"` directives + `server-only` package | Compiler extracts server functions from shared files | Islands convention (`app/islands/`, `$` prefix); islands can't access Hono context |
 | **Client-side navigation** | None (MPA — full page loads) | Yes | Yes — typed `<Link>`, prefetching | None (MPA) |
 | **Dev feedback loop** | Server restart + **manual browser refresh** | Fast Refresh (incl. Server Fast Refresh in 16.2) | Vite HMR | Vite HMR |
@@ -39,7 +39,7 @@ A comparison of [`packages/rs-hono`](packages/rs-hono) — an ultra-minimalist S
 - **No ecosystem, no community, no battle-testing.** Next.js has ~2M lines solving problems you haven't hit yet: image optimization, i18n, ISR, partial prerendering, font optimization. rs-hono solves none of them, and every one you need becomes your code.
 - **Dev feedback loop is the worst of the four.** Rspack rebuilds fast, but the server does a full `tsx watch` restart and you refresh the browser by hand. Both Vite-based competitors and Next.js keep component state across edits with HMR/Fast Refresh. This is the gap you feel hundreds of times a day.
 - **No client-side navigation.** Every link is a full page load. Fine for content sites and dashboards with few transitions; wrong for app-like UIs. TanStack Start's typed `<Link>` + prefetch + client cache is a different league here. (HonoX shares this MPA limitation.)
-- **Type-safety gap.** TanStack Start infers loader data, path params, and search params end-to-end. rs-hono loaders are typed, but their return types don't reach component props — pages cast `props as unknown as {...}` (see `examples/basic/src/features/profile/Profile.tsx`). For a TypeScript-first audience this is the most visible daily papercut.
+- **Type-safety gap — mostly closed.** Loader data and path params now infer end-to-end (`LoaderProps<typeof loader>`, pattern-typed `c.req.param()`, compile-time route validation). What remains vs TanStack Start is typed *navigation*: search-param schemas and typed `<Link>`s don't exist because there is no client router at all.
 - **No head/meta management.** The HTML shell (with its hardcoded stylesheet link and no `<title>` API) lives inside the framework, so titles and OG tags currently require forking it. (SSG, the other gap formerly listed here, has since shipped — see the table.)
 - **Node-only.** `node:fs`, `node:stream`, `@hono/node-server`, and running TS via tsx bind rs-hono to Node servers. HonoX deploys to Cloudflare Workers first-class; TanStack Start reaches most hosts via Nitro. rs-hono also ships TypeScript source to production and needs `tsx` + Rspack in the production image.
 - **Bus factor of one.** HonoX at least has the Hono org behind it; Next.js and TanStack have full-time teams. rs-hono is maintained by its author.
@@ -54,19 +54,8 @@ Improvements that would close the gaps above, ordered within each theme by value
 
 ### Developer experience
 
-**1. Loader → props type inference (the single highest-value change).**
-The README already plans a per-route `route()` helper. The reason inference fails today is that `component` and `loader` sit in one object literal inside `defineRoutes([...])`, so TypeScript can't tie one property's type to another across the array. A tiny generic factory fixes it with zero runtime cost:
-
-```ts
-export function page<TData>(r: {
-    kind: 'static' | 'dynamic';
-    path: string;
-    loader?: (c: Context) => Promise<TData | Response>;
-    component: () => Promise<{ default: ComponentType<PageProps & Awaited<TData>> }>;
-}) { return r; }
-```
-
-Now `component: () => import('./Profile')` type-errors unless `Profile`'s props match the loader's return type, and page components can declare `PageProps & { user: User }` instead of `Record<string, unknown>` + cast. ~20 lines of types in `router.ts`; removes the ugliest code in every consuming app. This also directly answers TanStack Start's headline feature.
+**1. ~~Loader → props type inference~~ — ✅ shipped, together with hard server-code stripping.**
+Shipped as a different (and stronger) design than the `page()` helper sketched here: loaders moved into co-located `*.server` modules referenced from routes.ts via a lazy `server:` thunk, so loader/handler code is now *physically absent* from the client bundle (the existing module-replacement guarantee), not just inert. `defineLoader(path, fn)` types `c` from the route pattern; components derive props with `LoaderProps<typeof loader>` through an erased type-only import — zero hand-written prop types, no casts; `defineRoutes` validates path↔loader drift and component-props compatibility at compile time. (The sketched same-object inference turns out to be unimplementable: a `NoInfer` on a sibling property fixes the type parameter to its default before TypeScript processes the context-sensitive loader.)
 
 **2. Per-page `<head>` control.**
 The document shell is hardcoded in `server/app.tsx:222-239` — no `<title>`, a hardcoded `/_static/styles.css` link, no meta tags. Any real site needs titles and OG tags, so today every user forks the framework. Cheapest design consistent with "no magic": an optional `head` on page routes plus a loader override:
@@ -130,7 +119,7 @@ The client bundle is served uncompressed, and the entry chunk `main.js` delibera
 | # | Improvement | Impact | Effort |
 |---|---|---|---|
 | 8 | `NODE_ENV=production` in start | High (SSR throughput) | Trivial |
-| 1 | Loader → props inference | High (DX, headline gap) | Small |
+| ~~1~~ | ~~Loader → props inference~~ ✅ shipped (`defineLoader` + `LoaderProps`, `*.server` route modules) | High (DX, headline gap) | Done |
 | 3 | Dev auto-reload (SSE) | High (daily DX) | Small |
 | 2 | Per-page `<head>` | High (unblocks real sites) | Small |
 | ~~9~~ | ~~Static-route caching → SSG~~ ✅ shipped (`server/ssg.ts`) | High (perf, honesty of `static`) | Done |
@@ -140,4 +129,4 @@ The client bundle is served uncompressed, and the entry chunk `main.js` delibera
 | 10 | Parallel loader/import + pre-warm | Low–Medium (latency) | Trivial |
 | 5 | Papercuts (routes.tsx, method arrays) | Low | Trivial |
 
-Notably absent: client-side navigation, RSC, and edge-runtime support. Each would multiply the framework's size and complexity — the moment rs-hono grows a client router and a serialization protocol, its comparison column starts looking like TanStack Start's, without the team to maintain it. The remaining improvements all fit the existing ~1,550-line budget (roughly +150 lines total, some of it offset by items 6–7) while removing the four disadvantages users hit first: prop casting, manual refresh, missing titles, and slow production SSR.
+Notably absent: client-side navigation, RSC, and edge-runtime support. Each would multiply the framework's size and complexity — the moment rs-hono grows a client router and a serialization protocol, its comparison column starts looking like TanStack Start's, without the team to maintain it. The remaining improvements all fit the existing ~1,550-line budget (roughly +150 lines total, some of it offset by items 6–7) while removing the three disadvantages users hit first: manual refresh, missing titles, and slow production SSR (prop casting is gone — see items 1 and 9).

@@ -1,10 +1,8 @@
+import type { LoaderProps } from 'rs-hono';
+import type { loader } from './UserList.server';
 import { Layout } from './layout';
 
-export default function UserList(props: Record<string, unknown>) {
-    const { users } = props as unknown as {
-        users: Array<{ id: string; name: string; email: string; avatar: string }>;
-    };
-
+export default function UserList({ users }: LoaderProps<typeof loader>) {
     return (
         <Layout>
             <div className="users-page">

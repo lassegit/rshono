@@ -10,12 +10,12 @@
  * sources — without it, esbuild falls back to the classic transform
  * and the render crashes with "React is not defined".
  */
-import { Hono, type Context } from 'hono';
+import { Hono, type Context, type Handler } from 'hono';
 import { routePath } from 'hono/route';
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { ComponentType } from 'react';
-import { isPageRoute, type EndpointRoute, type PageRoute, type Route } from '../router.js';
+import { isPageRoute, type EndpointRoute, type PageRoute, type PageServerModule, type Route } from '../router.js';
 import { readPrerendered } from './ssg.js';
 import { renderToStream } from './ssr.js';
 import { createStaticMiddleware } from './static.js';
@@ -170,21 +170,51 @@ export function buildApp(options: BuildAppOptions): Hono {
     return app;
 }
 
+// ─── Server-module resolution ─────────────────────────────────────────────
+
+/** Memoize a route's server-module thunk so the import runs once. */
+function memoize<T>(fn: () => Promise<T>): () => Promise<T> {
+    let promise: Promise<T> | undefined;
+    return () => (promise ??= fn());
+}
+
 // ─── Page App ─────────────────────────────────────────────────────────────
 
 function createPageApp(routes: PageRoute[], isDev: boolean, ssgDir?: string): Hono {
     const app = new Hono();
 
     for (const route of routes) {
+        const loadServerModule =
+            route.server &&
+            memoize(async () => {
+                const mod = await route.server!();
+                // Belt-and-braces for the compile-time ValidateRoute check.
+                if (isDev && mod.loader?.path && mod.loader.path !== route.path) {
+                    console.warn(`  ⚠ Route "${route.path}" resolves a loader declared for "${mod.loader.path}" — params will not match.`);
+                }
+                return mod;
+            });
+
         const render = async (c: Context) => {
+            // Resolve the co-located *.server module (loader/staticPaths).
+            let serverModule: PageServerModule | undefined;
+            if (loadServerModule) {
+                try {
+                    serverModule = await loadServerModule();
+                } catch (err) {
+                    console.error(`[rs-hono] Server-module import error for ${route.path}:`, err);
+                    return c.html(errorPage('500 — Import Error', err, isDev), 500);
+                }
+            }
+
             // Run loader if defined. A loader may return a Response to
             // short-circuit rendering (404, redirect, ...).
             let loaderData: Record<string, unknown> = {};
-            if (route.loader) {
+            if (serverModule?.loader) {
                 try {
-                    const result = await route.loader(c);
+                    const result = await serverModule.loader(c);
                     if (result instanceof Response) return result;
-                    loaderData = result;
+                    loaderData = result as Record<string, unknown>;
                 } catch (err) {
                     console.error(`[rs-hono] Loader error for ${route.path}:`, err);
                     return c.html(errorPage('500 — Loader Error', err, isDev), 500);
@@ -285,11 +315,23 @@ function createEndpointApp(routes: EndpointRoute[]): Hono {
     const app = new Hono();
 
     for (const route of routes) {
+        const loadServerModule = memoize(route.server);
+        // Handlers live in *.server modules; resolve lazily so import
+        // errors surface as request errors, not startup crashes. A throw
+        // here is caught by the app-level onError handler.
+        const handler: Handler = async (c, next) => {
+            const mod = await loadServerModule();
+            if (typeof mod.handler !== 'function') {
+                throw new Error(`Endpoint "${route.path}": its server module does not export a "handler" function.`);
+            }
+            return mod.handler(c, next);
+        };
+
         const method = route.method ?? 'all';
         if (method === 'all') {
-            app.all(route.path, route.handler);
+            app.all(route.path, handler);
         } else {
-            app.on(method.toUpperCase(), route.path, route.handler);
+            app.on(method.toUpperCase(), route.path, handler);
         }
     }
 

@@ -5,11 +5,18 @@ import { defineRoutes } from "rs-hono";
  *
  * - kind: 'static'    → Pre-rendered at build time (SSG).
  * - kind: 'dynamic'   → Server-rendered on each request (SSR).
- * - kind: 'endpoint'  → Quick API handler (inline). For complex APIs,
- *                        create src/server.ts with a Hono app instead.
+ * - kind: 'endpoint'  → Quick API handler. For complex APIs, create
+ *                        src/server.ts with a Hono app instead.
  *
- * Each page route can have an optional `loader` that runs on the server
- * before rendering. Data returned from the loader is passed as props.
+ * This file is shared with the browser (it drives hydration and code
+ * splitting), so it contains NO server code — only route data:
+ *
+ * - `component:` → the page module (shipped to the browser)
+ * - `server:`    → the route's *.server.ts module: a `loader` that runs
+ *   before rendering (its data becomes the component's props, inferred
+ *   via `LoaderProps<typeof loader>`), an optional `staticPaths`, or an
+ *   endpoint `handler`. *.server modules are stripped from the client
+ *   bundle, so server code and secrets never ship.
  */
 export const routes = defineRoutes([
   {
@@ -25,11 +32,6 @@ export const routes = defineRoutes([
   {
     kind: "endpoint",
     path: "/api/hello",
-    handler: (c) => {
-      return c.json({
-        message: "Hello from rs-hono!",
-        timestamp: Date.now(),
-      });
-    },
+    server: () => import("./hello.server"),
   },
 ]);

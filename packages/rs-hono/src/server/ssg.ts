@@ -5,7 +5,8 @@
  * real request against the assembled app (`app.fetch`) — so loaders,
  * the hydration payload, and streaming SSR are reused unchanged — and
  * the resulting HTML is written to <outDir>/ssg/. Routes with params
- * (`/docs/:slug`) declare the pages to render via `staticPaths()`.
+ * (`/docs/:slug`) declare the pages to render via a `staticPaths()`
+ * export in their `*.server` module.
  *
  * In production the page app calls `readPrerendered()` per request and
  * serves the file when it exists; anything not prerendered (params
@@ -111,12 +112,15 @@ export async function prerenderStaticRoutes(options: PrerenderOptions): Promise<
         let paths: string[];
         if (!/[:*]/.test(route.path)) {
             paths = [route.path];
-        } else if (route.staticPaths) {
-            paths = (await route.staticPaths()).map((params) => interpolatePath(route.path, params));
         } else {
-            console.warn(`  ⚠ Static route "${route.path}" has params but no staticPaths() — will SSR per request.`);
-            skipped.push(route.path);
-            continue;
+            // staticPaths lives in the route's *.server module.
+            const staticPaths = route.server ? (await route.server()).staticPaths : undefined;
+            if (!staticPaths) {
+                console.warn(`  ⚠ Static route "${route.path}" has params but no staticPaths() in its server module — will SSR per request.`);
+                skipped.push(route.path);
+                continue;
+            }
+            paths = (await staticPaths()).map((params) => interpolatePath(route.path, params));
         }
 
         for (const path of paths) {

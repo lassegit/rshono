@@ -1,19 +1,16 @@
-import type { PageProps } from 'rs-hono';
+import type { LoaderProps } from 'rs-hono';
+import type { loader } from './Profile.server';
 import { Layout } from './layout';
 
 /**
  * Profile page — dynamic (SSR).
- * Props include PageProps PLUS whatever the loader returns.
  *
- * The loader (in routes.ts) returns { user, posts }.
- * We accept any extra props and narrow at usage time.
+ * Props are INFERRED from the loader in Profile.server.ts — no manual
+ * prop types, no casts. The import above is type-only, so it is erased
+ * at compile time and the client bundle never references the server
+ * module. `params.id` is typed from the '/profile/:id' pattern.
  */
-export default function Profile(props: Record<string, unknown>) {
-    const { user, posts, params } = props as unknown as PageProps & {
-        user: { id: string; name: string; email: string; avatar: string };
-        posts: Array<{ id: string; title: string; excerpt: string }>;
-    };
-
+export default function Profile({ user, posts, params }: LoaderProps<typeof loader>) {
     return (
         <Layout>
             <div className="profile-page">

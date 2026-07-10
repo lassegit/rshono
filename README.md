@@ -31,7 +31,7 @@ pnpm dev          # → rs-hono dev on http://localhost:3000
 | ------------------------- | ------------------------------------------------------------------------------------------------------- |
 | `packages/rs-hono`        | The framework: CLI (`dev`/`build`/`start`), SSR + hydration runtime, Rspack integration, `*.server` boundary |
 | `packages/create-rs-hono` | The scaffolder behind `pnpm create rs-hono` — copies the starter template into a new project             |
-| `examples/basic`          | Test app exercising every feature: static/dynamic pages, loaders, inline endpoints, a `server.ts` sub-app, and `db.server.ts` |
+| `examples/basic`          | Test app exercising every feature: static/dynamic pages, loaders in `*.server` modules, endpoints, a `server.ts` sub-app      |
 
 Try the example app:
 
@@ -47,9 +47,10 @@ my-app/
 ├── src/
 │   ├── features/         # Page components (any structure)
 │   │   ├── home/Home.tsx
-│   │   └── profile/Profile.tsx
+│   │   ├── profile/Profile.tsx
+│   │   └── profile/Profile.server.ts  # The page's loader — server-only
 │   ├── db.server.ts      # Server-only code (DB, secrets) — *.server.* naming
-│   ├── routes.ts         # Single source of truth — all page routes
+│   ├── routes.ts         # Single source of truth — all routes, pure data
 │   └── server.ts         # API endpoints (Hono sub-app, optional)
 ├── public/               # Static assets (CSS, images, fonts)
 ├── rs-hono.config.ts     # Framework config
@@ -69,10 +70,12 @@ Any module named `*.server.ts` (or `.server.js` / `.server.tsx` / a
 `db.server` import specifier) is replaced with a throwing stub in the
 client bundle. This is a **build-time guarantee** enforced by module
 replacement — not best-effort tree shaking. Your database client, secrets,
-and `process.env` reads live in `*.server.ts` files; loaders in `routes.ts`
-may call them inline, because loader bodies only ever *execute* on the
-server. (Their source text is technically visible in the bundle — like any
-public code — so don't write literal secrets inside `routes.ts` itself.)
+`process.env` reads — and all route server code (loaders, `staticPaths`,
+endpoint handlers) — live in `*.server.ts` files. `routes.ts` itself is
+pure data: it references each route's server module through a lazy
+`server: () => import('./Profile.server')` thunk, which resolves to the
+stub in the browser. Server code is physically absent from the bundle,
+not just unexecuted.
 
 If client code accidentally calls something from a `*.server` module, it
 fails loudly in the browser console:
@@ -87,21 +90,21 @@ fails loudly in the browser console:
 | ------------ | ---------------------------------------- | -------------------------------- |
 | `"static"`   | Pre-rendered HTML at build time (SSG)¹   | Landing pages, docs, changelogs  |
 | `"dynamic"`  | Server-rendered on each request (SSR)    | Dashboards, profiles, auth pages |
-| `"endpoint"` | Quick inline API handler                 | One-off JSON endpoints, webhooks |
+| `"endpoint"` | API handler from a `*.server` module     | One-off JSON endpoints, webhooks |
 
 ¹ `rs-hono build` renders each `static` route once and writes the HTML to
-`<outDir>/ssg/`; the production server serves those files from memory.
-Static routes with path params (`/docs/:slug`) can't be enumerated at build
-time and fall back to per-request SSR (the build warns about them). In dev,
-static routes are always rendered live so edits show up immediately.
+`<outDir>/ssg/`. Static routes with path params (`/docs/:slug`) declare the
+pages to prerender via a `staticPaths()` export in their server module;
+params not returned there fall back to per-request SSR. In dev, static
+routes are always rendered live so edits show up immediately.
 
 ## How It Works
 
-**routes.ts** — The single source of truth. Every page route is declared here:
+**routes.ts** — The single source of truth. Every route is declared here,
+as pure data:
 
 ```ts
 import { defineRoutes } from 'rs-hono';
-import { db } from './db.server'; // server-only: stripped from the client bundle
 
 export const routes = defineRoutes([
     // Static page
@@ -115,20 +118,44 @@ export const routes = defineRoutes([
         kind: 'dynamic',
         path: '/profile/:id',
         component: () => import('./features/profile/Profile'),
-        loader: async (c) => {
-            const user = await db.getUser(c.req.param('id')!);
-            // Loaders may return a Response to short-circuit rendering:
-            if (!user) return c.text('Not found', 404); // or c.redirect(...)
-            return { user }; // Profile receives: { params, url, user }
-        },
+        server: () => import('./features/profile/Profile.server'),
     },
-    // Quick inline endpoint
+    // Quick endpoint — handler lives in a *.server module too
     {
         kind: 'endpoint',
         path: '/api/health',
-        handler: (c) => c.json({ ok: true }),
+        server: () => import('./health.server'),
     },
 ]);
+```
+
+**Profile.server.ts** — The route's server code. `defineLoader` takes the
+route pattern, which types `c` (`c.req.param('id')` is a plain `string`)
+and is checked against the route's `path` at compile time:
+
+```ts
+import { defineLoader } from 'rs-hono';
+import { db } from './db.server';
+
+export const loader = defineLoader('/profile/:id', async (c) => {
+    const user = await db.getUser(c.req.param('id'));
+    // Loaders may return a Response to short-circuit rendering:
+    if (!user) return c.text('Not found', 404); // or c.redirect(...)
+    return { user }; // Profile receives: { params, url, user }
+});
+```
+
+**Profile.tsx** — The page component. Props are inferred from the loader
+(the type-only import is erased at compile time — the client bundle never
+references the server module):
+
+```tsx
+import type { LoaderProps } from 'rs-hono';
+import type { loader } from './Profile.server';
+
+export default function Profile({ user, params }: LoaderProps<typeof loader>) {
+    return <h1>{user.name} (id: {params.id})</h1>;
+}
 ```
 
 **Hydration flow** — no magic, four steps:
@@ -243,11 +270,13 @@ export default defineConfig({
 Honest notes on what is and isn't there yet:
 
 - ✅ SSR streaming, hydration, per-page code splitting, `*.server` stripping
-- ✅ SSG pre-rendering at build time (param-free `static` routes; paths with
-  params fall back to SSR — a `getStaticPaths`-style API is not there yet)
+- ✅ SSG pre-rendering at build time (param routes enumerate their pages via
+  a `staticPaths()` export in the route's server module)
+- ✅ Loader→props type inference (`LoaderProps<typeof loader>`), typed path
+  params from the route pattern, and compile-time route validation
+- ✅ Server code is physically absent from the client bundle (loaders,
+  staticPaths and endpoint handlers live in `*.server` modules)
 - ⏳ HMR (currently: server restart + manual browser refresh)
-- ⏳ Loader→props type inference (loaders are typed, but their return types
-  don't flow into component props yet — a per-route `route()` helper is planned)
 
 ## Comparison
 

@@ -7,19 +7,27 @@
  * live in "rs-hono/server".
  *
  * Usage:
- *   import { defineRoutes } from "rs-hono"
- *   import type { StaticRoute, DynamicRoute, EndpointRoute, PageProps } from "rs-hono"
+ *   import { defineRoutes } from "rs-hono"            // routes.ts
+ *   import { defineLoader } from "rs-hono"            // *.server.ts modules
+ *   import type { LoaderProps, PageProps } from "rs-hono"  // page components
  *   import { defineConfig } from "rs-hono/config"
  */
 
 export {
+    defineLoader,
     defineRoutes,
     isPageRoute,
     type DynamicRoute,
     type EndpointRoute,
+    type EndpointServerModule,
     type HTTPMethod,
+    type Loader,
+    type LoaderData,
+    type LoaderProps,
     type PageProps,
     type PageRoute,
+    type PageServerModule,
+    type PathParams,
     type Route,
     type StaticRoute,
 } from './router.js';
