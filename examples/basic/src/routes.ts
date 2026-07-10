@@ -24,13 +24,13 @@ export const routes = defineRoutes([
     {
         kind: 'static',
         path: '/',
-        component: () => import('./features/home/Home'),
+        component: () => import('./features/Home'),
     },
 
     {
         kind: 'static',
         path: '/signup',
-        component: () => import('./features/signup/Signup'),
+        component: () => import('./features/Signup'),
     },
 
     // Static + params: staticPaths() lists the pages to pre-render at
@@ -38,7 +38,7 @@ export const routes = defineRoutes([
     {
         kind: 'static',
         path: '/docs/:slug',
-        component: () => import('./features/docs/Doc'),
+        component: () => import('./features/Doc'),
         staticPaths: async () => (await fakeDB.listDocs()).map(({ slug }) => ({ slug })),
         loader: async (c) => {
             const doc = await fakeDB.getDoc(c.req.param('slug')!);
@@ -54,7 +54,7 @@ export const routes = defineRoutes([
     {
         kind: 'dynamic',
         path: '/profile/:id',
-        component: () => import('./features/profile/Profile'),
+        component: () => import('./features/Profile'),
         loader: async (c) => {
             const id = c.req.param('id')!;
             const user = await fakeDB.getUser(id);
@@ -69,7 +69,7 @@ export const routes = defineRoutes([
     {
         kind: 'dynamic',
         path: '/users',
-        component: () => import('./features/users/UserList'),
+        component: () => import('./features/UserList'),
         loader: async () => {
             const users = await fakeDB.listUsers();
             return { users };

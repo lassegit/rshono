@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import type { PageProps } from 'rs-hono';
-import { Layout } from '../layout';
+import { Layout } from './layout';
 
 /**
  * Home page — static (SSG).
