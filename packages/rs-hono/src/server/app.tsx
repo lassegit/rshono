@@ -17,6 +17,7 @@ import { join } from 'node:path';
 import type { ComponentType } from 'react';
 import { getAssets } from '../assets.js';
 import { isPageRoute, type EndpointRoute, type PageRoute, type PageServerModule, type Route } from '../router.js';
+import { reloadEndpoint, reloadScript } from './dev-reload.js';
 import { readPrerendered } from './ssg.js';
 import { renderToStream } from './ssr.js';
 import { createStaticMiddleware } from './static.js';
@@ -60,10 +61,11 @@ function errorPage(title: string, err: unknown, isDev: boolean): string {
     const detail = isDev
         ? `<pre>${escapeHtml(err instanceof Error ? (err.stack ?? err.message) : String(err))}</pre>`
         : '<p>Something went wrong. Check the server logs for details.</p>';
+    // In dev, error pages also live-reload — fixing the file heals the page.
     return `<!DOCTYPE html>
 <html><head><title>${escapeHtml(title)}</title></head>
 <body style="font-family:system-ui;max-width:600px;margin:4rem auto;padding:0 1rem;">
-<h1>${escapeHtml(title)}</h1>${detail}</body></html>`;
+<h1>${escapeHtml(title)}</h1>${detail}${isDev ? `<script>${reloadScript()}</script>` : ''}</body></html>`;
 }
 
 // ─── Build App ────────────────────────────────────────────────────────────
@@ -123,6 +125,10 @@ export function buildApp(options: BuildAppOptions): Hono {
 
     internalApp.get('/_rs-hono/health', (c) => c.json({ status: 'ok' }));
 
+    if (isDev) {
+        internalApp.get('/_rs-hono/reload', reloadEndpoint);
+    }
+
     // ── Assemble (first match wins) ─────────────────────────────────────
 
     const app = new Hono();
@@ -158,7 +164,7 @@ export function buildApp(options: BuildAppOptions): Hono {
 <body style="font-family:system-ui;max-width:600px;margin:4rem auto;padding:0 1rem;">
 <h1>404 — Page Not Found</h1>
 <p>The page <code>${escapeHtml(c.req.path)}</code> does not exist.</p>
-<p><a href="/">← Back home</a></p></body></html>`,
+<p><a href="/">← Back home</a></p>${isDev ? `<script>${reloadScript()}</script>` : ''}</body></html>`,
             404,
         );
     });
@@ -257,6 +263,7 @@ function createPageApp(routes: PageRoute[], isDev: boolean, ssgDir?: string): Ho
                 console.error(`[rs-hono] Loader data for ${route.path} is not JSON-serializable:`, err);
                 return c.html(errorPage('500 — Serialization Error', err, isDev), 500);
             }
+            if (isDev) bootstrapScript += reloadScript();
 
             // The page owns the full document: its tree (usually via a
             // layout component) renders <html>/<head>/<body>. React emits

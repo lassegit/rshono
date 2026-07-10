@@ -12,7 +12,10 @@ export default function Home(props: PageProps) {
     }, []);
 
     return (
-        <Layout title="rs-hono — Ultra-minimalist SSR framework" description="Hono + Rspack + React. SSR, SSG and API routes with under 10 dependencies.">
+        <Layout
+            title="RS-hono — Ultra-minimalist SSR framework"
+            description="Hono + Rspack + React. SSR, SSG and API routes with under 10 dependencies."
+        >
             <div className="hero">
                 <h1>
                     <span className="emoji">⚡</span> rs-hono
