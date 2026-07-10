@@ -7,10 +7,12 @@ import { Layout } from './layout';
  * Composes the Layout directly — no magic file, no auto-discovery.
  */
 export default function Home(props: PageProps) {
-    useEffect(() => {}, []);
+    useEffect(() => {
+        console.log('Hello, World from useEffect!');
+    }, []);
 
     return (
-        <Layout>
+        <Layout title="rs-hono — Ultra-minimalist SSR framework" description="Hono + Rspack + React. SSR, SSG and API routes with under 10 dependencies.">
             <div className="hero">
                 <h1>
                     <span className="emoji">⚡</span> rs-hono

@@ -160,15 +160,20 @@ export default function Profile({ user, params }: LoaderProps<typeof loader>) {
 
 **Hydration flow** — no magic, four steps:
 
-1. The server matches a route, runs its loader, and streams the page into
-   `<div id="root">`.
+1. The server matches a route, runs its loader, and streams the page. The
+   page's own tree renders the full document — `<html>`, `<head>`,
+   `<body>`, usually via a layout component — and React adds
+   `<!DOCTYPE html>` automatically.
 2. It injects `window.__RSH = { route: "/profile/:id", props }` (the
    payload is escaped so loader data can never break out of the script
-   tag) plus a `<script>` tag for the client bundle.
+   tag) plus a `<script>` tag for the client bundle — both appended to
+   `<body>` by React's streaming renderer.
 3. The client entry imports **your** `routes.ts`, finds the route by exact
    pattern match — no client-side router needed — and `import()`s the page
    component, which Rspack served as a per-page chunk.
-4. `hydrateRoot(#root, <Component {...props} />)`. Done.
+4. `hydrateRoot(document, <Component {...props} />)`. Done. (React 19
+   hydrates the whole document and skips nodes injected by browser
+   extensions.)
 
 **server.ts** — API endpoints as a normal Hono app (optional). This file
 only runs on the server, so it can import `*.server` modules freely:
@@ -194,16 +199,32 @@ export default server;
 The framework auto-discovers `server.ts` and mounts it. Inline `endpoint`
 routes in `routes.ts` are also supported — use whichever fits your complexity.
 
-**Page components** — Regular React components. Use a `Layout` component directly:
+**Page components** — Regular React components. The page owns the whole
+document via a `Layout` component it imports directly — `<html>`, `<head>`
+and `<body>` are plain JSX, so per-page titles, meta tags, stylesheets or
+inline scripts are ordinary props and elements, no head-manager API:
 
 ```tsx
-import type { PageProps } from 'rs-hono';
-import { Layout } from './layout';
-
-export default function Profile(props: Record<string, unknown>) {
-    const { user, params } = props as any; // narrow types as needed
+// layout.tsx — just a component; have as many layouts as you like
+export function Layout({ title, children }: { title: string; children: ReactNode }) {
     return (
-        <Layout>
+        <html lang="en">
+            <head>
+                <meta charSet="utf-8" />
+                <title>{title}</title>
+                <link rel="stylesheet" href="/_static/styles.css" />
+            </head>
+            <body>{children}</body>
+        </html>
+    );
+}
+
+// Profile.tsx
+export default function Profile({ user, params }: LoaderProps<typeof loader>) {
+    return (
+        <Layout title={`${user.name} — my app`}>
+            {/* React 19 hoists meta/link tags rendered anywhere into <head> */}
+            <meta property="og:title" content={user.name} />
             <h1>{user.name}</h1>
             <p>ID: {params.id}</p>
         </Layout>
@@ -211,7 +232,10 @@ export default function Profile(props: Record<string, unknown>) {
 }
 ```
 
-No magic `app/layout.tsx` file — pages compose layouts directly via React composition.
+No magic `app/layout.tsx` file — pages compose layouts directly via React
+composition. The framework appends its hydration scripts to `<body>`
+automatically, and warns at request time if a page forgets to render
+`<html>`.
 
 ## Commands
 

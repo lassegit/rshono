@@ -195,6 +195,10 @@ function createPageApp(routes: PageRoute[], isDev: boolean, ssgDir?: string): Ho
                 return mod;
             });
 
+        // Warn once per route (not per request) when a page forgets to
+        // render a full document.
+        let warnedMissingDocument = false;
+
         const render = async (c: Context) => {
             // Resolve the co-located *.server module (loader/staticPaths).
             let serverModule: PageServerModule | undefined;
@@ -250,26 +254,11 @@ function createPageApp(routes: PageRoute[], isDev: boolean, ssgDir?: string): Ho
                 return c.html(errorPage('500 — Serialization Error', err, isDev), 500);
             }
 
-            // Minimal document shell. The component renders into #root, which
-            // is also what the client entry hydrates.
-            const element = (
-                <html lang="en">
-                    <head>
-                        <meta charSet="utf-8" />
-                        <meta name="viewport" content="width=device-width, initial-scale=1" />
-                        <link
-                            rel="icon"
-                            href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>"
-                        />
-                        <link rel="stylesheet" href="/_static/styles.css" />
-                    </head>
-                    <body>
-                        <div id="root">
-                            <Component {...(props as any)} />
-                        </div>
-                    </body>
-                </html>
-            );
+            // The page owns the full document: its tree (usually via a
+            // layout component) renders <html>/<head>/<body>. React emits
+            // <!DOCTYPE html> automatically when it renders <html> and
+            // appends the bootstrap script + client entry to <body>.
+            const element = <Component {...(props as any)} />;
 
             try {
                 const stream = await renderToStream({
@@ -278,6 +267,14 @@ function createPageApp(routes: PageRoute[], isDev: boolean, ssgDir?: string): Ho
                     clientEntry: '/_static/chunks/main.js',
                     onError(err) {
                         console.error(`[rs-hono] SSR stream error for ${route.path}:`, err);
+                    },
+                    onMissingDocument() {
+                        if (warnedMissingDocument) return;
+                        warnedMissingDocument = true;
+                        console.warn(
+                            `  ⚠ Page "${route.path}" did not render <html> — the response is not a complete document. ` +
+                                'Wrap the page in a layout that renders <html>/<head>/<body>.',
+                        );
                     },
                 });
 

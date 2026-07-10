@@ -3,7 +3,7 @@ import { Layout } from './layout';
 
 export default function Signup(props: PageProps) {
     return (
-        <Layout>
+        <Layout title="Sign Up — rs-hono">
             <div className="signup-page">
                 <h1>Sign Up</h1>
                 <p>Create your account. Form submission goes to an API endpoint.</p>

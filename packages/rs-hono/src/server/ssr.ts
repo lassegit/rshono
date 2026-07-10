@@ -14,6 +14,7 @@ import type { ReactNode } from 'react';
 import { renderToPipeableStream } from 'react-dom/server';
 
 const encoder = new TextEncoder();
+const decoder = new TextDecoder();
 
 interface StreamRenderOptions {
     /** The React element to render */
@@ -27,12 +28,18 @@ interface StreamRenderOptions {
     clientEntry?: string;
     /** Called for non-fatal errors inside Suspense boundaries. */
     onError?: (error: unknown) => void;
+    /**
+     * Called once if the output does not start with "<!DOCTYPE" — i.e.
+     * the element tree never rendered <html>, so the response is a
+     * fragment rather than a complete document.
+     */
+    onMissingDocument?: () => void;
     /** Abort a render that is still pending after this many ms. */
     timeoutMs?: number;
 }
 
 export function renderToStream(options: StreamRenderOptions): Promise<ReadableStream<Uint8Array>> {
-    const { element, bootstrapScript, clientEntry, onError, timeoutMs = 10_000 } = options;
+    const { element, bootstrapScript, clientEntry, onError, onMissingDocument, timeoutMs = 10_000 } = options;
 
     return new Promise((resolve, reject) => {
         let timer: NodeJS.Timeout | undefined;
@@ -42,12 +49,22 @@ export function renderToStream(options: StreamRenderOptions): Promise<ReadableSt
             bootstrapModules: clientEntry ? [clientEntry] : undefined,
 
             onShellReady() {
+                let firstChunk = true;
                 const stream = new ReadableStream<Uint8Array>({
                     start(controller) {
                         const sink = new Writable({
                             write(chunk, _encoding, callback) {
                                 try {
-                                    controller.enqueue(chunk instanceof Uint8Array ? chunk : encoder.encode(String(chunk)));
+                                    const bytes = chunk instanceof Uint8Array ? chunk : encoder.encode(String(chunk));
+                                    if (firstChunk) {
+                                        firstChunk = false;
+                                        // React emits <!DOCTYPE html> as the first bytes
+                                        // whenever the tree renders <html>.
+                                        if (onMissingDocument && !/^<!doctype/i.test(decoder.decode(bytes.subarray(0, 15)))) {
+                                            onMissingDocument();
+                                        }
+                                    }
+                                    controller.enqueue(bytes);
                                     callback();
                                 } catch (err) {
                                     callback(err instanceof Error ? err : new Error(String(err)));

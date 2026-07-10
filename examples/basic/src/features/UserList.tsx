@@ -4,7 +4,7 @@ import { Layout } from './layout';
 
 export default function UserList({ users }: LoaderProps<typeof loader>) {
     return (
-        <Layout>
+        <Layout title="Users — rs-hono">
             <div className="users-page">
                 <h1>All Users</h1>
                 <p className="subtitle">

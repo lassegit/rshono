@@ -11,7 +11,7 @@ import { Layout } from './layout';
  */
 export default function Doc({ doc }: LoaderProps<typeof loader>) {
     return (
-        <Layout>
+        <Layout title={`${doc.title} — rs-hono docs`} description={doc.body}>
             <div className="docs-page">
                 <h1>{doc.title}</h1>
                 <p>{doc.body}</p>

@@ -12,8 +12,10 @@ import { Layout } from './layout';
  */
 export default function Profile({ user, posts, params }: LoaderProps<typeof loader>) {
     return (
-        <Layout>
+        <Layout title={`${user.name} — rs-hono`} description={`Profile and recent posts of ${user.name}.`}>
             <div className="profile-page">
+                {/* Rendered mid-tree, but React 19 hoists it into <head>. */}
+                <meta property="og:title" content={user.name} />
                 <div className="profile-header">
                     <div className="avatar">{user.avatar}</div>
                     <div>
