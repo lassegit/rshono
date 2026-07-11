@@ -6,21 +6,25 @@
  * 2. Compile the client bundle via Rspack (hydration + page chunks)
  * 3. Copy public/ assets into <outDir>/client
  * 4. Pre-render `kind: "static"` routes to <outDir>/ssg (SSG)
+ * 5. With --target: compile a server bundle (<outDir>/server) — and for
+ *    edge, assemble <outDir>/site for the platform CDN
  */
-import { rspack, type Stats } from '@rspack/core';
-import { cpSync, existsSync, rmSync } from 'node:fs';
+import { rspack, type RspackOptions, type Stats } from '@rspack/core';
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setAssets } from '../assets.js';
 import { assetManifestFromStats, writeAssetManifest } from '../builder/assets-manifest.js';
 import { precompressDir } from '../builder/precompress.js';
 import { createClientRspackConfig } from '../builder/rspack-config.js';
-import { resolveConfig } from '../config.js';
+import { createServerRspackConfig, type ServerBundleTarget } from '../builder/rspack-server-config.js';
+import { generateServerEntry } from '../builder/server-entry.js';
+import { resolveConfig } from './resolve-config.js';
 import type { Route } from '../router.js';
 import { createAppHandler } from '../server/handler.js';
 import { loadRoutes } from '../server/load.js';
 import { prerenderStaticRoutes } from '../server/ssg.js';
 
-export async function buildCommand() {
+export async function buildCommand(target?: ServerBundleTarget) {
     const config = await resolveConfig();
     const rootDir = process.cwd();
     const outDir = config.outDir ?? 'dist';
@@ -51,18 +55,7 @@ export async function buildCommand() {
     console.log(`  • ${counts.static} static, ${counts.dynamic} dynamic, ${counts.endpoint} endpoints`);
 
     // ── Client bundle ─────────────────────────────────────────────────
-    const compiler = rspack(await createClientRspackConfig({ rootDir, outDir, isDev: false, rspackHook: config.rspack }));
-    const stats = await new Promise<Stats | undefined>((resolve, reject) => {
-        compiler.run((err, result) => {
-            compiler.close(() => (err ? reject(err) : resolve(result)));
-        });
-    });
-
-    if (stats?.hasErrors()) {
-        console.error(stats.toString({ preset: 'errors-warnings', colors: true }));
-        console.error('  ✗ Client build failed.');
-        process.exit(1);
-    }
+    const stats = await runCompiler(await createClientRspackConfig({ rootDir, outDir, isDev: false, rspackHook: config.rspack }), 'Client');
     console.log('  ✓ Client bundle compiled');
 
     // Record the emitted CSS: assets.json for `start`, and the live
@@ -82,10 +75,14 @@ export async function buildCommand() {
 
     // ── Precompression ────────────────────────────────────────────────
     // After the public/ copy so user assets get .br/.gz siblings too;
-    // `rs-hono start` serves them via serveStatic's precompressed mode.
-    const compressed = precompressDir(join(rootDir, outDir, 'client'));
-    if (compressed > 0) {
-        console.log(`  ✓ ${compressed} asset(s) precompressed (.br/.gz)`);
+    // `rs-hono start` (and the node server bundle) serve them via
+    // serveStatic's precompressed mode. Skipped for edge: the platform
+    // CDN compresses on its own, and the siblings would pollute site/.
+    if (target !== 'edge') {
+        const compressed = precompressDir(join(rootDir, outDir, 'client'));
+        if (compressed > 0) {
+            console.log(`  ✓ ${compressed} asset(s) precompressed (.br/.gz)`);
+        }
     }
 
     // ── SSG pre-rendering ─────────────────────────────────────────────
@@ -113,10 +110,69 @@ export async function buildCommand() {
         }
     }
 
+    // ── Server bundle (--target node|edge) ────────────────────────────
+    if (target) {
+        // Generated AFTER the client compile so the asset manifest
+        // (hashed entry/CSS names) can be baked in as a literal.
+        const entryFile = join(rootDir, outDir, `.server-entry.${target}.mjs`);
+        writeFileSync(entryFile, generateServerEntry({ rootDir, outDir, publicDir: config.publicDir ?? 'public', target }));
+        try {
+            await runCompiler(
+                await createServerRspackConfig({ rootDir, outDir, target, entryFile, assets: assetManifest, rspackHook: config.rspack }),
+                'Server',
+            );
+        } finally {
+            rmSync(entryFile, { force: true });
+        }
+        const bundleFile = target === 'edge' ? 'app.mjs' : 'index.mjs';
+        console.log(`  ✓ Server bundle compiled → ${outDir}/server/${bundleFile}`);
+
+        if (target === 'edge') {
+            // What the platform CDN serves: the client bundle + public/
+            // under _static/, and prerendered pages at their pretty
+            // paths — the function only ever sees cache misses.
+            const siteDir = join(rootDir, outDir, 'site');
+            rmSync(siteDir, { recursive: true, force: true });
+            mkdirSync(join(siteDir, '_static'), { recursive: true });
+            cpSync(join(rootDir, outDir, 'client'), join(siteDir, '_static'), { recursive: true });
+            const ssgDir = join(rootDir, outDir, 'ssg');
+            if (existsSync(ssgDir)) {
+                cpSync(ssgDir, siteDir, { recursive: true });
+            }
+            console.log(`  ✓ Static site assembled → ${outDir}/site`);
+        }
+    }
+
     console.log('');
-    console.log('✅ Build complete. Run `rs-hono start` to serve.');
+    if (target === 'edge') {
+        console.log('✅ Build complete.');
+        console.log(`   Deploy ${outDir}/server/app.mjs as the handler and ${outDir}/site as the static dir.`);
+        console.log(`   Workers/Bun: the module default-exports the app. Deno: Deno.serve(app.fetch).`);
+    } else if (target === 'node') {
+        console.log('✅ Build complete.');
+        console.log(`   Run \`node ${outDir}/server/index.mjs\` from this directory — no tsx, no rs-hono install needed.`);
+        console.log(`   (Ship ${outDir}/ plus node_modules for your own runtime dependencies.)`);
+    } else {
+        console.log('✅ Build complete. Run `rs-hono start` to serve.');
+    }
     console.log('');
     // The prerender step imports user code (routes, server.ts, onStart)
     // that may hold the event loop open (DB pools, timers) — exit explicitly.
     process.exit(0);
+}
+
+/** Run a compiler to completion; exits the process on compile errors. */
+async function runCompiler(config: RspackOptions, label: string): Promise<Stats | undefined> {
+    const compiler = rspack(config);
+    const stats = await new Promise<Stats | undefined>((resolve, reject) => {
+        compiler.run((err, result) => {
+            compiler.close(() => (err ? reject(err) : resolve(result)));
+        });
+    });
+    if (stats?.hasErrors()) {
+        console.error(stats.toString({ preset: 'errors-warnings', colors: true }));
+        console.error(`  ✗ ${label} build failed.`);
+        process.exit(1);
+    }
+    return stats;
 }

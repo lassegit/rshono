@@ -1,8 +1,13 @@
+/**
+ * Config types + defineConfig.
+ *
+ * This module is imported by the user's rs-hono.config.ts, which is
+ * BUNDLED into `--target edge` server bundles — so it must stay free of
+ * Node APIs (all @rspack/core / hono imports below are type-only and
+ * erased). Loading the config from disk lives in cli/resolve-config.ts.
+ */
 import type { rspack, RspackOptions } from '@rspack/core';
 import type { MiddlewareHandler } from 'hono';
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 /**
  * The generated client-bundle config as handed to the `rspack` hook:
@@ -21,6 +26,13 @@ export type ClientRspackOptions = RspackOptions & {
 export interface RspackHookEnv {
     /** true under `rs-hono dev`, false under `rs-hono build`. */
     dev: boolean;
+    /**
+     * Which bundle this config builds: 'client' (the browser bundle —
+     * every dev/build) or 'server' (the `build --target` server bundle).
+     * Hooks written before server bundles existed ran only for 'client';
+     * branch on this when a customization is client-only.
+     */
+    environment: 'client' | 'server';
     /** Absolute project root (the directory containing rs-hono.config.ts). */
     rootDir: string;
     /**
@@ -70,38 +82,4 @@ export interface RsHonoConfig {
 
 export function defineConfig(config: RsHonoConfig): RsHonoConfig {
     return config;
-}
-
-const DEFAULT_CONFIG = {
-    outDir: 'dist',
-    publicDir: 'public',
-    dev: {
-        port: 3000,
-    },
-} satisfies RsHonoConfig;
-
-export async function resolveConfig(): Promise<RsHonoConfig> {
-    const rootDir = process.cwd();
-
-    const configPath = join(rootDir, 'rs-hono.config.ts');
-    let userConfig: RsHonoConfig = {};
-
-    if (existsSync(configPath)) {
-        try {
-            const mod = await import(pathToFileURL(configPath).href);
-            userConfig = mod.default ?? mod;
-        } catch (err) {
-            // Fail fast: silently falling back to defaults would ignore the
-            // user's settings (port, outDir, hooks) without them noticing.
-            console.error('  ✗ Failed to load rs-hono.config.ts:');
-            console.error(err);
-            process.exit(1);
-        }
-    }
-
-    return {
-        ...DEFAULT_CONFIG,
-        ...userConfig,
-        dev: { ...DEFAULT_CONFIG.dev, ...userConfig.dev },
-    };
 }

@@ -7,5 +7,6 @@
  */
 
 export { buildApp, type BuildAppOptions } from './app.js';
-export { createAppHandler } from './handler.js';
+export { buildNodeApp, createAppHandler, type NodeAppOptions } from './handler.js';
+export type { RenderStream, StreamRenderOptions } from './render.js';
 export { renderToStream } from './ssr.js';

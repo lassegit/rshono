@@ -3,7 +3,12 @@
  * App Builder
  *
  * Builds the complete Hono application from user routes, optional
- * server sub-app, and framework internals (static files, error pages).
+ * server sub-app, and framework internals (statics, error pages).
+ *
+ * This module is runtime-PORTABLE: no Node APIs. The runtime-specific
+ * pieces (SSR stream impl, filesystem statics, prerender lookup) are
+ * injected via BuildAppOptions — handler.ts composes the Node runtime,
+ * the generated `--target edge` entry composes the web runtime.
  *
  * The pragma above pins the JSX transform for this file. It runs under
  * tsx from the USER's project, whose tsconfig doesn't cover framework
@@ -12,15 +17,11 @@
  */
 import { Hono, type Context, type Handler, type MiddlewareHandler } from 'hono';
 import { routePath } from 'hono/route';
-import { existsSync, mkdirSync } from 'node:fs';
-import { join } from 'node:path';
 import type { ComponentType } from 'react';
 import { getAssets } from '../assets.js';
 import { isPageRoute, type EndpointRoute, type PageRoute, type PageServerModule, type Route } from '../router.js';
 import { reloadEndpoint, reloadScript } from './dev-reload.js';
-import { readPrerendered } from './ssg.js';
-import { renderToStream } from './ssr.js';
-import { createStaticMiddleware } from './static.js';
+import type { RenderStream } from './render.js';
 
 // ─── Reserved route prefixes ──────────────────────────────────────────────
 // User routes must not start with these — they're owned by the framework.
@@ -75,16 +76,27 @@ export interface BuildAppOptions {
     routes: Route[];
     /** Optional Hono sub-app for API / middleware (e.g. from src/server.ts) */
     subApp?: Hono;
-    /** Root directory of the user's project */
-    rootDir: string;
-    /** Public/static directory name */
-    publicDir: string;
-    /** Output directory name (client bundle lives in <outDir>/client) */
-    outDir: string;
     /** Whether running in dev mode */
     isDev: boolean;
     /** Global middleware (from rs-hono.config.ts), applied before all routes */
     middleware?: MiddlewareHandler;
+    /**
+     * Streaming SSR implementation — ssr.ts (Node) or ssr-web.ts (edge).
+     * This and the two optional capabilities below are the only
+     * runtime-specific pieces; everything else in here is portable.
+     */
+    render: RenderStream;
+    /**
+     * Serves /_static/*. Omitted in edge bundles, where the platform CDN
+     * owns static files and requests for them never reach the app.
+     */
+    staticApp?: Hono;
+    /**
+     * Lookup for build-time prerendered HTML (SSG). Omitted in dev and
+     * in edge bundles (the platform serves prerendered pages directly);
+     * static routes then render per request.
+     */
+    readPrerendered?: (requestPath: string) => Promise<string | null>;
 }
 
 /**
@@ -99,7 +111,7 @@ export interface BuildAppOptions {
  *  5. Error handler & 404
  */
 export function buildApp(options: BuildAppOptions): Hono {
-    const { routes, subApp, rootDir, publicDir, outDir, isDev, middleware } = options;
+    const { routes, subApp, isDev, middleware, render, staticApp, readPrerendered } = options;
 
     checkCollisions(routes);
 
@@ -110,20 +122,9 @@ export function buildApp(options: BuildAppOptions): Hono {
 
     const internalApp = new Hono();
 
-    // The client bundle is written to <outDir>/client (chunks/, assets/).
-    // In dev, the public dir is served as-is alongside it; in prod, the
-    // build copies public/ into <outDir>/client so one root suffices.
-    const clientOut = join(rootDir, outDir, 'client');
-    if (isDev) {
-        // The Rspack watcher may not have produced the first bundle yet.
-        mkdirSync(clientOut, { recursive: true });
+    if (staticApp) {
+        internalApp.route('/_static', staticApp);
     }
-    const staticRoots = (isDev ? [join(rootDir, publicDir), clientOut] : [clientOut])
-        // A project without a public/ dir is fine — don't serve (or warn
-        // about) roots that don't exist.
-        .filter((root) => existsSync(root));
-
-    internalApp.route('/_static', createStaticMiddleware({ roots: staticRoots, isDev }));
 
     internalApp.get('/_rs-hono/health', (c) => c.json({ status: 'ok' }));
 
@@ -151,9 +152,7 @@ export function buildApp(options: BuildAppOptions): Hono {
 
     app.route('/', internalApp);
     app.route('/', createEndpointApp(endpointRoutes));
-    // In prod, static routes prerendered by `rs-hono build` are served
-    // from <outDir>/ssg; anything else falls back to per-request SSR.
-    app.route('/', createPageApp(pageRoutes, isDev, isDev ? undefined : join(rootDir, outDir, 'ssg')));
+    app.route('/', createPageApp(pageRoutes, isDev, render, readPrerendered));
     if (subApp) {
         app.route('/', subApp);
     }
@@ -195,7 +194,7 @@ function memoize<T>(fn: () => Promise<T>): () => Promise<T> {
 
 // ─── Page App ─────────────────────────────────────────────────────────────
 
-function createPageApp(routes: PageRoute[], isDev: boolean, ssgDir?: string): Hono {
+function createPageApp(routes: PageRoute[], isDev: boolean, render: RenderStream, readPrerendered?: (requestPath: string) => Promise<string | null>): Hono {
     const app = new Hono();
 
     for (const route of routes) {
@@ -214,7 +213,7 @@ function createPageApp(routes: PageRoute[], isDev: boolean, ssgDir?: string): Ho
         // render a full document.
         let warnedMissingDocument = false;
 
-        const render = async (c: Context) => {
+        const renderPage = async (c: Context) => {
             // The component import is independent of the loader — start it
             // now so the two run concurrently; it is awaited after the
             // loader below. When the loader short-circuits (Response or
@@ -289,7 +288,7 @@ function createPageApp(routes: PageRoute[], isDev: boolean, ssgDir?: string): Ho
             const element = <Component {...(props as any)} />;
 
             try {
-                const stream = await renderToStream({
+                const stream = await render({
                     element,
                     bootstrapScript,
                     // The (content-hashed in prod) entry scripts, from the
@@ -324,13 +323,13 @@ function createPageApp(routes: PageRoute[], isDev: boolean, ssgDir?: string): Ho
         // per-page route registration, no HTML held in memory. Anything
         // not prerendered (params without staticPaths, build-time skips,
         // content added since the build) falls back to live SSR.
-        if (ssgDir && route.kind === 'static') {
+        if (readPrerendered && route.kind === 'static') {
             app.get(route.path, async (c) => {
-                const html = await readPrerendered(ssgDir, c.req.path);
-                return html !== null ? c.html(html) : render(c);
+                const html = await readPrerendered(c.req.path);
+                return html !== null ? c.html(html) : renderPage(c);
             });
         } else {
-            app.get(route.path, render);
+            app.get(route.path, renderPage);
         }
     }
 

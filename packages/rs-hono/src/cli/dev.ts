@@ -16,7 +16,7 @@ import { announceBuild } from "../server/dev-reload.js";
 import { createAppHandler } from "../server/handler.js";
 import { createClientRspackConfig } from "../builder/rspack-config.js";
 import { serve } from "../server/node-server.js";
-import { resolveConfig } from "../config.js";
+import { resolveConfig } from "./resolve-config.js";
 
 export async function devCommand(portArg?: number) {
   const config = await resolveConfig();

@@ -162,7 +162,7 @@ export async function createClientRspackConfig(options: ClientConfigOptions): Pr
     let config: RspackOptions = base;
     if (rspackHook) {
         try {
-            config = (await rspackHook(base, { dev: isDev, rootDir, rspack })) ?? base;
+            config = (await rspackHook(base, { dev: isDev, environment: 'client', rootDir, rspack })) ?? base;
         } catch (err) {
             // Same fail-fast rationale as resolveConfig: building without
             // the user's customizations would silently ship a wrong bundle.

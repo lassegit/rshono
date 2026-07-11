@@ -1,10 +1,11 @@
-import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { registerCssHooks } from '../builder/css-hooks.mjs';
 import { registerEnvHooks } from '../builder/env-hooks.mjs';
 import { publicEnv } from '../builder/public-env.js';
+// Loads .env/.env.local — before config/routes/loaders run (side-effect
+// module, shared with the generated node server-bundle entry).
+import '../server/load-env.js';
 import { buildCommand } from './build.js';
 import { devCommand } from './dev.js';
 import { startCommand } from './start.js';
@@ -12,14 +13,6 @@ import { startCommand } from './start.js';
 // Before any user code loads: layouts/pages import CSS, which the server
 // (running raw source via tsx) cannot parse without these hooks.
 registerCssHooks();
-
-// .env files, loaded before config/routes/loaders run. loadEnvFile never
-// overwrites keys that are already set, so loading highest-priority first
-// gives: real environment > .env.local (untracked) > .env.
-for (const file of ['.env.local', '.env']) {
-    const envPath = join(process.cwd(), file);
-    if (existsSync(envPath)) process.loadEnvFile(envPath);
-}
 
 const { version } = createRequire(import.meta.url)('../../package.json');
 
@@ -33,9 +26,12 @@ Commands:
   start   Start the production server
 
 Options:
-  -p, --port <number>  Port to listen on (default: PORT env, config dev.port, or 3000)
-  -h, --help           Show this help
-  -v, --version        Show the version
+  -p, --port <number>       Port to listen on (default: PORT env, config dev.port, or 3000)
+  --target <node|edge>      build: also emit a server bundle to <outDir>/server —
+                            node: self-contained \`node dist/server/index.mjs\` (no tsx)
+                            edge: fetch-handler bundle + <outDir>/site for the platform CDN
+  -h, --help                Show this help
+  -v, --version             Show the version
 `;
 
 function fail(message: string): never {
@@ -60,6 +56,7 @@ try {
         allowPositionals: true,
         options: {
             port: { type: 'string', short: 'p' },
+            target: { type: 'string' },
             help: { type: 'boolean', short: 'h' },
             version: { type: 'boolean', short: 'v' },
         },
@@ -82,6 +79,12 @@ if (values.help || command === undefined) {
 
 const port = parsePort(values.port);
 
+const target = values.target;
+if (target !== undefined) {
+    if (command !== 'build') fail('--target only applies to `rs-hono build`.');
+    if (target !== 'node' && target !== 'edge') fail(`Invalid --target: "${target}" (expected "node" or "edge")`);
+}
+
 // Server-side half of the public-env contract: shared modules (under src/,
 // not server-only) see the same PUBLIC_-filtered env object the client
 // bundle inlines — a stray `process.env.SECRET` in a component renders
@@ -94,7 +97,7 @@ switch (command) {
         await devCommand(port);
         break;
     case 'build':
-        await buildCommand();
+        await buildCommand(target);
         break;
     case 'start':
         await startCommand(port);

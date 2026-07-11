@@ -1,42 +1,14 @@
 /**
- * SSR Renderer
+ * SSR Renderer — Node implementation.
  *
- * Renders a React tree to a Web ReadableStream using React 18/19's
- * renderToPipeableStream (streaming SSR with Suspense).
- *
- * The returned promise resolves when the SHELL is ready — so the caller
- * can attach the correct HTTP status — and rejects on a shell error
- * (the caller responds with a real 500 instead of a 200 that contains
- * an error page).
+ * Renders a React tree to a Web ReadableStream using React 19's
+ * renderToPipeableStream (streaming SSR with Suspense). See render.ts
+ * for the contract; ssr-web.ts is the runtime-portable twin used by
+ * edge server bundles.
  */
 import { Readable, Transform } from 'node:stream';
-import type { ReactNode } from 'react';
 import { renderToPipeableStream } from 'react-dom/server';
-
-interface StreamRenderOptions {
-    /** The React element to render */
-    element: ReactNode;
-    /**
-     * Inline script injected before hydration.
-     * Typically sets window.__RSH. MUST already be safely escaped.
-     */
-    bootstrapScript?: string;
-    /**
-     * URLs of the client-entry module scripts (from the asset manifest);
-     * React appends them to <body> to start hydration.
-     */
-    bootstrapModules?: string[];
-    /** Called for non-fatal errors inside Suspense boundaries. */
-    onError?: (error: unknown) => void;
-    /**
-     * Called once if the output does not start with "<!DOCTYPE" — i.e.
-     * the element tree never rendered <html>, so the response is a
-     * fragment rather than a complete document.
-     */
-    onMissingDocument?: () => void;
-    /** Abort a render that is still pending after this many ms. */
-    timeoutMs?: number;
-}
+import type { StreamRenderOptions } from './render.js';
 
 export function renderToStream(options: StreamRenderOptions): Promise<ReadableStream<Uint8Array>> {
     const { element, bootstrapScript, bootstrapModules, onError, onMissingDocument, timeoutMs = 10_000 } = options;

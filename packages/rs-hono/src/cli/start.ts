@@ -8,7 +8,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { setAssets } from '../assets.js';
 import { loadAssetManifest } from '../builder/assets-manifest.js';
-import { resolveConfig } from '../config.js';
+import { resolveConfig } from './resolve-config.js';
 import { createAppHandler } from '../server/handler.js';
 import { serve } from '../server/node-server.js';
 
