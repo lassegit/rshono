@@ -12,6 +12,7 @@ import { cpSync, existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { setAssets } from '../assets.js';
 import { assetManifestFromStats, writeAssetManifest } from '../builder/assets-manifest.js';
+import { precompressDir } from '../builder/precompress.js';
 import { createClientRspackConfig } from '../builder/rspack-config.js';
 import { resolveConfig } from '../config.js';
 import type { Route } from '../router.js';
@@ -66,7 +67,7 @@ export async function buildCommand() {
 
     // Record the emitted CSS: assets.json for `start`, and the live
     // registry so the SSG prerender below links it too.
-    const assetManifest = stats ? assetManifestFromStats(stats) : { css: [] };
+    const assetManifest = stats ? assetManifestFromStats(stats) : { css: [], js: [] };
     writeAssetManifest(rootDir, outDir, assetManifest);
     setAssets(assetManifest);
 
@@ -77,6 +78,14 @@ export async function buildCommand() {
         console.log('  ✓ Static assets copied');
     } else {
         console.log('  ○ No public/ directory');
+    }
+
+    // ── Precompression ────────────────────────────────────────────────
+    // After the public/ copy so user assets get .br/.gz siblings too;
+    // `rs-hono start` serves them via serveStatic's precompressed mode.
+    const compressed = precompressDir(join(rootDir, outDir, 'client'));
+    if (compressed > 0) {
+        console.log(`  ✓ ${compressed} asset(s) precompressed (.br/.gz)`);
     }
 
     // ── SSG pre-rendering ─────────────────────────────────────────────

@@ -15,29 +15,37 @@ import type { AssetManifest } from '../assets.js';
 const MANIFEST_FILE = 'assets.json';
 
 /**
- * Collect the emitted CSS from compiler stats. The Rspack config merges
- * all CSS into one "styles" chunk, so this is normally a single file.
+ * Collect the linkable outputs from compiler stats: the emitted CSS
+ * (the Rspack config merges all CSS into one "styles" chunk, so this is
+ * normally a single file) and the JS of the "main" entrypoint — the
+ * hydration entry, content-hashed in prod builds.
  */
 export function assetManifestFromStats(stats: Stats): AssetManifest {
-    const assets = stats.toJson({ all: false, assets: true }).assets ?? [];
-    const css = assets
+    const json = stats.toJson({ all: false, assets: true, entrypoints: true });
+    const css = (json.assets ?? [])
         .map((asset) => asset.name)
         .filter((name) => name.endsWith('.css'))
         .sort()
         .map((name) => `/_static/${name}`);
-    return { css };
+    const js = (json.entrypoints?.main?.assets ?? [])
+        .map((asset) => asset.name)
+        .filter((name) => name.endsWith('.js'))
+        .map((name) => `/_static/${name}`);
+    return { css, js };
 }
 
 export function writeAssetManifest(rootDir: string, outDir: string, manifest: AssetManifest): void {
     writeFileSync(join(rootDir, outDir, MANIFEST_FILE), JSON.stringify(manifest, null, 2) + '\n');
 }
 
+const isStringArray = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === 'string');
+
 /** Returns undefined when the manifest is missing or malformed (old build). */
 export function loadAssetManifest(rootDir: string, outDir: string): AssetManifest | undefined {
     try {
         const parsed = JSON.parse(readFileSync(join(rootDir, outDir, MANIFEST_FILE), 'utf8'));
-        if (Array.isArray(parsed?.css) && parsed.css.every((href: unknown) => typeof href === 'string')) {
-            return { css: parsed.css };
+        if (isStringArray(parsed?.css) && isStringArray(parsed?.js)) {
+            return { css: parsed.css, js: parsed.js };
         }
     } catch {
         // fall through

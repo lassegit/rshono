@@ -10,7 +10,7 @@
  * sources — without it, esbuild falls back to the classic transform
  * and the render crashes with "React is not defined".
  */
-import { Hono, type Context, type Handler } from 'hono';
+import { Hono, type Context, type Handler, type MiddlewareHandler } from 'hono';
 import { routePath } from 'hono/route';
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -83,6 +83,8 @@ export interface BuildAppOptions {
     outDir: string;
     /** Whether running in dev mode */
     isDev: boolean;
+    /** Global middleware (from rs-hono.config.ts), applied before all routes */
+    middleware?: MiddlewareHandler;
 }
 
 /**
@@ -97,7 +99,7 @@ export interface BuildAppOptions {
  *  5. Error handler & 404
  */
 export function buildApp(options: BuildAppOptions): Hono {
-    const { routes, subApp, rootDir, publicDir, outDir, isDev } = options;
+    const { routes, subApp, rootDir, publicDir, outDir, isDev, middleware } = options;
 
     checkCollisions(routes);
 
@@ -139,6 +141,12 @@ export function buildApp(options: BuildAppOptions): Hono {
             await next();
             console.log(`  ${c.req.method} ${c.req.path} → ${c.res.status} (${Date.now() - start}ms)`);
         });
+    }
+
+    // Hono runs middleware only for handlers registered after it, so the
+    // user's global middleware must be registered before any route.
+    if (middleware) {
+        app.use('*', middleware);
     }
 
     app.route('/', internalApp);
@@ -207,6 +215,15 @@ function createPageApp(routes: PageRoute[], isDev: boolean, ssgDir?: string): Ho
         let warnedMissingDocument = false;
 
         const render = async (c: Context) => {
+            // The component import is independent of the loader — start it
+            // now so the two run concurrently; it is awaited after the
+            // loader below. When the loader short-circuits (Response or
+            // error) nobody awaits it, so park the rejection on a no-op
+            // catch instead of crashing the process. The original promise
+            // stays awaitable and its error is handled where it is used.
+            const componentPromise = route.component();
+            componentPromise.catch(() => {});
+
             // Resolve the co-located *.server module (loader/staticPaths).
             let serverModule: PageServerModule | undefined;
             if (loadServerModule) {
@@ -238,10 +255,10 @@ function createPageApp(routes: PageRoute[], isDev: boolean, ssgDir?: string): Ho
                 url: c.req.url,
             };
 
-            // Import the page component
+            // Import the page component (started before the loader ran)
             let Component: ComponentType<any>;
             try {
-                const mod = await route.component();
+                const mod = await componentPromise;
                 Component = mod.default;
             } catch (err) {
                 console.error(`[rs-hono] Import error for ${route.path}:`, err);
@@ -275,7 +292,10 @@ function createPageApp(routes: PageRoute[], isDev: boolean, ssgDir?: string): Ho
                 const stream = await renderToStream({
                     element,
                     bootstrapScript,
-                    clientEntry: '/_static/chunks/main.js',
+                    // The (content-hashed in prod) entry scripts, from the
+                    // same registry the CSS links come from. Empty before
+                    // the first dev compile — live reload heals that page.
+                    bootstrapModules: getAssets().js,
                     onError(err) {
                         console.error(`[rs-hono] SSR stream error for ${route.path}:`, err);
                     },
@@ -311,6 +331,15 @@ function createPageApp(routes: PageRoute[], isDev: boolean, ssgDir?: string): Ho
             });
         } else {
             app.get(route.path, render);
+        }
+    }
+
+    if (!isDev) {
+        // Pre-warm the ESM module cache so first requests don't pay for
+        // the page import. Failures are ignored on purpose — they
+        // resurface as proper error pages at request time.
+        for (const route of routes) {
+            route.component().catch(() => {});
         }
     }
 

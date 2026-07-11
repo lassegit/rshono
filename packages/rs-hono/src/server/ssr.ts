@@ -9,12 +9,9 @@
  * (the caller responds with a real 500 instead of a 200 that contains
  * an error page).
  */
-import { Writable } from 'node:stream';
+import { Readable, Transform } from 'node:stream';
 import type { ReactNode } from 'react';
 import { renderToPipeableStream } from 'react-dom/server';
-
-const encoder = new TextEncoder();
-const decoder = new TextDecoder();
 
 interface StreamRenderOptions {
     /** The React element to render */
@@ -24,8 +21,11 @@ interface StreamRenderOptions {
      * Typically sets window.__RSH. MUST already be safely escaped.
      */
     bootstrapScript?: string;
-    /** URL of the client entry module (for the hydration script tag). */
-    clientEntry?: string;
+    /**
+     * URLs of the client-entry module scripts (from the asset manifest);
+     * React appends them to <body> to start hydration.
+     */
+    bootstrapModules?: string[];
     /** Called for non-fatal errors inside Suspense boundaries. */
     onError?: (error: unknown) => void;
     /**
@@ -39,55 +39,43 @@ interface StreamRenderOptions {
 }
 
 export function renderToStream(options: StreamRenderOptions): Promise<ReadableStream<Uint8Array>> {
-    const { element, bootstrapScript, clientEntry, onError, onMissingDocument, timeoutMs = 10_000 } = options;
+    const { element, bootstrapScript, bootstrapModules, onError, onMissingDocument, timeoutMs = 10_000 } = options;
 
     return new Promise((resolve, reject) => {
         let timer: NodeJS.Timeout | undefined;
 
         const { pipe, abort } = renderToPipeableStream(element, {
             bootstrapScriptContent: bootstrapScript,
-            bootstrapModules: clientEntry ? [clientEntry] : undefined,
+            bootstrapModules,
 
             onShellReady() {
+                // Node's own Writable→web-stream conversion handles
+                // backpressure, close and error propagation (an aborted
+                // render errors the response instead of leaving it hanging).
+                // The Transform's only job is to inspect the first chunk.
                 let firstChunk = true;
-                const stream = new ReadableStream<Uint8Array>({
-                    start(controller) {
-                        const sink = new Writable({
-                            write(chunk, _encoding, callback) {
-                                try {
-                                    const bytes = chunk instanceof Uint8Array ? chunk : encoder.encode(String(chunk));
-                                    if (firstChunk) {
-                                        firstChunk = false;
-                                        // React emits <!DOCTYPE html> as the first bytes
-                                        // whenever the tree renders <html>.
-                                        if (onMissingDocument && !/^<!doctype/i.test(decoder.decode(bytes.subarray(0, 15)))) {
-                                            onMissingDocument();
-                                        }
-                                    }
-                                    controller.enqueue(bytes);
-                                    callback();
-                                } catch (err) {
-                                    callback(err instanceof Error ? err : new Error(String(err)));
-                                }
-                            },
-                            final(callback) {
-                                try {
-                                    controller.close();
-                                } catch {
-                                    // already closed/errored
-                                }
-                                callback();
-                            },
-                        });
-                        pipe(sink);
-                    },
-                    cancel() {
-                        // Client went away — stop rendering.
-                        clearTimeout(timer);
-                        abort(new Error('Response stream cancelled by client'));
+                const pass = new Transform({
+                    transform(chunk: Buffer, _encoding, callback) {
+                        if (firstChunk) {
+                            firstChunk = false;
+                            // React emits <!DOCTYPE html> as the first bytes
+                            // whenever the tree renders <html>.
+                            if (onMissingDocument && !/^<!doctype/i.test(chunk.toString('utf8', 0, 15))) {
+                                onMissingDocument();
+                            }
+                        }
+                        callback(null, chunk);
                     },
                 });
-                resolve(stream);
+                // 'close' fires when the client cancels (toWeb destroys the
+                // stream) and after a normal end — abort() is a no-op once
+                // the render has completed, so no finished-flag is needed.
+                pass.on('close', () => {
+                    clearTimeout(timer);
+                    abort(new Error('Response stream cancelled by client'));
+                });
+                pipe(pass);
+                resolve(Readable.toWeb(pass) as ReadableStream<Uint8Array>);
             },
 
             onShellError(error) {

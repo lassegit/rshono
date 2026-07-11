@@ -27,9 +27,14 @@ import type { ReactElement } from 'react';
 export interface AssetManifest {
     /** Stylesheet hrefs, e.g. "/_static/chunks/styles.<hash>.css". */
     css: string[];
+    /**
+     * Hydration-entry scripts, e.g. "/_static/chunks/main.<hash>.js" —
+     * what the SSR document loads as bootstrap modules. Usually one file.
+     */
+    js: string[];
 }
 
-let manifest: AssetManifest = { css: [] };
+let manifest: AssetManifest = { css: [], js: [] };
 
 /** Framework-internal: replace the current asset manifest. */
 export function setAssets(next: AssetManifest): void {

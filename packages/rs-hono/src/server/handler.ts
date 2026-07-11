@@ -7,7 +7,6 @@
  * 3. Builds the complete Hono application
  * 4. Returns the fetch handler
  */
-import { Hono } from 'hono';
 import type { RsHonoConfig } from '../config.js';
 import { buildApp } from './app.js';
 import { loadRoutes, loadServerApp } from './load.js';
@@ -35,23 +34,15 @@ export async function createAppHandler(options: HandlerOptions) {
 
     const subApp = await loadServerApp(rootDir);
 
-    let app = buildApp({
+    const app = buildApp({
         routes: routes ?? [],
         subApp,
         rootDir,
         publicDir: config.publicDir ?? 'public',
         outDir: config.outDir ?? 'dist',
         isDev,
+        middleware: config.server?.middleware,
     });
-
-    // Global middleware from rs-hono.config.ts. Hono runs middleware only
-    // for handlers registered AFTER it, so wrap the app instead of appending.
-    if (config.server?.middleware) {
-        const outer = new Hono();
-        outer.use('*', config.server.middleware);
-        outer.route('/', app);
-        app = outer;
-    }
 
     // Startup hook from rs-hono.config.ts
     if (config.server?.onStart) {

@@ -26,8 +26,19 @@ const userArgs = process.argv.slice(2);
 // explicitly: editing one restarts the server with fresh values.
 const watch = userArgs[0] === "dev" ? ["watch", "--clear-screen=false", "--include=.env*"] : [];
 
+// `start` (and `build`, whose SSG prerender renders through the same SSR
+// path) must run React in production mode — react-dom picks its dev or
+// prod build when the module is LOADED, and the dev build costs 2-5× in
+// render throughput. Set it here, in the child's env, so it is in place
+// before Node resolves React. An explicitly set NODE_ENV always wins.
+const env = { ...process.env };
+if ((userArgs[0] === "start" || userArgs[0] === "build") && !env.NODE_ENV) {
+  env.NODE_ENV = "production";
+}
+
 const child = spawn(process.execPath, [tsxCli, ...watch, cliEntry, ...userArgs], {
   stdio: "inherit",
+  env,
 });
 
 // Forward termination signals so supervisors (docker stop, systemd, kill)

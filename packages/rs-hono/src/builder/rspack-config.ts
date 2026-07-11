@@ -56,9 +56,11 @@ export async function createClientRspackConfig(options: ClientConfigOptions): Pr
             // command copies public/ assets in AFTER the compiler has run.
             clean: true,
             publicPath: '/_static/',
-            // Stable entry name so the SSR shell can always reference
-            // /_static/chunks/main.js; async page chunks are content-hashed.
-            filename: 'chunks/main.js',
+            // The SSR document discovers the entry's real name through the
+            // asset manifest, so prod can content-hash it for immutable
+            // caching. Stable in dev for simple reloads; async page chunks
+            // are always content-hashed.
+            filename: isDev ? 'chunks/main.js' : 'chunks/main.[contenthash].js',
             chunkFilename: 'chunks/[name].[contenthash].js',
             assetModuleFilename: 'assets/[name].[hash][ext]',
             // Emitted CSS (see the "styles" cache group below). Hashed in

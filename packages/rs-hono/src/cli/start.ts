@@ -22,18 +22,23 @@ export async function startCommand(portArg?: number) {
     console.log('🚀 rs-hono production server');
     console.log('');
 
-    if (!existsSync(join(rootDir, outDir, 'client', 'chunks', 'main.js'))) {
-        console.error(`  ✗ No client bundle found in ${outDir}/client.`);
+    // The manifest names the content-hashed bundle files — without it the
+    // SSR document cannot link its entry script, so it is required.
+    const assetManifest = loadAssetManifest(rootDir, outDir);
+    if (!assetManifest) {
+        console.error(`  ✗ No usable ${outDir}/assets.json found.`);
         console.error('    Run `rs-hono build` first.');
         process.exit(1);
     }
-
-    const assetManifest = loadAssetManifest(rootDir, outDir);
-    if (assetManifest) {
-        setAssets(assetManifest);
-    } else {
-        console.log('  ○ No assets.json in the build output — <Assets/> will render nothing. Re-run `rs-hono build`.');
+    const missing = [...assetManifest.js, ...assetManifest.css]
+        .map((href) => href.replace(/^\/_static\//, ''))
+        .filter((rel) => !existsSync(join(rootDir, outDir, 'client', rel)));
+    if (missing.length > 0) {
+        console.error(`  ✗ Build output is incomplete — missing from ${outDir}/client: ${missing.join(', ')}`);
+        console.error('    Re-run `rs-hono build`.');
+        process.exit(1);
     }
+    setAssets(assetManifest);
 
     const handler = await createAppHandler({ config, rootDir, isDev: false });
 

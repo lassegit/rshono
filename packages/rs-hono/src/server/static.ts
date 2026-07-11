@@ -47,6 +47,11 @@ export function createStaticMiddleware(options: StaticOptions): Hono {
                 root,
                 // Mounted at /_static, but serveStatic sees the full request path.
                 rewriteRequestPath: (path) => path.replace(/^\/_static/, ''),
+                // Serve the .br/.gz siblings emitted by `rs-hono build`
+                // when the client accepts them. Prod only: dev has no
+                // precompressed files, so the extra stat calls would
+                // always miss.
+                precompressed: !isDev,
             }),
         ),
         // All roots missed — terminate with a plain 404 instead of falling

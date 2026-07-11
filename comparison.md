@@ -70,48 +70,39 @@ Shipped as sketched — one optional function in `rs-hono.config.ts` receives th
 
 ### Simpler and smaller code
 
-**6. Replace the hand-rolled stream bridge.**
-`server/ssr.ts:44-74` manually adapts React's Node `Writable` to a web `ReadableStream` (~30 lines including error/close handling). Node's built-in converter does the same with backpressure handled for free:
+**6. ~~Replace the hand-rolled stream bridge~~ — ✅ shipped, via `Readable.toWeb`.**
+Shipped close to the sketch, with one substitution: the first-chunk `<!DOCTYPE` inspection (the missing-document warning) has to see the bytes, so the bare `PassThrough` became a minimal `Transform` — a `data` listener on a PassThrough would have switched it to flowing mode and fought `toWeb` for the chunks. Node's converter now owns backpressure, close and error propagation; cancel → abort rides on the `'close'` event as sketched (it also fires after a normal end, where `abort()` is a no-op). The switch fixed a real bug the sketch didn't know about: the old sink had no destroy propagation, so an aborted render — e.g. the 10-second timeout — left the HTTP response hanging forever instead of terminating it. `renderToReadableStream` from `react-dom/server.edge` remains a future portability decision, as before.
 
-```ts
-const pass = new PassThrough();
-pass.on('close', () => { clearTimeout(timer); abort(new Error('cancelled')); });
-pipe(pass);
-resolve(Readable.toWeb(pass) as ReadableStream<Uint8Array>);
-```
-
-~8 lines, one less custom moving part, and behavior (cancel → abort render) is preserved via the `close` event. A larger step — switching to `renderToReadableStream` from `react-dom/server.edge` — would delete the bridge concept entirely *and* open the door to non-Node runtimes, but React still recommends the pipeable API on Node for throughput, so treat that as a future portability decision rather than a cleanup.
-
-**7. Merge the middleware wrapper into `buildApp`.**
-`server/handler.ts:49-54` builds a second outer `Hono` app solely because middleware must be registered before routes. Passing `config.server?.middleware` into `buildApp` and calling `app.use('*', mw)` right after the dev logger (`app.tsx:128`) removes the wrapper app and the subtle ordering comment. Net −10 lines and one less indirection.
+**7. ~~Merge the middleware wrapper into `buildApp`~~ — ✅ shipped as sketched.**
+`buildApp` takes an optional `middleware` and registers it right after the dev logger — before any route, which is all the wrapper app existed to guarantee. `handler.ts` lost the outer `Hono`, the ordering comment and its `Hono` import; net −10 lines as predicted.
 
 ### Faster
 
-**8. Set `NODE_ENV=production` in `rs-hono start`.**
-Nothing sets `NODE_ENV` for the production server (`cli/start.ts`, `bin/cli.cjs`), so unless the user exports it themselves, **react-dom/server runs in development mode during SSR** — dev-only checks typically cost 2–5× render throughput. Three lines in `bin/cli.cjs` (set it in the child env for `start`, before Node loads React) is likely the single largest cheap performance win in the codebase.
+**8. ~~Set `NODE_ENV=production` in `rs-hono start`~~ — ✅ shipped, for `build` too.**
+Set in `bin/cli.cjs` in the spawned child's env, so it is in place before Node loads React — react-dom picks its dev or prod build at module-load time, which is why setting it later (inside `cli/start.ts`, after the import graph has loaded) would have been too late. One correction to the sketch: `rs-hono build` gets it as well, because SSG pre-rendering renders through the same React SSR path and was paying the same 2–5× dev-mode tax at build time. An explicitly exported `NODE_ENV` always wins.
 
 **9. ~~Cache `'static'` routes at runtime (then real SSG)~~ — ✅ shipped as build-time SSG.**
 `rs-hono build` now prerenders every `kind: 'static'` route to `<outDir>/ssg` (`server/ssg.ts`) by issuing real requests against the assembled app, so loaders, the hydration payload, and streaming SSR are reused unchanged. Param routes enumerate their pages via `staticPaths()`; in production, prerendered HTML is served straight from disk with per-request SSR as the fallback (params without `staticPaths()`, build-time skips, paths added since the build). The interim runtime render-cache proposed here was skipped in favor of going straight to build-time prerendering.
 
-**10. Parallelize and pre-warm page modules.**
-`createPageApp` awaits the loader, *then* awaits `route.component()` (`app.tsx:180-205`), though the two are independent — `Promise.all` them. And in production, fire-and-forget `pageRoutes.map(r => r.component())` at startup so the ESM module cache is warm before the first request instead of during it. Both are a few lines; they mainly cut first-hit latency.
+**10. ~~Parallelize and pre-warm page modules~~ — ✅ shipped, not as `Promise.all`.**
+The component import now starts before the server module resolves and is awaited after the loader — full overlap, but the two failure modes keep their distinct 500 pages (Import Error vs Loader Error), which a bare `Promise.all` would have collapsed. Because a loader may short-circuit with a `Response`, the not-yet-awaited import parks its rejection on a no-op `catch` so a broken page module can't crash the process as an unhandled rejection while the loader wins the race. In production, `createPageApp` fire-and-forgets every page's `component()` at startup to warm the ESM module cache; failures stay silent there on purpose and resurface as proper error pages at request time.
 
-**11. Compress and cache-immortalize assets.**
-The client bundle is served uncompressed, and the entry chunk `main.js` deliberately has a stable, un-hashed name (`builder/rspack-config.ts:50`) so it only gets `max-age=300` (`server/static.ts:37`). Two compounding fixes: (a) emit `.br`/`.gz` at build time and flip on `precompressed: true` in `serveStatic` (`static.ts:46-51`) — the installed `@hono/node-server` v2 already supports it, and JS typically shrinks 65–75%; (b) content-hash the entry `main.js` and serve it through the asset manifest that the CSS pipeline already introduced (`assets.json` + `<Assets/>` — emitted CSS is hashed and `immutable` today), which upgrades the JS entry to `immutable` caching too. (a) is trivial; (b) is now a small extension of an existing mechanism rather than new plumbing.
+**11. ~~Compress and cache-immortalize assets~~ — ✅ shipped, both halves.**
+(a) `rs-hono build` now emits `.br`/`.gz` siblings for every compressible file under `<outDir>/client` (`builder/precompress.ts`, plain `node:zlib`, brotli at max quality — build time is the right place to spend the cycles), running after the `public/` copy so user assets are covered too; files under 1 KB are skipped and variants that don't shrink the original aren't written. `serveStatic` gets `precompressed: true` in production — it negotiates `Accept-Encoding` and appends `Vary` itself. (b) The prod entry is now `chunks/main.[contenthash].js`: the asset manifest grew a `js` field (read from the compiler's entrypoint stats), the SSR document takes its `bootstrapModules` from the same registry that already supplied the CSS links, and `rs-hono start` validates the build through the manifest instead of probing a hardcoded filename — which also upgraded the startup check from "does main.js exist" to "does every manifest asset exist". Entry JS and CSS both serve `immutable` now; dev keeps the stable un-hashed name.
 
 ### Suggested order
 
 | # | Improvement | Impact | Effort |
 |---|---|---|---|
-| 8 | `NODE_ENV=production` in start | High (SSR throughput) | Trivial |
+| ~~8~~ | ~~`NODE_ENV=production` in start~~ ✅ shipped (child env in `bin/cli.cjs`, for start *and* build) | High (SSR throughput) | Done |
 | ~~1~~ | ~~Loader → props inference~~ ✅ shipped (`defineLoader` + `LoaderProps`, `*.server` route modules) | High (DX, headline gap) | Done |
 | ~~3~~ | ~~Dev auto-reload (SSE)~~ ✅ shipped (version-stamped live reload, `server/dev-reload.ts`) | High (daily DX) | Done |
 | ~~2~~ | ~~Per-page `<head>`~~ ✅ shipped (pages own the document; layouts render `<html>`/`<head>`, CSS via `<Assets/>`) | High (unblocks real sites) | Done |
 | ~~9~~ | ~~Static-route caching → SSG~~ ✅ shipped (`server/ssg.ts`) | High (perf, honesty of `static`) | Done |
 | ~~4~~ | ~~Rspack config hook~~ ✅ shipped (`rspack(config, env)` in rs-hono.config.ts) | Medium (prevents forks) | Done |
-| 11 | Precompression + hashed entry | Medium (page weight) | Small → Medium |
-| 6, 7 | Stream bridge + middleware wrapper cleanup | Code size/clarity | Small |
-| 10 | Parallel loader/import + pre-warm | Low–Medium (latency) | Trivial |
+| ~~11~~ | ~~Precompression + hashed entry~~ ✅ shipped (`builder/precompress.ts`; manifest-driven entry) | Medium (page weight) | Done |
+| ~~6, 7~~ | ~~Stream bridge + middleware wrapper cleanup~~ ✅ shipped (`Readable.toWeb`; middleware into `buildApp`) | Code size/clarity | Done |
+| ~~10~~ | ~~Parallel loader/import + pre-warm~~ ✅ shipped (concurrent import; prod warm-up) | Low–Medium (latency) | Done |
 | 5 | Papercuts (routes.tsx, method arrays) | Low | Trivial |
 
-Notably absent: client-side navigation, RSC, and edge-runtime support. Each would multiply the framework's size and complexity — the moment rs-hono grows a client router and a serialization protocol, its comparison column starts looking like TanStack Start's, without the team to maintain it. The remaining improvements all fit the existing ~2,000-line budget (a few dozen lines net, some of it offset by items 6–7) while removing the biggest disadvantage users still hit: slow production SSR (manual refresh, missing titles, prop casting and the locked-down bundler are gone — see items 1, 2, 3, 4 and 9).
+Notably absent: client-side navigation, RSC, and edge-runtime support. Each would multiply the framework's size and complexity — the moment rs-hono grows a client router and a serialization protocol, its comparison column starts looking like TanStack Start's, without the team to maintain it. With items 6–11 shipped, only item 5's papercuts remain open, and the whole list fit the existing ~2,000-line budget (items 6–7 paid down part of what 10–11 added). The disadvantages that still stand are the structural ones the framework chooses not to fix: no client router, Node-only deployment, and no ecosystem.

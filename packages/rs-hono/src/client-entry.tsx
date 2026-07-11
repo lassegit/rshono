@@ -48,7 +48,7 @@ async function bootstrap() {
         const Component = mod.default;
         // Populate the registry BEFORE rendering, so the layout's
         // <Assets/> hydrates against the <link> tags the server emitted.
-        setAssets(data.assets ?? { css: [] });
+        setAssets(data.assets ?? { css: [], js: [] });
         hydrateRoot(document, <Component {...(data.props as any)} />);
         if (process.env.NODE_ENV === 'development') {
             console.log(`[rs-hono] hydrated ${data.route}`);
