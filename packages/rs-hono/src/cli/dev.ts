@@ -28,7 +28,7 @@ export async function devCommand(portArg?: number) {
   console.log("");
 
   // ── Client bundle watcher ──────────────────────────────────────────
-  const compiler = rspack(createClientRspackConfig({ rootDir, outDir, isDev: true }));
+  const compiler = rspack(await createClientRspackConfig({ rootDir, outDir, isDev: true, rspackHook: config.rspack }));
   const watching = compiler.watch({}, (err, stats) => {
     if (err) {
       console.error("  ✗ Client bundler error:", err);

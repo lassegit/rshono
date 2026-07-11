@@ -13,10 +13,16 @@
  *
  * There is no server bundle: the server runs the TypeScript source
  * directly via tsx (dev and prod alike).
+ *
+ * The generated config is not sealed: the `rspack` hook in
+ * rs-hono.config.ts may adjust anything before compilation. Only the
+ * *.server.* replacement is re-checked afterwards — it is the one part
+ * of this file that is a guarantee rather than a default.
  */
 import { rspack, type RspackOptions } from '@rspack/core';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { ClientRspackOptions, RsHonoConfig } from '../config.js';
 
 const FRAMEWORK_SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -27,13 +33,17 @@ interface ClientConfigOptions {
     rootDir: string;
     outDir: string;
     isDev: boolean;
+    /** The user's `rspack` hook from rs-hono.config.ts, if any. */
+    rspackHook?: RsHonoConfig['rspack'];
 }
 
-export function createClientRspackConfig(options: ClientConfigOptions): RspackOptions {
-    const { rootDir, outDir, isDev } = options;
+export async function createClientRspackConfig(options: ClientConfigOptions): Promise<RspackOptions> {
+    const { rootDir, outDir, isDev, rspackHook } = options;
     const srcDir = join(rootDir, 'src');
 
-    return {
+    // Typed ClientRspackOptions: the hook's contract that `plugins` and
+    // `module.rules` exist is enforced here, on the literal itself.
+    const base: ClientRspackOptions = {
         mode: isDev ? 'development' : 'production',
         devtool: isDev ? 'cheap-module-source-map' : false,
         entry: {
@@ -133,4 +143,33 @@ export function createClientRspackConfig(options: ClientConfigOptions): RspackOp
         ],
         experiments: { css: true },
     };
+
+    // User escape hatch, applied here (not at the call sites) so every
+    // consumer of this config gets it. Mutate-or-return: a hook that only
+    // pushes a plugin needs no `return config`.
+    let config: RspackOptions = base;
+    if (rspackHook) {
+        try {
+            config = (await rspackHook(base, { dev: isDev, rootDir, rspack })) ?? base;
+        } catch (err) {
+            // Same fail-fast rationale as resolveConfig: building without
+            // the user's customizations would silently ship a wrong bundle.
+            console.error('  ✗ The rspack() hook in rs-hono.config.ts threw:');
+            console.error(err);
+            process.exit(1);
+        }
+
+        // The *.server.* replacement is a security guarantee, not a build
+        // preference — re-check it survived, whether the hook filtered the
+        // plugin array or returned a fresh config. A replacement plugin the
+        // user re-created with the same pattern passes.
+        const boundaryIntact = config.plugins?.some(
+            (p) => p instanceof rspack.NormalModuleReplacementPlugin && String(p._args[0]) === String(SERVER_MODULE_PATTERN),
+        );
+        if (!boundaryIntact) {
+            console.warn('  ⚠ The rspack() hook removed the *.server.* module replacement — server code may reach the browser bundle.');
+        }
+    }
+
+    return config;
 }

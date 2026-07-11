@@ -50,7 +50,7 @@ export async function buildCommand() {
     console.log(`  • ${counts.static} static, ${counts.dynamic} dynamic, ${counts.endpoint} endpoints`);
 
     // ── Client bundle ─────────────────────────────────────────────────
-    const compiler = rspack(createClientRspackConfig({ rootDir, outDir, isDev: false }));
+    const compiler = rspack(await createClientRspackConfig({ rootDir, outDir, isDev: false, rspackHook: config.rspack }));
     const stats = await new Promise<Stats | undefined>((resolve, reject) => {
         compiler.run((err, result) => {
             compiler.close(() => (err ? reject(err) : resolve(result)));

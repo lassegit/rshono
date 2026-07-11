@@ -1,7 +1,35 @@
+import type { rspack, RspackOptions } from '@rspack/core';
 import type { MiddlewareHandler } from 'hono';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+
+/**
+ * The generated client-bundle config as handed to the `rspack` hook:
+ * plain RspackOptions, but with the arrays hooks typically push into
+ * guaranteed present — `config.plugins.push(...)` and
+ * `config.module.rules.push(...)` compile without `!` or `??=`.
+ */
+export type ClientRspackOptions = RspackOptions & {
+    plugins: NonNullable<RspackOptions['plugins']>;
+    module: NonNullable<RspackOptions['module']> & {
+        rules: NonNullable<NonNullable<RspackOptions['module']>['rules']>;
+    };
+};
+
+/** Passed to the `rspack` config hook alongside the generated config. */
+export interface RspackHookEnv {
+    /** true under `rs-hono dev`, false under `rs-hono build`. */
+    dev: boolean;
+    /** Absolute project root (the directory containing rs-hono.config.ts). */
+    rootDir: string;
+    /**
+     * The framework's own @rspack/core instance. Use it for builtin
+     * plugins (`new env.rspack.DefinePlugin(...)`) instead of installing
+     * your own copy, whose native binding may not match the framework's.
+     */
+    rspack: typeof rspack;
+}
 
 export interface RsHonoConfig {
     /** Output directory (default: "dist") */
@@ -14,6 +42,22 @@ export interface RsHonoConfig {
     dev?: {
         port?: number;
     };
+
+    /**
+     * Escape hatch: customize the CLIENT bundle's Rspack config — extra
+     * loaders, plugins, aliases, the entire webpack-compatible ecosystem.
+     * Mutate `config` in place or return a replacement; async is fine.
+     * `config.plugins` and `config.module.rules` are always present, so
+     * plain `.push(...)` works. Runs for both dev and build (branch on
+     * `env.dev`).
+     *
+     * Client bundle only: the server renders your TypeScript source
+     * directly via tsx, so loaders that change what an import *means*
+     * (e.g. SVGR's .svg → React component) will not apply during SSR.
+     * CSS-level tooling (Tailwind, PostCSS plugins) is unaffected — CSS
+     * imports are already inert on the server.
+     */
+    rspack?: (config: ClientRspackOptions, env: RspackHookEnv) => RspackOptions | void | Promise<RspackOptions | void>;
 
     /** Server lifecycle hooks (set in rs-hono.config.ts) */
     server?: {
