@@ -1,6 +1,10 @@
+import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { registerCssHooks } from '../builder/css-hooks.mjs';
+import { registerEnvHooks } from '../builder/env-hooks.mjs';
+import { publicEnv } from '../builder/public-env.js';
 import { buildCommand } from './build.js';
 import { devCommand } from './dev.js';
 import { startCommand } from './start.js';
@@ -8,6 +12,14 @@ import { startCommand } from './start.js';
 // Before any user code loads: layouts/pages import CSS, which the server
 // (running raw source via tsx) cannot parse without these hooks.
 registerCssHooks();
+
+// .env files, loaded before config/routes/loaders run. loadEnvFile never
+// overwrites keys that are already set, so loading highest-priority first
+// gives: real environment > .env.local (untracked) > .env.
+for (const file of ['.env.local', '.env']) {
+    const envPath = join(process.cwd(), file);
+    if (existsSync(envPath)) process.loadEnvFile(envPath);
+}
 
 const { version } = createRequire(import.meta.url)('../../package.json');
 
@@ -69,6 +81,13 @@ if (values.help || command === undefined) {
 }
 
 const port = parsePort(values.port);
+
+// Server-side half of the public-env contract: shared modules (under src/,
+// not server-only) see the same PUBLIC_-filtered env object the client
+// bundle inlines — a stray `process.env.SECRET` in a component renders
+// empty instead of streaming the secret into SSR HTML. Must be registered
+// before the commands import routes/pages.
+registerEnvHooks({ rootDir: process.cwd(), publicEnv: publicEnv(command === 'dev') });
 
 switch (command) {
     case 'dev':

@@ -22,7 +22,9 @@ try {
 
 const cliEntry = path.join(__dirname, "..", "src", "cli", "index.ts");
 const userArgs = process.argv.slice(2);
-const watch = userArgs[0] === "dev" ? ["watch", "--clear-screen=false"] : [];
+// .env files aren't imported, so tsx wouldn't watch them — include them
+// explicitly: editing one restarts the server with fresh values.
+const watch = userArgs[0] === "dev" ? ["watch", "--clear-screen=false", "--include=.env*"] : [];
 
 const child = spawn(process.execPath, [tsxCli, ...watch, cliEntry, ...userArgs], {
   stdio: "inherit",

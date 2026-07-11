@@ -23,6 +23,7 @@ import { rspack, type RspackOptions } from '@rspack/core';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ClientRspackOptions, RsHonoConfig } from '../config.js';
+import { publicEnv } from './public-env.js';
 
 const FRAMEWORK_SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -137,7 +138,16 @@ export async function createClientRspackConfig(options: ClientConfigOptions): Pr
             },
         },
         plugins: [
-            // NODE_ENV is defined automatically from `mode` (optimization.nodeEnv).
+            // Public env: only PUBLIC_-prefixed vars reach the browser. The
+            // whole `process.env` expression is replaced with this literal, so
+            // member access, destructuring, and `console.log(process.env)` all
+            // work in client code — the log shows exactly what the browser
+            // gets. env-hooks.mjs injects the SAME object into shared modules
+            // on the server, so SSR markup and hydration agree and a
+            // non-public read renders empty on both sides instead of leaking.
+            // The exact `process.env.NODE_ENV` expression is still handled by
+            // optimization.nodeEnv (more specific match).
+            new rspack.DefinePlugin({ 'process.env': JSON.stringify(publicEnv(isDev)) }),
             // The server/client boundary: *.server.* never reaches the browser.
             new rspack.NormalModuleReplacementPlugin(SERVER_MODULE_PATTERN, join(FRAMEWORK_SRC, 'builder', 'server-stub.cjs')),
         ],
