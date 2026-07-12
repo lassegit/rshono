@@ -1,7 +1,7 @@
 {
     "name": "rs-hono",
     "version": "0.1.0",
-    "description": "Ultra-minimalist SSR framework — Hono + Rspack",
+    "description": "Ultra-minimalist multipage framework — Hono + Rspack",
     "type": "module",
     "exports": {
         ".": {
