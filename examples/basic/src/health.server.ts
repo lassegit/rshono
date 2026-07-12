@@ -2,9 +2,14 @@
  * Handler for the /api/quick-health endpoint — PRIVATE, never shipped.
  *
  * Inline endpoints in routes.ts reference a *.server module exporting
- * `handler`, so endpoint code (like this process.uptime() read) stays
- * out of the client bundle. For more complex APIs, use src/server.ts.
+ * `handler`, so endpoint code stays out of the client bundle. For more
+ * complex APIs, use src/server.ts.
+ *
+ * Uptime is a module-scope timestamp (not process.uptime()) so this
+ * endpoint also runs on non-Node runtimes (`build --target edge`).
  */
 import type { Handler } from 'rs-hono';
 
-export const handler: Handler = (c) => c.json({ ok: true, uptime: process.uptime() });
+const startedAt = Date.now();
+
+export const handler: Handler = (c) => c.json({ ok: true, uptime: (Date.now() - startedAt) / 1000 });

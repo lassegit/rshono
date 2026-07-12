@@ -70,7 +70,11 @@ export async function createServerRspackConfig(options: ServerConfigOptions): Pr
 
     const base: ClientRspackOptions = {
         mode: 'production',
-        devtool: false,
+        // The edge bundle is minified, so ship app.mjs.map beside it —
+        // platforms that accept source maps (wrangler:
+        // upload_source_maps) then show readable stack traces. The node
+        // bundle stays unminified and needs none.
+        devtool: isEdge ? 'source-map' : false,
         target: isEdge ? ['webworker', 'es2022'] : ['node', 'es2022'],
         entry: { server: entryFile },
         output: {

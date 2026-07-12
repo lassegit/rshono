@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "rs-hono dev",
     "build": "rs-hono build",
-    "start": "rs-hono start"
+    "start": "rs-hono start",
+    "build:node": "rs-hono build --target node",
+    "build:edge": "rs-hono build --target edge",
+    "preview": "rs-hono preview"
   },
   "dependencies": {
     "rs-hono": "^0.1.0",

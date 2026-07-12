@@ -13,7 +13,7 @@ import type { Hono, MiddlewareHandler } from 'hono';
 import { existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { RsHonoConfig } from '../config.js';
-import type { Route } from '../router.js';
+import { isPageRoute, type Route } from '../router.js';
 import { buildApp } from './app.js';
 import { loadRoutes, loadServerApp } from './load.js';
 import { readPrerendered } from './ssg.js';
@@ -87,6 +87,12 @@ export async function createAppHandler(options: HandlerOptions) {
     }
 
     const subApp = await loadServerApp(rootDir);
+
+    const all = routes ?? [];
+    console.log('  • Routes mounted:');
+    console.log(`    - ${all.filter(isPageRoute).length} pages`);
+    console.log(`    - ${all.filter((r) => r.kind === 'endpoint').length} endpoints`);
+    if (subApp) console.log('    - 1 server sub-app');
 
     const app = buildNodeApp({
         routes: routes ?? [],

@@ -108,3 +108,4 @@ if (targetDir !== process.cwd()) {
 }
 console.log(`    ${pm} install`);
 console.log(`    ${run} dev\n`);
+console.log("  Deployment (Node bundle, Cloudflare, Deno, Bun, ...): see README.md\n");

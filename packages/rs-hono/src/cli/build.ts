@@ -14,6 +14,7 @@ import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setAssets } from '../assets.js';
 import { assetManifestFromStats, writeAssetManifest } from '../builder/assets-manifest.js';
+import { generateDeployDoc, generateHeadersFile } from '../builder/deploy-doc.js';
 import { precompressDir } from '../builder/precompress.js';
 import { createClientRspackConfig } from '../builder/rspack-config.js';
 import { createServerRspackConfig, type ServerBundleTarget } from '../builder/rspack-server-config.js';
@@ -114,15 +115,19 @@ export async function buildCommand(target?: ServerBundleTarget) {
     if (target) {
         // Generated AFTER the client compile so the asset manifest
         // (hashed entry/CSS names) can be baked in as a literal.
-        const entryFile = join(rootDir, outDir, `.server-entry.${target}.mjs`);
-        writeFileSync(entryFile, generateServerEntry({ rootDir, outDir, publicDir: config.publicDir ?? 'public', target }));
+        const generated = generateServerEntry({ rootDir, outDir, publicDir: config.publicDir ?? 'public', target });
+        for (const file of generated.files) {
+            writeFileSync(file.path, file.source);
+        }
         try {
             await runCompiler(
-                await createServerRspackConfig({ rootDir, outDir, target, entryFile, assets: assetManifest, rspackHook: config.rspack }),
+                await createServerRspackConfig({ rootDir, outDir, target, entryFile: generated.entryPath, assets: assetManifest, rspackHook: config.rspack }),
                 'Server',
             );
         } finally {
-            rmSync(entryFile, { force: true });
+            for (const file of generated.files) {
+                rmSync(file.path, { force: true });
+            }
         }
         const bundleFile = target === 'edge' ? 'app.mjs' : 'index.mjs';
         console.log(`  ✓ Server bundle compiled → ${outDir}/server/${bundleFile}`);
@@ -139,19 +144,24 @@ export async function buildCommand(target?: ServerBundleTarget) {
             if (existsSync(ssgDir)) {
                 cpSync(ssgDir, siteDir, { recursive: true });
             }
-            console.log(`  ✓ Static site assembled → ${outDir}/site`);
+            writeFileSync(join(siteDir, '_headers'), generateHeadersFile());
+            writeFileSync(
+                join(rootDir, outDir, 'server', 'DEPLOY.md'),
+                generateDeployDoc({ outDir, buildDate: new Date().toISOString().slice(0, 10) }),
+            );
+            console.log(`  ✓ Static site assembled → ${outDir}/site (with _headers)`);
         }
     }
 
     console.log('');
     if (target === 'edge') {
         console.log('✅ Build complete.');
-        console.log(`   Deploy ${outDir}/server/app.mjs as the handler and ${outDir}/site as the static dir.`);
-        console.log(`   Workers/Bun: the module default-exports the app. Deno: Deno.serve(app.fetch).`);
+        console.log(`   Handler: ${outDir}/server/app.mjs · Static dir: ${outDir}/site — everything else in ${outDir}/ is intermediate.`);
+        console.log(`   Verify locally: \`rs-hono preview\`. Platform recipes: ${outDir}/server/DEPLOY.md`);
     } else if (target === 'node') {
         console.log('✅ Build complete.');
-        console.log(`   Run \`node ${outDir}/server/index.mjs\` from this directory — no tsx, no rs-hono install needed.`);
-        console.log(`   (Ship ${outDir}/ plus node_modules for your own runtime dependencies.)`);
+        console.log(`   Run \`node ${outDir}/server/index.mjs\` — from any directory; keep ${outDir}/'s layout intact.`);
+        console.log(`   (Ship ${outDir}/ plus node_modules for your own runtime dependencies — rs-hono itself can be a devDependency.)`);
     } else {
         console.log('✅ Build complete. Run `rs-hono start` to serve.');
     }

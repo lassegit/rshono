@@ -10,12 +10,16 @@ import { fakeDB } from './db.server';
 
 const server = new Hono();
 
+// Module-scope timestamp instead of process.uptime(), so this sub-app
+// also runs on non-Node runtimes (`build --target edge`).
+const startedAt = Date.now();
+
 // ─── API Routes ───────────────────────────────────────────────────────────
 
 server.get('/api/health', (c) => {
     return c.json({
         status: 'ok',
-        uptime: process.uptime(),
+        uptime: (Date.now() - startedAt) / 1000,
         timestamp: Date.now(),
     });
 });

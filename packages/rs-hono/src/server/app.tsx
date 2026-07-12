@@ -176,10 +176,9 @@ export function buildApp(options: BuildAppOptions): Hono {
         );
     });
 
-    console.log('  • Routes mounted:');
-    console.log(`    - ${pageRoutes.length} pages`);
-    console.log(`    - ${endpointRoutes.length} endpoints`);
-    if (subApp) console.log('    - 1 server sub-app');
+    // No logging here on purpose: buildApp runs at module evaluation in
+    // edge bundles — every isolate cold start would print it. The Node
+    // compositions (createAppHandler) log the mount summary instead.
 
     return app;
 }

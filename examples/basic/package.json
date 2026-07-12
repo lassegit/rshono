@@ -5,8 +5,11 @@
     "type": "module",
     "scripts": {
         "dev": "rs-hono dev",
-        "build": "rs-hono build --target edge",
-        "start": "rs-hono start"
+        "build": "rs-hono build",
+        "start": "rs-hono start",
+        "build:node": "rs-hono build --target node",
+        "build:edge": "rs-hono build --target edge",
+        "preview": "rs-hono preview"
     },
     "dependencies": {
         "hono": "^4.8.0",

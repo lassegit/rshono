@@ -3,16 +3,18 @@ import { parseArgs } from 'node:util';
 import { registerCssHooks } from '../builder/css-hooks.mjs';
 import { registerEnvHooks } from '../builder/env-hooks.mjs';
 import { publicEnv } from '../builder/public-env.js';
-// Loads .env/.env.local — before config/routes/loaders run (side-effect
-// module, shared with the generated node server-bundle entry).
-import '../server/load-env.js';
+import { loadEnvFiles } from '../server/load-env.js';
 import { buildCommand } from './build.js';
 import { devCommand } from './dev.js';
+import { previewCommand } from './preview.js';
 import { startCommand } from './start.js';
 
 // Before any user code loads: layouts/pages import CSS, which the server
 // (running raw source via tsx) cannot parse without these hooks.
 registerCssHooks();
+
+// .env files — before config/routes/loaders (and publicEnv below) run.
+loadEnvFiles(process.cwd());
 
 const { version } = createRequire(import.meta.url)('../../package.json');
 
@@ -21,9 +23,10 @@ const HELP = `rs-hono — Ultra-minimalist SSR framework (Hono + Rspack)
 Usage: rs-hono <command> [options]
 
 Commands:
-  dev     Start the development server
-  build   Build for production
-  start   Start the production server
+  dev      Start the development server
+  build    Build for production
+  start    Start the production server (tsx runtime)
+  preview  Serve an edge build locally (site/ + app.mjs, like a platform would)
 
 Options:
   -p, --port <number>       Port to listen on (default: PORT env, config dev.port, or 3000)
@@ -101,6 +104,9 @@ switch (command) {
         break;
     case 'start':
         await startCommand(port);
+        break;
+    case 'preview':
+        await previewCommand(port);
         break;
     default:
         fail(`Unknown command: "${command}"`);
