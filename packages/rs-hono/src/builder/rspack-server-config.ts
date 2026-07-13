@@ -128,7 +128,7 @@ export async function createServerRspackConfig(options: ServerConfigOptions): Pr
                 {
                     test: /\.[cm]?[tj]sx?$/,
                     include: srcDir,
-                    exclude: [SERVER_MODULE_PATTERN, join(srcDir, 'server.ts')],
+                    exclude: [SERVER_MODULE_PATTERN],
                     enforce: 'pre',
                     use: [
                         {

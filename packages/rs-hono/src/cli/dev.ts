@@ -2,7 +2,7 @@
  * Dev Server
  *
  * 1. Starts the Rspack client-bundle watcher (hydration chunks)
- * 2. Imports routes.ts / server.ts and builds the Hono app (SSR)
+ * 2. Imports routes.ts / the *.server.ts sub-app and builds the Hono app (SSR)
  * 3. Serves on localhost
  *
  * File watching for the SERVER side is handled by the bin launcher,

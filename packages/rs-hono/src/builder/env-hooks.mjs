@@ -10,8 +10,9 @@
  * `const process` shadow holding the same filtered object the client bundle
  * inlines. Same values on both sides: no leak, no hydration mismatch.
  *
- * Server-only code keeps the real environment: *.server.* modules,
- * src/server.ts, rs-hono.config.ts (outside src/), and node_modules.
+ * Server-only code keeps the real environment: *.server.* modules (the
+ * index.server.ts / app.server.ts sub-app included), rs-hono.config.ts
+ * (outside src/), and node_modules.
  *
  * Plain .mjs on purpose: `module.register()` loads this file in Node's
  * hooks thread, where tsx's TypeScript transform is not guaranteed to
@@ -34,14 +35,12 @@ export function registerEnvHooks(options) {
 }
 
 let srcPrefix = '';
-let serverAppUrl = '';
 let prelude = '';
 
 /** Runs once in the hooks thread with the data passed to register(). */
 export function initialize({ rootDir, publicEnv }) {
     const srcUrl = pathToFileURL(join(rootDir, 'src')).href;
     srcPrefix = srcUrl + '/';
-    serverAppUrl = srcUrl + '/server.ts';
     // No trailing newline: prepended to line 1 without shifting the line
     // numbers that stack traces and source maps report.
     prelude = `const process = { env: ${JSON.stringify(publicEnv)} }; `;
@@ -53,8 +52,7 @@ export async function load(url, context, nextLoad) {
 
     // tsx watch may append ?query cache-busters to module URLs.
     const clean = url.split('?')[0].split('#')[0];
-    const isShared =
-        clean.startsWith(srcPrefix) && clean !== serverAppUrl && SCRIPT_EXT.test(clean) && !SERVER_MODULE.test(clean);
+    const isShared = clean.startsWith(srcPrefix) && SCRIPT_EXT.test(clean) && !SERVER_MODULE.test(clean);
     if (!isShared || result.format !== 'module' || result.source == null) {
         return result;
     }

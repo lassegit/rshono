@@ -6,7 +6,7 @@ import { defineRoutes } from "rs-hono";
  * - kind: 'static'    → Pre-rendered at build time (SSG).
  * - kind: 'dynamic'   → Server-rendered on each request (SSR).
  * - kind: 'endpoint'  → Quick API handler. For complex APIs, create
- *                        src/server.ts with a Hono app instead.
+ *                        src/app.server.ts with a Hono app instead.
  *
  * This file is shared with the browser (it drives hydration and code
  * splitting), so it contains NO server code — only route data:

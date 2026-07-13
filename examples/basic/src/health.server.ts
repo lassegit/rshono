@@ -3,7 +3,7 @@
  *
  * Inline endpoints in routes.ts reference a *.server module exporting
  * `handler`, so endpoint code stays out of the client bundle. For more
- * complex APIs, use src/server.ts.
+ * complex APIs, use src/app.server.ts.
  *
  * Uptime is a module-scope timestamp (not process.uptime()) so this
  * endpoint also runs on non-Node runtimes (`build --target edge`).

@@ -166,7 +166,7 @@ export async function buildCommand(target?: ServerBundleTarget) {
         console.log('✅ Build complete. Run `rs-hono start` to serve.');
     }
     console.log('');
-    // The prerender step imports user code (routes, server.ts, onStart)
+    // The prerender step imports user code (routes, the sub-app, onStart)
     // that may hold the event loop open (DB pools, timers) — exit explicitly.
     process.exit(0);
 }

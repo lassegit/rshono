@@ -19,7 +19,7 @@ const startedAt = Date.now();
 server.get('/api/health', (c) => {
     return c.json({
         status: 'ok',
-        uptime: (Date.now() - startedAt) / 1000,
+        uptime: (Date.now() - startedAt) / 1000,˝
         timestamp: Date.now(),
     });
 });

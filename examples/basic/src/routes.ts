@@ -67,7 +67,7 @@ export const routes = defineRoutes([
     // API ENDPOINTS
     //
     // The handler lives in a *.server module (exported as `handler`).
-    // For more complex APIs, create src/server.ts and export a Hono app.
+    // For more complex APIs, create src/app.server.ts and export a Hono app.
     // ═══════════════════════════════════════════════════════════════════════
 
     {

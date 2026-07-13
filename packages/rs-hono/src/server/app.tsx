@@ -74,7 +74,7 @@ function errorPage(title: string, err: unknown, isDev: boolean): string {
 export interface BuildAppOptions {
     /** The route definitions from defineRoutes() */
     routes: Route[];
-    /** Optional Hono sub-app for API / middleware (e.g. from src/server.ts) */
+    /** Optional Hono sub-app for API / middleware (e.g. from src/index.server.ts) */
     subApp?: Hono;
     /** Whether running in dev mode */
     isDev: boolean;
@@ -107,7 +107,7 @@ export interface BuildAppOptions {
  *  1. Framework internals — reserved prefixes (/_static, /_rs-hono)
  *  2. Endpoint routes (from routes.ts)
  *  3. Page routes (SSR)
- *  4. User sub-app (src/server.ts) — matches whatever is left
+ *  4. User sub-app (src/*.server.ts) — matches whatever is left
  *  5. Error handler & 404
  */
 export function buildApp(options: BuildAppOptions): Hono {
