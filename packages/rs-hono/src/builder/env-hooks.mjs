@@ -11,8 +11,8 @@
  * inlines. Same values on both sides: no leak, no hydration mismatch.
  *
  * Server-only code keeps the real environment: *.server.* modules (the
- * index.server.ts / app.server.ts sub-app included), rs-hono.config.ts
- * (outside src/), and node_modules.
+ * *.server.ts sub-app included), rs-hono.config.ts (outside src/), and
+ * node_modules.
  *
  * Plain .mjs on purpose: `module.register()` loads this file in Node's
  * hooks thread, where tsx's TypeScript transform is not guaranteed to

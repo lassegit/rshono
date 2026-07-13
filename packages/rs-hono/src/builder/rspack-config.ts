@@ -153,7 +153,8 @@ export async function createClientRspackConfig(options: ClientConfigOptions): Pr
             // The server/client boundary: *.server.* never reaches the browser.
             new rspack.NormalModuleReplacementPlugin(SERVER_MODULE_PATTERN, join(FRAMEWORK_SRC, 'builder', 'server-stub.cjs')),
         ],
-        experiments: { css: true },
+        // Native CSS (the `css/auto` rules below) is on by default in
+        // Rspack 2 — the old `experiments.css` flag was removed.
     };
 
     // User escape hatch, applied here (not at the call sites) so every

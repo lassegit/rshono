@@ -89,7 +89,9 @@ export async function createServerRspackConfig(options: ServerConfigOptions): Pr
             publicPath: '/_static/',
             assetModuleFilename: 'assets/[name].[hash][ext]',
         },
-        experiments: { css: true, outputModule: true },
+        // Rspack 2: native CSS is on by default (old `experiments.css`),
+        // and ESM output is driven by `output.module` above (the old
+        // `experiments.outputModule` was removed).
         externalsType: 'module-import',
         externals: isEdge
             ? []

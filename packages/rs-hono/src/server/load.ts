@@ -30,9 +30,9 @@ export async function loadRoutes(rootDir: string): Promise<Route[] | null> {
 
 /**
  * Candidate filenames for the optional Hono sub-app, in priority order.
- * Both end in `.server.ts`, so the bundler's *.server.* replacement stubs
- * them out of the client bundle automatically — the sub-app can never
- * leak into the browser, whichever name is used.
+ * They all end in `.server.ts`, so the bundler's *.server.* replacement
+ * stubs them out of the client bundle automatically — the sub-app can
+ * never leak into the browser, whichever name is used.
  */
 export const SERVER_APP_FILENAMES = ['index.server.ts', 'app.server.ts', 'main.server.ts'] as const;
 
@@ -54,8 +54,8 @@ export function resolveServerAppPath(srcDir: string): string | undefined {
 }
 
 /**
- * Import the optional Hono sub-app (src/index.server.ts or
- * src/app.server.ts). Returns undefined when the file is missing, fails
+ * Import the optional Hono sub-app (one of SERVER_APP_FILENAMES, e.g.
+ * src/index.server.ts). Returns undefined when the file is missing, fails
  * to load, or doesn't export a Hono app.
  */
 export async function loadServerApp(rootDir: string): Promise<Hono | undefined> {

@@ -7,8 +7,7 @@
  * server and client render the same values (the client bundle inlines
  * the same object via DefinePlugin). Applied by rspack-server-config.ts
  * with the same include/exclude rules env-hooks.mjs uses: src/, minus
- * *.server.* modules (which include the index.server.ts / app.server.ts
- * sub-app).
+ * *.server.* modules (which include the *.server.ts sub-app).
  *
  * The prelude carries no newline, so stack-trace line numbers stay put.
  * Plain .cjs: rspack loads loaders by file path, outside the TS graph.

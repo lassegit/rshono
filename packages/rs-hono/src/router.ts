@@ -145,8 +145,8 @@ export interface DynamicRoute extends PageRouteBase {
 /**
  * An API endpoint. The handler lives in a `*.server.*` module (exported
  * as `handler`) so no server code ships to the browser. For more than a
- * couple of endpoints, use an `index.server.ts` / `app.server.ts` Hono
- * sub-app instead.
+ * couple of endpoints, use a `*.server.ts` Hono sub-app (e.g.
+ * src/index.server.ts) instead.
  */
 export interface EndpointRoute {
     kind: 'endpoint';
