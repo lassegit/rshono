@@ -68,6 +68,18 @@ export async function createServerRspackConfig(options: ServerConfigOptions): Pr
     const srcDir = join(rootDir, 'src');
     const isEdge = target === 'edge';
 
+    // swc transforms all first-party code; see the client config. React dev
+    // mode is always off in the server bundle (production SSR).
+    const swcLoader = {
+        loader: 'builtin:swc-loader',
+        options: {
+            detectSyntax: 'auto',
+            jsc: {
+                transform: { react: { runtime: 'automatic', development: false } },
+            },
+        },
+    };
+
     const base: ClientRspackOptions = {
         mode: 'production',
         // The edge bundle is minified, so ship app.mjs.map beside it —
@@ -139,19 +151,19 @@ export async function createServerRspackConfig(options: ServerConfigOptions): Pr
                         },
                     ],
                 },
+                // TypeScript across the whole graph — see the client config.
                 {
                     test: /\.tsx?$/,
-                    use: {
-                        loader: 'builtin:swc-loader',
-                        options: {
-                            jsc: {
-                                parser: { syntax: 'typescript', tsx: true },
-                                transform: {
-                                    react: { runtime: 'automatic', development: false },
-                                },
-                            },
-                        },
-                    },
+                    use: swcLoader,
+                    type: 'javascript/auto',
+                },
+                // The app's own JS/JSX, scoped to src/ (the edge bundle pulls
+                // in npm packages, so the scope keeps their prebuilt `.js`
+                // off swc).
+                {
+                    test: /\.jsx?$/,
+                    include: srcDir,
+                    use: swcLoader,
                     type: 'javascript/auto',
                 },
                 // CSS: class names only (same deterministic names as the

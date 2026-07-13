@@ -42,6 +42,20 @@ export async function createClientRspackConfig(options: ClientConfigOptions): Pr
     const { rootDir, outDir, isDev, rspackHook } = options;
     const srcDir = join(rootDir, 'src');
 
+    // swc transforms all first-party code. `detectSyntax: 'auto'` (v2)
+    // infers the parser from each file's extension, so one loader config
+    // serves .ts, .tsx, .js and .jsx alike — and `.ts` gets the correct
+    // non-JSX grammar (angle-bracket casts, generic arrows), not tsx.
+    const swcLoader = {
+        loader: 'builtin:swc-loader',
+        options: {
+            detectSyntax: 'auto',
+            jsc: {
+                transform: { react: { runtime: 'automatic', development: isDev } },
+            },
+        },
+    };
+
     // Typed ClientRspackOptions: the hook's contract that `plugins` and
     // `module.rules` exist is enforced here, on the literal itself.
     const base: ClientRspackOptions = {
@@ -69,6 +83,10 @@ export async function createClientRspackConfig(options: ClientConfigOptions): Pr
             cssChunkFilename: isDev ? 'chunks/[name].css' : 'chunks/[name].[contenthash].css',
         },
         optimization: {
+            // Content-hash module IDs so adding or removing a module doesn't
+            // renumber the rest and needlessly bust the [contenthash] of
+            // unrelated chunks — steadier long-term browser caching.
+            moduleIds: 'hashed',
             splitChunks: {
                 cacheGroups: {
                     // Merge ALL imported CSS into one "styles" chunk. Without
@@ -101,19 +119,21 @@ export async function createClientRspackConfig(options: ClientConfigOptions): Pr
         },
         module: {
             rules: [
+                // TypeScript across the whole graph — app src and the
+                // framework's own shipped source. `.ts`/`.tsx` never match
+                // published npm packages (they ship compiled `.js`), so this
+                // needs no node_modules guard.
                 {
                     test: /\.tsx?$/,
-                    use: {
-                        loader: 'builtin:swc-loader',
-                        options: {
-                            jsc: {
-                                parser: { syntax: 'typescript', tsx: true },
-                                transform: {
-                                    react: { runtime: 'automatic', development: isDev },
-                                },
-                            },
-                        },
-                    },
+                    use: swcLoader,
+                    type: 'javascript/auto',
+                },
+                // The app's own JS/JSX. Scoped to src/ so prebuilt `.js` in
+                // node_modules (React et al.) is passed through untouched.
+                {
+                    test: /\.jsx?$/,
+                    include: srcDir,
+                    use: swcLoader,
                     type: 'javascript/auto',
                 },
                 {
