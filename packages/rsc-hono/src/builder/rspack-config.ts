@@ -22,9 +22,11 @@
  *   - client bundle: `process.env` is REPLACED with the PUBLIC_-filtered
  *     literal (DefinePlugin) — a stray `process.env.SECRET` in client
  *     code compiles to undefined, never to a value.
- *   - client bundle: every *.server.* module is swapped for a throwing
- *     stub (NormalModuleReplacementPlugin) — a build guarantee, not
- *     tree-shaking best-effort.
+ *   - client bundle: reaching a *.server.* module from client code
+ *     fails the BUILD (server-boundary-loader.cjs) — a build guarantee,
+ *     not tree-shaking best-effort. The one directive-aware exception
+ *     is a module opening with 'use server': that's a server-actions
+ *     module, which the RSC transform turns into server references.
  *   - server bundle keeps the real process.env: server components run
  *     only on the server; only their rendered output ships.
  */
@@ -167,6 +169,13 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
         },
         module: {
             rules: [
+                // The *.server.* boundary — see the file header. 'pre' so
+                // it inspects the raw source before the swc RSC transform.
+                {
+                    test: SERVER_MODULE_PATTERN,
+                    enforce: 'pre',
+                    use: [{ loader: join(FRAMEWORK_SRC, 'builder', 'server-boundary-loader.cjs') }],
+                },
                 swcRule(BROWSER_TARGETS),
                 { test: /\.css$/i, type: 'css/auto' },
                 { test: /\.(png|jpe?g|gif|webp|avif|ico|svg|woff2?|ttf|otf)$/i, type: 'asset' },
@@ -177,8 +186,6 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
             // Only PUBLIC_-prefixed vars reach the browser; the whole
             // `process.env` expression becomes this literal.
             new rspack.DefinePlugin({ 'process.env': JSON.stringify(publicEnv(isDev)) }),
-            // The *.server.* boundary — see the file header.
-            new rspack.NormalModuleReplacementPlugin(SERVER_MODULE_PATTERN, join(FRAMEWORK_SRC, 'builder', 'server-stub.cjs')),
             ...(isDev ? [new rspack.HotModuleReplacementPlugin(), new ReactRefreshRspackPlugin()] : []),
         ],
         performance: false,

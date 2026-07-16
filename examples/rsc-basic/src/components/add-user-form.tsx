@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { createUser } from '../actions';
+import { createUser } from '../actions.server';
 
 /**
  * Calls a server action directly (typed args, typed result). The action

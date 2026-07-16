@@ -3,6 +3,12 @@
  * server reference: client components import this module and receive
  * typed async stubs that POST back here. Importing server-only modules
  * (db.server) is safe — this code never leaves the server.
+ *
+ * The .server.ts suffix is optional for action modules: the framework's
+ * client-bundle guard recognizes the 'use server' directive and lets
+ * the RSC transform do its job. Wearing both is belt-and-braces — if
+ * the directive were ever removed, the suffix would fail the build
+ * instead of letting this module ship to the browser.
  */
 'use server';
 

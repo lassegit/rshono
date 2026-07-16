@@ -70,7 +70,7 @@ Call them directly from client code (typed args and result), or wire them to `<f
 ## Env & secret safety
 
 - **Client bundle**: `process.env` is *replaced at build time* with a literal containing only `NODE_ENV` and `PUBLIC_`-prefixed variables. A stray `process.env.DATABASE_URL` in client code compiles to `undefined` — the value cannot ship.
-- **`*.server.*` modules** (matching `.server.ts`, `.server.mjs`, …) are physically replaced with a throwing stub in the client bundle — a build guarantee, not tree-shaking. Server components may import them freely.
+- **`*.server.*` modules** (matching `.server.ts`, `.server.mjs`, …): importing one from client code **fails the build** with the offending module named — a build guarantee, not tree-shaking. Server components may import them freely (they never enter the client graph), and a `*.server` module that opens with `'use server'` is recognized as a server-actions module and compiles to server references as usual. The React `server-only` marker package also works if you prefer that convention (the RSC layer resolves the `react-server` condition), though it only fails at runtime rather than at build time.
 - **Server code** keeps the real `process.env`. `.env.local` and `.env` are loaded automatically (real environment wins).
 - Mind that anything a server component *renders* is public by definition.
 

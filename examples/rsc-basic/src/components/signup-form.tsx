@@ -1,7 +1,7 @@
 'use client';
 
 import { useActionState } from 'react';
-import { signup, type SignupState } from '../actions';
+import { signup, type SignupState } from '../actions.server';
 
 const initialState: SignupState = {};
 
