@@ -1,5 +1,3 @@
-'use server-entry';
-
 import type { PageProps } from 'rsc-hono';
 import { Counter } from './counter';
 import { Layout } from './layout';

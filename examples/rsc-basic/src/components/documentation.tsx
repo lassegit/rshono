@@ -1,3 +1,5 @@
+// The directive is normally injected automatically (see routes.ts);
+// this page keeps it explicit to exercise the manual path too.
 'use server-entry';
 
 import type { PageProps } from 'rsc-hono';

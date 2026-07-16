@@ -9,11 +9,13 @@
  * ever evaluated on the server (the browser receives pages as serialized
  * RSC payloads), so referencing `*.server.*` modules from here is safe.
  *
- * Every page module must:
- *   - start with the `'use server-entry'` directive (Rspack attaches the
- *     page's client JS/CSS assets to the component, enabling per-page
- *     code splitting), and
- *   - default-export a server component taking `PageProps`.
+ * Every page module default-exports a server component taking
+ * `PageProps`. Under the hood each page carries the `'use server-entry'`
+ * directive (Rspack attaches the page's client JS/CSS assets to the
+ * component, enabling per-page code splitting) — the framework injects
+ * it automatically for components referenced with the inline
+ * `component: () => import('…')` thunk form; only pages wired up some
+ * other way need to write the directive themselves.
  *
  * Fully interactive pages are a thin server component wrapping a
  * `'use client'` component.
@@ -63,8 +65,9 @@ export interface PageRoute {
     /** Hono path pattern, e.g. '/docs/:slug'. */
     path: string;
     /**
-     * Lazy page import. The module must start with 'use server-entry'
-     * and default-export a server component.
+     * Lazy page import — write it as an inline `() => import('…')` thunk
+     * so the framework can inject 'use server-entry' automatically. The
+     * module must default-export a server component.
      */
     component: () => Promise<{ default: PageComponent }>;
     /**

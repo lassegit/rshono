@@ -1,5 +1,3 @@
-'use server-entry';
-
 import { Layout } from './layout';
 import { SignupForm } from './signup-form';
 

@@ -28,11 +28,12 @@
  *   - server bundle keeps the real process.env: server components run
  *     only on the server; only their rendered output ships.
  */
-import { rspack, type RspackOptions, type RuleSetRule } from '@rspack/core';
+import { rspack, type Compiler, type RspackOptions, type RuleSetRule } from '@rspack/core';
 import { ReactRefreshRspackPlugin } from '@rspack/plugin-react-refresh';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { scanPageFiles } from './page-files.js';
 import { publicEnv } from './public-env.js';
 
 const FRAMEWORK_SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -120,6 +121,21 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
     // per config pair (Rspack requirement).
     const { ServerPlugin, ClientPlugin } = rspack.experiments.rsc.createPlugins();
     const { Layers } = rspack.experiments.rsc;
+
+    // Automatic 'use server-entry': route components named by inline
+    // `component: () => import('…')` thunks in routes.ts get the
+    // directive prepended (page-entry-loader.cjs). The rule condition
+    // closes over a mutable Set that is re-scanned before every
+    // (re)build, so routes added mid-session work without a restart.
+    const pageFiles = new Set<string>();
+    scanPageFiles(routesFile, srcDir, pageFiles);
+    const pageScanPlugin = {
+        apply(compiler: Compiler) {
+            const refresh = () => scanPageFiles(routesFile, srcDir, pageFiles);
+            compiler.hooks.beforeRun.tap('RscHonoPageScan', refresh);
+            compiler.hooks.watchRun.tap('RscHonoPageScan', refresh);
+        },
+    };
 
     const clientConfig: RspackOptions = {
         name: 'client',
@@ -225,6 +241,13 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
         },
         module: {
             rules: [
+                // Before swc (whose RSC transform consumes directives):
+                // inject 'use server-entry' into route component modules.
+                {
+                    test: (resource: string) => pageFiles.has(resource),
+                    enforce: 'pre',
+                    use: [{ loader: join(FRAMEWORK_SRC, 'builder', 'page-entry-loader.cjs') }],
+                },
                 swcRule(NODE_TARGETS),
                 { test: /\.css$/i, type: 'css/auto' },
                 // Same URLs as the client bundle, but nothing written —
@@ -251,7 +274,7 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
                 },
             ],
         },
-        plugins: [new ServerPlugin({ onServerComponentChanges })],
+        plugins: [pageScanPlugin, new ServerPlugin({ onServerComponentChanges })],
         performance: false,
     };
 

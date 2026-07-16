@@ -1,5 +1,3 @@
-'use server-entry';
-
 import type { PageProps } from 'rsc-hono';
 import { fakeDB } from '../db.server';
 import { Layout } from './layout';

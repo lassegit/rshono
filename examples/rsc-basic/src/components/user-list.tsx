@@ -1,5 +1,3 @@
-'use server-entry';
-
 import { fakeDB } from '../db.server';
 import { AddUserForm } from './add-user-form';
 import { Layout } from './layout';

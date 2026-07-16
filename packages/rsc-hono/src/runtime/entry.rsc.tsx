@@ -83,8 +83,10 @@ async function loadPage(route: PageRoute): Promise<ServerEntry<PageComponent>> {
     }
     if (!Page.entryJsFiles) {
         throw new Error(
-            `[rsc-hono] The page module for "${route.path}" must start with the 'use server-entry' directive ` +
-                '(it enables per-page code splitting and asset tracking).',
+            `[rsc-hono] The page component for "${route.path}" is missing its client-asset info ('use server-entry'). ` +
+                "The directive is added automatically for inline `component: () => import('…')` thunks in routes.ts. " +
+                "If this route uses another pattern, put 'use server-entry' on the first line of the page module yourself — " +
+                "and make sure the page is a server component (a 'use client' page must be wrapped by a server component instead).",
         );
     }
     return Page;

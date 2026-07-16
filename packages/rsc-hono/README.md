@@ -32,11 +32,11 @@ routes.ts only ever runs on the server — importing `*.server` modules from it 
 
 ## Pages are server components
 
-Every page module must **start with the `'use server-entry'` directive** and **default-export a server component**. The directive is what makes Rspack attach the page's client JS/CSS assets to the component — per-page code splitting with no asset manifest. The framework throws a descriptive error when it's missing.
+Every page module **default-exports a server component** — nothing else. Under the hood each page carries Rspack's `'use server-entry'` directive (it attaches the page's client JS/CSS assets to the component — per-page code splitting with no asset manifest), but the framework **injects it automatically** for every component referenced with the inline `component: () => import('…')` thunk form in routes.ts. This also works for routes added while the dev server is running.
+
+If a component is wired up some other way (variable indirection, barrel re-exports, computed specifiers), write `'use server-entry'` as the first line of the page module yourself — a manually written directive is always respected. The framework throws a descriptive error when neither happened.
 
 ```tsx
-'use server-entry';
-
 import type { PageProps } from 'rsc-hono';
 import { db } from '../db.server';
 
