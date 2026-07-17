@@ -255,6 +255,23 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
                     enforce: 'pre',
                     use: [{ loader: join(FRAMEWORK_SRC, 'builder', 'page-entry-loader.cjs') }],
                 },
+                // Shadow process.env with the PUBLIC_ view in app modules
+                // (client components are SSR'd in this bundle — without
+                // this, a process.env.SECRET in one would render into the
+                // HTML). *.server.* files and 'use server' action modules
+                // keep the real env.
+                {
+                    test: /\.[cm]?[tj]sx?$/,
+                    include: srcDir,
+                    exclude: [SERVER_MODULE_PATTERN],
+                    enforce: 'pre',
+                    use: [
+                        {
+                            loader: join(FRAMEWORK_SRC, 'builder', 'env-shadow-loader.cjs'),
+                            options: { prelude: `const process = { env: ${JSON.stringify(publicEnv(isDev))} }; ` },
+                        },
+                    ],
+                },
                 swcRule(NODE_TARGETS),
                 { test: /\.css$/i, type: 'css/auto' },
                 // Same URLs as the client bundle, but nothing written —

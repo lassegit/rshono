@@ -19,4 +19,4 @@ export {
     type Route,
 } from './router.js';
 
-export type { Context, Handler } from 'hono';
+export type { Context, ErrorHandler, Handler, NotFoundHandler } from 'hono';

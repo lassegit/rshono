@@ -13,9 +13,16 @@
     "bin": {
         "rsc-hono": "./bin/cli.cjs"
     },
-    "files": ["src", "bin"],
+    "files": [
+        "src",
+        "bin"
+    ],
+    "engines": {
+        "node": ">=20.19"
+    },
     "scripts": {
-        "typecheck": "tsc --noEmit"
+        "typecheck": "tsc --noEmit",
+        "test": "node --test --test-concurrency=1 \"test/*.test.mjs\""
     },
     "dependencies": {
         "@hono/node-server": "^2.0.8",

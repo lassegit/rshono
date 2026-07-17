@@ -1,8 +1,19 @@
 import { Hono } from 'hono';
+import type { NotFoundHandler } from 'rsc-hono';
 import { fakeDB } from './db.server';
 
 const server = new Hono();
 const startedAt = Date.now();
+
+// Optional named export: replaces the framework's plain-text 404.
+// (An `onError` export works the same way for the 500 page.)
+export const notFound: NotFoundHandler = (c) =>
+    c.html(
+        `<!doctype html><html lang="en"><body style="font-family:sans-serif;text-align:center;padding:4rem">
+            <h1>404 — nothing here</h1><p><a href="/">Back to rsc-basic</a></p>
+        </body></html>`,
+        404,
+    );
 
 server.get('/api/health', (c) => {
     return c.json({ status: 'ok', uptime: (Date.now() - startedAt) / 1000, timestamp: Date.now() });

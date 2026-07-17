@@ -13,3 +13,6 @@ interface ImportMeta {
 
 /** Compilation hash of the running client bundle; updated by HMR applies. */
 declare const __webpack_hash__: string;
+
+/** Nonce the bundler runtime stamps on dynamically injected script tags. */
+declare var __webpack_nonce__: string | undefined;

@@ -29,6 +29,13 @@ import type { RscPayload } from './entry.rsc.js';
 import { createRscRenderRequest } from './request.js';
 
 async function main() {
+    // CSP mode (RSC_HONO_CSP): the server renders a csp-nonce meta tag;
+    // mirror it into the bundler runtime so dynamically loaded chunks
+    // carry the nonce too. Must happen before the first deserialization,
+    // which may already load client-component chunks.
+    const cspMeta = document.querySelector('meta[property="csp-nonce"]') as HTMLMetaElement | null;
+    if (cspMeta?.nonce) __webpack_nonce__ = cspMeta.nonce;
+
     // Stashed so navigation/actions/dev-refresh can re-render from
     // outside the component.
     let setPayload: (v: RscPayload) => void;
@@ -42,7 +49,21 @@ async function main() {
             setPayload = (v) => React.startTransition(() => setPayloadState(v));
         }, []);
 
-        React.useEffect(() => listenNavigation(() => fetchRscPayload()), []);
+        React.useEffect(
+            () =>
+                listenNavigation((type) => {
+                    fetchRscPayload()
+                        .then(() => {
+                            // New page via link/pushState starts at the top;
+                            // back/forward keeps the browser's position.
+                            if (type === 'push') requestAnimationFrame(() => window.scrollTo(0, 0));
+                        })
+                        // Payload fetch failed (server restarting, network,
+                        // non-page URL) — a full navigation always works.
+                        .catch(() => window.location.reload());
+                }),
+            [],
+        );
 
         return payload.root;
     }
@@ -76,24 +97,28 @@ async function main() {
     }
 }
 
+type NavigationType = 'push' | 'replace' | 'pop';
+
 /**
  * Intercept same-origin navigation so page transitions become flight
- * fetches. New-tab/download/modified clicks fall through to the browser.
+ * fetches. New-tab/download/modified clicks and in-page anchors fall
+ * through to the browser.
  */
-function listenNavigation(onNavigation: () => void): () => void {
-    window.addEventListener('popstate', onNavigation);
+function listenNavigation(onNavigation: (type: NavigationType) => void): () => void {
+    const onPopState = () => onNavigation('pop');
+    window.addEventListener('popstate', onPopState);
 
     const oldPushState = window.history.pushState;
     window.history.pushState = function (...args) {
         const res = oldPushState.apply(this, args);
-        onNavigation();
+        onNavigation('push');
         return res;
     };
 
     const oldReplaceState = window.history.replaceState;
     window.history.replaceState = function (...args) {
         const res = oldReplaceState.apply(this, args);
-        onNavigation();
+        onNavigation('replace');
         return res;
     };
 
@@ -113,6 +138,8 @@ function listenNavigation(onNavigation: () => void): () => void {
             !e.shiftKey &&
             !e.defaultPrevented
         ) {
+            // In-page anchor (only the hash differs): native scroll, no refetch.
+            if (link.hash && link.pathname === location.pathname && link.search === location.search) return;
             e.preventDefault();
             history.pushState(null, '', link.href);
         }
@@ -121,7 +148,7 @@ function listenNavigation(onNavigation: () => void): () => void {
 
     return () => {
         document.removeEventListener('click', onClick);
-        window.removeEventListener('popstate', onNavigation);
+        window.removeEventListener('popstate', onPopState);
         window.history.pushState = oldPushState;
         window.history.replaceState = oldReplaceState;
     };

@@ -71,8 +71,20 @@ Call them directly from client code (typed args and result), or wire them to `<f
 
 - **Client bundle**: `process.env` is *replaced at build time* with a literal containing only `NODE_ENV` and `PUBLIC_`-prefixed variables. A stray `process.env.DATABASE_URL` in client code compiles to `undefined` — the value cannot ship.
 - **`*.server.*` modules** (matching `.server.ts`, `.server.mjs`, …): importing one from client code **fails the build** with the offending module named — a build guarantee, not tree-shaking. Server components may import them freely (they never enter the client graph), and a `*.server` module that opens with `'use server'` is recognized as a server-actions module and compiles to server references as usual. The React `server-only` marker package also works if you prefer that convention (the RSC layer resolves the `react-server` condition), though it only fails at runtime rather than at build time.
-- **Server code** keeps the real `process.env`. `.env.local` and `.env` are loaded automatically (real environment wins).
+- **Real `process.env` is confined to `*.server.*` modules and `'use server'` action modules.** Everything else — pages, shared components, and especially client components being SSR'd — sees the same PUBLIC_-filtered view as the browser, so SSR HTML and hydration always agree and a `process.env.SECRET` in component code renders empty instead of leaking into the HTML stream. Read secrets in `*.server` modules (or actions) and pass derived data down.
+- `.env.local` and `.env` are loaded automatically (real environment wins).
 - Mind that anything a server component *renders* is public by definition.
+
+## Security & hardening
+
+- **CSRF**: server-action POSTs are origin-checked automatically — a cross-origin `Origin` header (against `Host`/`x-forwarded-host`) is rejected with 403. Applies to both client-initiated calls and no-JS form posts.
+- **Render deadline**: every page render (flight + SSR) races a timeout (`RSC_HONO_RENDER_TIMEOUT_MS`, default 10000) and the client-disconnect signal, so hung data fetches can't pin sockets open.
+- **CSP (opt-in)**: set `RSC_HONO_CSP=1` to send a strict per-request-nonce `Content-Security-Policy` with every HTML document (nonce stamped on bootstrap scripts, inlined flight payload, and dynamically loaded chunks). While enabled, `kind: 'static'` routes render per request — prerendered files can't carry a per-request nonce.
+- **Error responses**: thrown server-action errors are redacted in production payloads (React digest behavior) — return values, not throws, for user-facing errors. Custom error pages: `export const notFound` and/or `export const onError` (Hono handlers) from `src/index.server.ts`.
+
+## Testing
+
+`pnpm --filter rsc-hono test` — a node:test e2e suite that builds `examples/rsc-basic`, boots the real production server (and a second instance with CSP on) plus a dev-server smoke, and asserts pages, flight protocol, actions (client + progressive enhancement), CSRF rejection, secret stripping in bundles *and* rendered HTML, SSG output, and cache headers.
 
 ## How it works
 

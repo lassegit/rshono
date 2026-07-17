@@ -20,7 +20,7 @@
  * with a 'ready' message.
  */
 import { serve } from '@hono/node-server';
-import type { Context, Handler } from 'hono';
+import type { Context, ErrorHandler, Handler, NotFoundHandler } from 'hono';
 import { Hono } from 'hono';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -39,8 +39,11 @@ import {
 } from 'react-server-dom-rspack/server.node';
 // @ts-expect-error — resolved by the '@rsc-hono/routes' alias to the app's routes.ts
 import { routes as userRoutes } from '@rsc-hono/routes';
+// Namespace import: the optional named exports (notFound, onError) must
+// not become build errors when the app's index.server.ts doesn't define
+// them — or doesn't exist (the alias then points at the empty fallback).
 // @ts-expect-error — resolved by the '@rsc-hono/server-app' alias (index.server.ts or the empty fallback)
-import serverApp from '@rsc-hono/server-app';
+import * as serverAppModule from '@rsc-hono/server-app';
 import { isPageRoute, type EndpointRoute, type PageComponent, type PageRoute, type Route } from '../router.js';
 import { loadEnvFiles } from '../server/load-env.js';
 import { readPrerendered } from '../server/ssg.js';
@@ -51,6 +54,30 @@ import { parseRenderRequest } from './request.js';
 const isDev = process.env.NODE_ENV === 'development';
 /** dist/server/main.mjs → the app root is two levels up. */
 const rootDir = join(import.meta.dirname, '..', '..');
+
+// Dynamic-key lookup on purpose: a static `serverAppModule.onError`
+// property access is treated as a named import by the bundler's ESM
+// linker and HARD-FAILS the build when the app's index.server.ts
+// doesn't define that (optional!) export. A computed access with a
+// non-literal key stays a runtime lookup.
+const pickServerAppExport = (name: string) => (serverAppModule as Record<string, unknown>)[name];
+const serverApp = (pickServerAppExport('default') ?? null) as Hono | null;
+const userNotFound = pickServerAppExport('notFound') as NotFoundHandler | undefined;
+const userOnError = pickServerAppExport('onError') as ErrorHandler | undefined;
+
+/**
+ * Hard ceiling on a single page render (flight + SSR), so a hung data
+ * fetch or unresolved Suspense promise can't hold sockets open forever.
+ */
+const RENDER_TIMEOUT_MS = Number(process.env.RSC_HONO_RENDER_TIMEOUT_MS || 10_000);
+
+/**
+ * Opt-in strict Content-Security-Policy: set RSC_HONO_CSP=1 to send a
+ * per-request-nonce CSP header with every rendered HTML document.
+ * Prerendered (SSG) pages are skipped while enabled — static HTML can't
+ * carry a per-request nonce — those routes fall back to per-request SSR.
+ */
+const cspEnabled = !!process.env.RSC_HONO_CSP;
 
 // Covers env reads at request time even when the bundle is started with
 // plain `node dist/server/main.mjs`. (Module-top-level env reads in user
@@ -72,6 +99,32 @@ export type RscPayload = {
     /** useActionState state of a progressive-enhancement form POST. */
     formState?: ReactFormState;
 };
+
+// ─── CSRF ─────────────────────────────────────────────────────────────────
+
+/**
+ * Same-origin check for server-action POSTs.
+ *
+ * Browsers attach an Origin header to every POST; a cross-site form (or
+ * fetch) therefore always reveals itself, and a mismatch is rejected.
+ * The header cannot be forged from a victim's browser — only from
+ * custom clients (curl, server-to-server), which either omit it
+ * (allowed: no ambient cookies, not a CSRF vector) or control it
+ * outright anyway. x-forwarded-host covers reverse-proxy deployments
+ * where Host is the internal address; a real cross-site attacker can't
+ * set that header from a browser either.
+ */
+function isSameOriginAction(request: Request): boolean {
+    const origin = request.headers.get('origin');
+    if (!origin) return true;
+    let originHost: string;
+    try {
+        originHost = new URL(origin).host;
+    } catch {
+        return false;
+    }
+    return originHost === request.headers.get('x-forwarded-host') || originHost === request.headers.get('host');
+}
 
 // ─── Page rendering ───────────────────────────────────────────────────────
 
@@ -96,6 +149,10 @@ async function renderPage(c: Context, route: PageRoute): Promise<Response> {
     const request = c.req.raw;
     const renderRequest = parseRenderRequest(request);
 
+    // One deadline for the whole render; also aborts when the client
+    // disconnects mid-stream.
+    const signal = AbortSignal.any([request.signal, AbortSignal.timeout(RENDER_TIMEOUT_MS)]);
+
     // Run a server action (if any) BEFORE rendering, so the rendered
     // tree reflects the post-action state.
     let returnValue: RscPayload['returnValue'];
@@ -103,6 +160,9 @@ async function renderPage(c: Context, route: PageRoute): Promise<Response> {
     let temporaryReferences: TemporaryReferenceSet | undefined;
     let actionStatus: number | undefined;
     if (renderRequest.isAction) {
+        if (!isSameOriginAction(request)) {
+            return c.text('Forbidden: cross-origin server action rejected', 403);
+        }
         if (renderRequest.actionId) {
             // Called from hydrated client code via setServerCallback.
             const contentType = request.headers.get('content-type');
@@ -134,9 +194,14 @@ async function renderPage(c: Context, route: PageRoute): Promise<Response> {
     }
 
     const Page = await loadPage(route);
+    const nonce = cspEnabled && !renderRequest.isRsc ? crypto.randomUUID() : undefined;
     const props = { params: c.req.param(), url: c.req.url };
     const root = (
         <>
+            {/* React reads this meta for nonces on dynamically inserted
+                scripts/styles; entry.client mirrors it into
+                __webpack_nonce__ for chunk loading. */}
+            {nonce && <meta property="csp-nonce" nonce={nonce} />}
             {Page.entryCssFiles?.map((href) => (
                 <link key={href} rel="stylesheet" href={href} precedence="default" />
             ))}
@@ -147,8 +212,9 @@ async function renderPage(c: Context, route: PageRoute): Promise<Response> {
     const rscPayload: RscPayload = { root, formState, returnValue };
     const rscStream = renderToReadableStream(rscPayload, {
         temporaryReferences,
+        signal,
         onError(error) {
-            console.error('[rsc-hono] render error:', error);
+            if (!signal.aborted) console.error('[rsc-hono] render error:', error);
         },
     });
 
@@ -162,10 +228,26 @@ async function renderPage(c: Context, route: PageRoute): Promise<Response> {
     const ssrResult = await renderHTML(rscStream, {
         bootstrapScripts: Page.entryJsFiles,
         formState,
+        signal,
+        nonce,
     });
+    const headers = new Headers({ 'content-type': 'text/html;charset=utf-8' });
+    if (nonce) {
+        headers.set(
+            'content-security-policy',
+            [
+                `default-src 'self'`,
+                // unsafe-eval only in dev: React's findSourceMapURL uses eval
+                `script-src 'self' 'nonce-${nonce}'${isDev ? " 'unsafe-eval'" : ''}`,
+                `style-src 'self' 'unsafe-inline'`,
+                `img-src 'self' data:`,
+                `connect-src 'self'`,
+            ].join('; '),
+        );
+    }
     return new Response(ssrResult.stream, {
         status: ssrResult.status ?? actionStatus,
-        headers: { 'content-type': 'text/html;charset=utf-8' },
+        headers,
     });
 }
 
@@ -191,9 +273,10 @@ function buildApp(): Hono {
         if (isPageRoute(route)) {
             const handler: Handler = async (c) => {
                 // Prerendered static pages are served from disk in prod.
-                // Flight (soft-nav) requests still render: the files hold
-                // HTML, not payloads.
-                if (!isDev && route.kind === 'static' && c.req.method === 'GET' && !parseRenderRequest(c.req.raw).isRsc) {
+                // Flight (soft-nav) requests still render (the files hold
+                // HTML, not payloads), and CSP mode disables the shortcut
+                // entirely: static files can't carry per-request nonces.
+                if (!isDev && !cspEnabled && route.kind === 'static' && c.req.method === 'GET' && !parseRenderRequest(c.req.raw).isRsc) {
                     const html = await readPrerendered(ssgDir, c.req.path);
                     if (html !== null) return c.html(html);
                 }
@@ -224,9 +307,13 @@ function buildApp(): Hono {
         app.route('/', serverApp);
     }
 
-    app.notFound((c) => c.text('Not Found', 404));
+    // Custom error pages: `export const notFound` / `export const onError`
+    // (Hono handlers) from src/index.server.ts override the plain-text
+    // defaults. Errors are always logged, whoever renders the response.
+    app.notFound(userNotFound ?? ((c) => c.text('Not Found', 404)));
     app.onError((error, c) => {
         console.error('[rsc-hono] request error:', error);
+        if (userOnError) return userOnError(error, c);
         const detail = isDev ? `\n\n${error instanceof Error ? (error.stack ?? error.message) : String(error)}` : '';
         return c.text(`Internal Server Error${detail}`, 500);
     });
