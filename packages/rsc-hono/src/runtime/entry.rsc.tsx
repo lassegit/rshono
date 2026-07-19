@@ -20,7 +20,7 @@
  * with a 'ready' message.
  */
 import { serve } from '@hono/node-server';
-import type { Context, ErrorHandler, Handler, NotFoundHandler } from 'hono';
+import type { Context, Handler } from 'hono';
 import { Hono } from 'hono';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -39,12 +39,18 @@ import {
 } from 'react-server-dom-rspack/server.node';
 // @ts-expect-error — resolved by the '@rsc-hono/routes' alias to the app's routes.ts
 import { routes as userRoutes } from '@rsc-hono/routes';
-// Namespace import: the optional named exports (notFound, onError) must
-// not become build errors when the app's index.server.ts doesn't define
-// them — or doesn't exist (the alias then points at the empty fallback).
 // @ts-expect-error — resolved by the '@rsc-hono/server-app' alias (index.server.ts or the empty fallback)
 import * as serverAppModule from '@rsc-hono/server-app';
-import { isPageRoute, type EndpointRoute, type PageComponent, type PageRoute, type Route } from '../router.js';
+import {
+    isPageRoute,
+    type EndpointRoute,
+    type ErrorInfo,
+    type PageComponent,
+    type PageRoute,
+    type Route,
+    type RouteConfig,
+    type SpecialPage,
+} from '../router.js';
 import { loadEnvFiles } from '../server/load-env.js';
 import { readPrerendered } from '../server/ssg.js';
 import { createStaticMiddleware } from '../server/static.js';
@@ -55,15 +61,7 @@ const isDev = process.env.NODE_ENV === 'development';
 /** dist/server/main.mjs → the app root is two levels up. */
 const rootDir = join(import.meta.dirname, '..', '..');
 
-// Dynamic-key lookup on purpose: a static `serverAppModule.onError`
-// property access is treated as a named import by the bundler's ESM
-// linker and HARD-FAILS the build when the app's index.server.ts
-// doesn't define that (optional!) export. A computed access with a
-// non-literal key stays a runtime lookup.
-const pickServerAppExport = (name: string) => (serverAppModule as Record<string, unknown>)[name];
-const serverApp = (pickServerAppExport('default') ?? null) as Hono | null;
-const userNotFound = pickServerAppExport('notFound') as NotFoundHandler | undefined;
-const userOnError = pickServerAppExport('onError') as ErrorHandler | undefined;
+const serverApp = ((serverAppModule as { default?: unknown }).default ?? null) as Hono | null;
 
 /**
  * Hard ceiling on a single page render (flight + SSR), so a hung data
@@ -85,7 +83,9 @@ const cspEnabled = !!process.env.RSC_HONO_CSP;
 // before Node does, if you need those.)
 loadEnvFiles(rootDir);
 
-export const routes: readonly Route[] = userRoutes;
+const routeConfig = userRoutes as RouteConfig;
+/** The route table (consumed by the SSG build step too). */
+export const routes: readonly Route[] = routeConfig.routes;
 
 /**
  * The schema serialized into the flight stream and deserialized by the
@@ -128,30 +128,117 @@ function isSameOriginAction(request: Request): boolean {
 
 // ─── Page rendering ───────────────────────────────────────────────────────
 
-async function loadPage(route: PageRoute): Promise<ServerEntry<PageComponent>> {
-    const mod = await route.component();
+async function loadPageModule(load: () => Promise<{ default: PageComponent }>, label: string): Promise<ServerEntry<PageComponent>> {
+    const mod = await load();
     const Page = mod.default as ServerEntry<PageComponent> | undefined;
     if (typeof Page !== 'function') {
-        throw new Error(`[rsc-hono] The page module for "${route.path}" must default-export a server component.`);
+        throw new Error(`[rsc-hono] The page module for ${label} must default-export a server component.`);
     }
     if (!Page.entryJsFiles) {
         throw new Error(
-            `[rsc-hono] The page component for "${route.path}" is missing its client-asset info ('use server-entry'). ` +
+            `[rsc-hono] The page component for ${label} is missing its client-asset info ('use server-entry'). ` +
                 "The directive is added automatically for inline `component: () => import('…')` thunks in routes.ts. " +
-                "If this route uses another pattern, put 'use server-entry' on the first line of the page module yourself — " +
+                "If this page is wired up another way, put 'use server-entry' on the first line of the page module yourself — " +
                 "and make sure the page is a server component (a 'use client' page must be wrapped by a server component instead).",
         );
     }
     return Page;
 }
 
+function loadPage(route: PageRoute): Promise<ServerEntry<PageComponent>> {
+    return loadPageModule(route.component, `"${route.path}"`);
+}
+
+interface ComponentRenderOptions {
+    /** Response status (SSR shell failure still overrides with 500). */
+    status?: number;
+    /** Respond with a flight payload instead of HTML. */
+    isRsc: boolean;
+    formState?: ReactFormState;
+    returnValue?: RscPayload['returnValue'];
+    temporaryReferences?: TemporaryReferenceSet;
+    /** Merged into the page props (e.g. the error page's `error`). */
+    extraProps?: Record<string, unknown>;
+}
+
+/**
+ * The core RSC pipeline for one component: flight stream (+ SSR to HTML
+ * unless the request wants the payload), with timeout/disconnect abort,
+ * per-page CSS, and opt-in CSP. Shared by routed pages and the special
+ * 404/500 pages.
+ */
+async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opts: ComponentRenderOptions): Promise<Response> {
+    // One deadline for the whole render; also aborts when the client
+    // disconnects mid-stream.
+    const signal = AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(RENDER_TIMEOUT_MS)]);
+    const nonce = cspEnabled && !opts.isRsc ? crypto.randomUUID() : undefined;
+    // Inside notFound/onError handlers no route matched, and Hono's
+    // param() throws rather than returning {}.
+    let params: Record<string, string> = {};
+    try {
+        params = c.req.param();
+    } catch {
+        // no matched route — special pages get empty params
+    }
+    const props = { params, url: c.req.url, ...opts.extraProps };
+    const root = (
+        <>
+            {/* React reads this meta for nonces on dynamically inserted
+                scripts/styles; entry.client mirrors it into
+                __webpack_nonce__ for chunk loading. */}
+            {nonce && <meta property="csp-nonce" nonce={nonce} />}
+            {Page.entryCssFiles?.map((href) => (
+                <link key={href} rel="stylesheet" href={href} precedence="default" />
+            ))}
+            <Page {...props} />
+        </>
+    );
+
+    const rscPayload: RscPayload = { root, formState: opts.formState, returnValue: opts.returnValue };
+    const rscStream = renderToReadableStream(rscPayload, {
+        temporaryReferences: opts.temporaryReferences,
+        signal,
+        onError(error) {
+            if (!signal.aborted) console.error('[rsc-hono] render error:', error);
+        },
+    });
+
+    if (opts.isRsc) {
+        return new Response(rscStream, {
+            status: opts.status,
+            headers: { 'content-type': 'text/x-component;charset=utf-8' },
+        });
+    }
+
+    const ssrResult = await renderHTML(rscStream, {
+        bootstrapScripts: Page.entryJsFiles,
+        formState: opts.formState,
+        signal,
+        nonce,
+    });
+    const headers = new Headers({ 'content-type': 'text/html;charset=utf-8' });
+    if (nonce) {
+        headers.set(
+            'content-security-policy',
+            [
+                `default-src 'self'`,
+                // unsafe-eval only in dev: React's findSourceMapURL uses eval
+                `script-src 'self' 'nonce-${nonce}'${isDev ? " 'unsafe-eval'" : ''}`,
+                `style-src 'self' 'unsafe-inline'`,
+                `img-src 'self' data:`,
+                `connect-src 'self'`,
+            ].join('; '),
+        );
+    }
+    return new Response(ssrResult.stream, {
+        status: ssrResult.status ?? opts.status,
+        headers,
+    });
+}
+
 async function renderPage(c: Context, route: PageRoute): Promise<Response> {
     const request = c.req.raw;
     const renderRequest = parseRenderRequest(request);
-
-    // One deadline for the whole render; also aborts when the client
-    // disconnects mid-stream.
-    const signal = AbortSignal.any([request.signal, AbortSignal.timeout(RENDER_TIMEOUT_MS)]);
 
     // Run a server action (if any) BEFORE rendering, so the rendered
     // tree reflects the post-action state.
@@ -194,60 +281,12 @@ async function renderPage(c: Context, route: PageRoute): Promise<Response> {
     }
 
     const Page = await loadPage(route);
-    const nonce = cspEnabled && !renderRequest.isRsc ? crypto.randomUUID() : undefined;
-    const props = { params: c.req.param(), url: c.req.url };
-    const root = (
-        <>
-            {/* React reads this meta for nonces on dynamically inserted
-                scripts/styles; entry.client mirrors it into
-                __webpack_nonce__ for chunk loading. */}
-            {nonce && <meta property="csp-nonce" nonce={nonce} />}
-            {Page.entryCssFiles?.map((href) => (
-                <link key={href} rel="stylesheet" href={href} precedence="default" />
-            ))}
-            <Page {...props} />
-        </>
-    );
-
-    const rscPayload: RscPayload = { root, formState, returnValue };
-    const rscStream = renderToReadableStream(rscPayload, {
-        temporaryReferences,
-        signal,
-        onError(error) {
-            if (!signal.aborted) console.error('[rsc-hono] render error:', error);
-        },
-    });
-
-    if (renderRequest.isRsc) {
-        return new Response(rscStream, {
-            status: actionStatus,
-            headers: { 'content-type': 'text/x-component;charset=utf-8' },
-        });
-    }
-
-    const ssrResult = await renderHTML(rscStream, {
-        bootstrapScripts: Page.entryJsFiles,
+    return renderComponent(c, Page, {
+        status: actionStatus,
+        isRsc: renderRequest.isRsc,
         formState,
-        signal,
-        nonce,
-    });
-    const headers = new Headers({ 'content-type': 'text/html;charset=utf-8' });
-    if (nonce) {
-        headers.set(
-            'content-security-policy',
-            [
-                `default-src 'self'`,
-                // unsafe-eval only in dev: React's findSourceMapURL uses eval
-                `script-src 'self' 'nonce-${nonce}'${isDev ? " 'unsafe-eval'" : ''}`,
-                `style-src 'self' 'unsafe-inline'`,
-                `img-src 'self' data:`,
-                `connect-src 'self'`,
-            ].join('; '),
-        );
-    }
-    return new Response(ssrResult.stream, {
-        status: ssrResult.status ?? actionStatus,
-        headers,
+        returnValue,
+        temporaryReferences,
     });
 }
 
@@ -307,13 +346,49 @@ function buildApp(): Hono {
         app.route('/', serverApp);
     }
 
-    // Custom error pages: `export const notFound` / `export const onError`
-    // (Hono handlers) from src/index.server.ts override the plain-text
-    // defaults. Errors are always logged, whoever renders the response.
-    app.notFound(userNotFound ?? ((c) => c.text('Not Found', 404)));
-    app.onError((error, c) => {
+    // Special pages from routes.ts: real RSC pages, rendered through the
+    // same pipeline as routed pages (per-page assets, CSP, timeouts).
+    // Non-HTML clients (JSON APIs, curl) keep plain-text responses.
+    const memoizePage = (page: SpecialPage, label: string) => {
+        let promise: Promise<ServerEntry<PageComponent>> | undefined;
+        return () => (promise ??= loadPageModule(page.component, label));
+    };
+
+    const loadNotFoundPage = routeConfig.notFound ? memoizePage(routeConfig.notFound, 'the notFound page') : null;
+    app.notFound(async (c) => {
+        const wantsHtml = c.req.header('accept')?.includes('text/html') ?? false;
+        const { isRsc } = parseRenderRequest(c.req.raw);
+        if (loadNotFoundPage && (wantsHtml || isRsc)) {
+            // isRsc: a soft navigation to a dead link renders the 404
+            // page in place, as a flight payload.
+            return renderComponent(c, await loadNotFoundPage(), { status: 404, isRsc });
+        }
+        return c.text('Not Found', 404);
+    });
+
+    const loadErrorPage = routeConfig.error ? memoizePage(routeConfig.error, 'the error page') : null;
+    app.onError(async (error, c) => {
         console.error('[rsc-hono] request error:', error);
-        if (userOnError) return userOnError(error, c);
+        const wantsHtml = c.req.header('accept')?.includes('text/html') ?? false;
+        if (loadErrorPage && wantsHtml) {
+            // What the error page sees — pre-redacted in production.
+            const errorInfo: ErrorInfo = isDev
+                ? {
+                      message: error instanceof Error ? error.message : String(error),
+                      stack: error instanceof Error ? error.stack : undefined,
+                  }
+                : { message: 'Internal Server Error' };
+            try {
+                return await renderComponent(c, await loadErrorPage(), {
+                    status: 500,
+                    isRsc: false,
+                    extraProps: { error: errorInfo },
+                });
+            } catch (renderError) {
+                // The error page itself failed — fall through to plain text.
+                console.error('[rsc-hono] the error page failed to render:', renderError);
+            }
+        }
         const detail = isDev ? `\n\n${error instanceof Error ? (error.stack ?? error.message) : String(error)}` : '';
         return c.text(`Internal Server Error${detail}`, 500);
     });

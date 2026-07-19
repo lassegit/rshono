@@ -11,12 +11,16 @@ export {
     isPageRoute,
     type EndpointRoute,
     type EndpointServerModule,
+    type ErrorInfo,
+    type ErrorPageProps,
     type HTTPMethod,
     type PageComponent,
     type PageProps,
     type PageRoute,
     type PathParams,
     type Route,
+    type RouteConfig,
+    type SpecialPage,
 } from './router.js';
 
-export type { Context, ErrorHandler, Handler, NotFoundHandler } from 'hono';
+export type { Context, Handler } from 'hono';

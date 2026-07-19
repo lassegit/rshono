@@ -103,6 +103,41 @@ export function isPageRoute(route: Route): route is PageRoute {
     return route.kind !== 'endpoint';
 }
 
+// ─── Special pages ────────────────────────────────────────────────────────
+
+/** A page rendered outside the route table (404 / 500). */
+export interface SpecialPage {
+    /**
+     * Lazy page import, same contract as a route component (inline thunk
+     * → 'use server-entry' is injected automatically; default-exports a
+     * server component).
+     */
+    component: () => Promise<{ default: PageComponent }>;
+}
+
+/** What the server passes about a failure — pre-redacted in production. */
+export interface ErrorInfo {
+    message: string;
+    /** Only present in development. */
+    stack?: string;
+}
+
+/** Props the `error` page receives: PageProps plus the (safe) error. */
+export type ErrorPageProps = PageProps & { error: ErrorInfo };
+
+/**
+ * The full route configuration: the route table plus optional special
+ * pages. `notFound` renders (status 404) when no route matches — for
+ * HTML requests and soft navigations alike; `error` renders (status
+ * 500) when a request handler throws. Non-HTML clients (JSON, curl)
+ * still get plain-text responses.
+ */
+export interface RouteConfig<TRoutes extends readonly Route[] = readonly Route[]> {
+    routes: TRoutes;
+    notFound?: SpecialPage;
+    error?: SpecialPage;
+}
+
 // ─── defineRoutes ─────────────────────────────────────────────────────────
 
 /**
@@ -119,16 +154,28 @@ type ValidateRoute<R> = R extends {
         : R & { component: `component props are not satisfied by PageProps<'${P}'>` }
     : R;
 
+type ValidateRoutes<TRoutes extends readonly Route[]> = { [K in keyof TRoutes]: ValidateRoute<TRoutes[K]> };
+
 /**
  * Define all application routes — the single source of truth.
  *
  * @example
- * export const routes = defineRoutes([
- *   { path: '/', component: () => import('./components/home') },
- *   { path: '/docs/:slug', kind: 'static', component: () => import('./components/documentation') },
- *   { kind: 'endpoint', path: '/api/health', server: () => import('./health.server') },
- * ]);
+ * export const routes = defineRoutes({
+ *   routes: [
+ *     { path: '/', component: () => import('./components/home') },
+ *     { path: '/docs/:slug', kind: 'static', component: () => import('./components/documentation') },
+ *     { kind: 'endpoint', path: '/api/health', server: () => import('./health.server') },
+ *   ],
+ *   notFound: { component: () => import('./components/404') },
+ *   error: { component: () => import('./components/500') },
+ * });
+ *
+ * A plain array (no special pages) is accepted as shorthand.
  */
-export function defineRoutes<const TRoutes extends readonly Route[]>(userRoutes: TRoutes & { [K in keyof TRoutes]: ValidateRoute<TRoutes[K]> }): TRoutes {
-    return userRoutes;
+export function defineRoutes<const TRoutes extends readonly Route[]>(
+    config: RouteConfig<TRoutes> & { routes: ValidateRoutes<TRoutes> },
+): RouteConfig<TRoutes>;
+export function defineRoutes<const TRoutes extends readonly Route[]>(routes: TRoutes & ValidateRoutes<TRoutes>): RouteConfig<TRoutes>;
+export function defineRoutes(input: readonly Route[] | RouteConfig): RouteConfig {
+    return Array.isArray(input) ? { routes: input } : (input as RouteConfig);
 }

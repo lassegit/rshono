@@ -62,10 +62,38 @@ test('endpoint route and Hono sub-app respond with JSON', async () => {
     assert.ok(Array.isArray(users.users) && users.users.length >= 3);
 });
 
-test('custom notFound export renders the 404 page', async () => {
-    const res = await fetch(`${base}/definitely-not-a-page`);
+test('notFound page from routes.ts renders as a real RSC page', async () => {
+    const res = await fetch(`${base}/definitely-not-a-page`, { headers: { Accept: 'text/html' } });
     assert.equal(res.status, 404);
-    assert.match(await res.text(), /404 — nothing here/);
+    const html = await res.text();
+    assert.match(html, /404 — nothing here/);
+    assert.match(html, /__FLIGHT_DATA/, '404 page should hydrate like any page');
+});
+
+test('soft navigation to a dead link gets a 404 flight payload', async () => {
+    const res = await fetch(`${base}/definitely-not-a-page`, { headers: { Accept: 'text/x-component' } });
+    assert.equal(res.status, 404);
+    assert.match(res.headers.get('content-type'), /text\/x-component/);
+    assert.match(await res.text(), /nothing here/);
+});
+
+test('non-HTML clients get plain-text 404s', async () => {
+    const res = await fetch(`${base}/api/definitely-not-an-endpoint`);
+    assert.equal(res.status, 404);
+    assert.equal(await res.text(), 'Not Found');
+});
+
+test('error page from routes.ts renders with redacted error info in prod', async () => {
+    const res = await fetch(`${base}/users`, {
+        method: 'POST',
+        headers: { Accept: 'text/html', Origin: base, 'x-rsc-action': 'deadbeef', 'content-type': 'text/plain' },
+        body: '[]',
+    });
+    assert.equal(res.status, 500);
+    const html = await res.text();
+    assert.match(html, /Something went wrong/);
+    assert.match(html, /Internal Server Error/, 'prod error page shows the generic message');
+    assert.doesNotMatch(html, /Failed to find Server Action/, 'real error detail must be redacted in prod');
 });
 
 test('static route is prerendered at build time and served in prod', async () => {

@@ -15,20 +15,28 @@ rsc-hono start   # run the production build
 ```ts
 import { defineRoutes } from 'rsc-hono';
 
-export const routes = defineRoutes([
-    { path: '/', component: () => import('./components/home') },
-    { path: '/profile/:id', component: () => import('./components/profile') },
-    {
-        path: '/docs/:slug',
-        kind: 'static', // prerendered at build time
-        component: () => import('./components/documentation'),
-        staticPaths: async () => [{ slug: 'getting-started' }, { slug: 'deployment' }],
-    },
-    { kind: 'endpoint', path: '/api/health', server: () => import('./health.server') },
-]);
+export const routes = defineRoutes({
+    routes: [
+        { path: '/', component: () => import('./components/home') },
+        { path: '/profile/:id', component: () => import('./components/profile') },
+        {
+            path: '/docs/:slug',
+            kind: 'static', // prerendered at build time
+            component: () => import('./components/documentation'),
+            staticPaths: async () => [{ slug: 'getting-started' }, { slug: 'deployment' }],
+        },
+        { kind: 'endpoint', path: '/api/health', server: () => import('./health.server') },
+    ],
+    // Special pages — ordinary server components, rendered through the
+    // same RSC pipeline. notFound also renders for soft navigations to
+    // dead links; error receives `error` props (ErrorPageProps),
+    // pre-redacted in production. Non-HTML clients get plain text.
+    notFound: { component: () => import('./components/404') },
+    error: { component: () => import('./components/500') },
+});
 ```
 
-routes.ts only ever runs on the server — importing `*.server` modules from it (e.g. inside `staticPaths`) is safe.
+routes.ts only ever runs on the server — importing `*.server` modules from it (e.g. inside `staticPaths`) is safe. A plain array (no special pages) is accepted as shorthand.
 
 ## Pages are server components
 
@@ -80,7 +88,7 @@ Call them directly from client code (typed args and result), or wire them to `<f
 - **CSRF**: server-action POSTs are origin-checked automatically — a cross-origin `Origin` header (against `Host`/`x-forwarded-host`) is rejected with 403. Applies to both client-initiated calls and no-JS form posts.
 - **Render deadline**: every page render (flight + SSR) races a timeout (`RSC_HONO_RENDER_TIMEOUT_MS`, default 10000) and the client-disconnect signal, so hung data fetches can't pin sockets open.
 - **CSP (opt-in)**: set `RSC_HONO_CSP=1` to send a strict per-request-nonce `Content-Security-Policy` with every HTML document (nonce stamped on bootstrap scripts, inlined flight payload, and dynamically loaded chunks). While enabled, `kind: 'static'` routes render per request — prerendered files can't carry a per-request nonce.
-- **Error responses**: thrown server-action errors are redacted in production payloads (React digest behavior) — return values, not throws, for user-facing errors. Custom error pages: `export const notFound` and/or `export const onError` (Hono handlers) from `src/index.server.ts`.
+- **Error responses**: thrown server-action errors are redacted in production payloads (React digest behavior) — return values, not throws, for user-facing errors. Custom 404/500 pages are real server components declared in routes.ts (`notFound` / `error`); the error page's `error` prop is message-only in production, message + stack in dev.
 
 ## Testing
 
