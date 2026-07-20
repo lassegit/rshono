@@ -13,7 +13,6 @@ server.use('*', async (c, next) => {
   await next();
   const end = performance.now();
   c.res.headers.set('X-Response-Time', `${(end - start).toFixed(2)} ms`);
-  c.res.headers.set('x-from', 'hey');
 });
 
 server.get('/api/health', (c) => {

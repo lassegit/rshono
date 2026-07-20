@@ -1,5 +1,5 @@
 /**
- * Production e2e: one real `rshono build` of examples/rsc-basic, then
+ * Production e2e: one real `rshono build` of examples/rs-basic, then
  * assertions against a running `rshono start` server — pages, flight
  * protocol, server actions (client + progressive enhancement), CSRF,
  * SSG, caching, secret stripping, and a second instance with CSP on.

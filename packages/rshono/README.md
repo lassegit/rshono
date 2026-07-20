@@ -92,7 +92,7 @@ Call them directly from client code (typed args and result), or wire them to `<f
 
 ## Testing
 
-`pnpm --filter rshono test` — a node:test e2e suite that builds `examples/rsc-basic`, boots the real production server (and a second instance with CSP on) plus a dev-server smoke, and asserts pages, flight protocol, actions (client + progressive enhancement), CSRF rejection, secret stripping in bundles _and_ rendered HTML, SSG output, and cache headers.
+`pnpm --filter rshono test` — a node:test e2e suite that builds `examples/rs-basic`, boots the real production server (and a second instance with CSP on) plus a dev-server smoke, and asserts pages, flight protocol, actions (client + progressive enhancement), CSRF rejection, secret stripping in bundles _and_ rendered HTML, SSG output, and cache headers.
 
 ## How it works
 

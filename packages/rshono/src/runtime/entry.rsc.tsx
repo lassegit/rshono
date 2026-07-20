@@ -10,9 +10,15 @@
  * ('@rshono/server-app'), in this order (first match wins):
  *
  *   /_static/*  → static files (client bundle + public/)
+ *   sub-app     → the user's Hono app, mounted at / — mounted ahead of
+ *                 routes.ts so `server.use(...)` middleware there wraps
+ *                 every request below it (routes.ts pages/endpoints
+ *                 included), Next.js-middleware style. A terminal route
+ *                 registered in the sub-app therefore also takes
+ *                 precedence over a routes.ts entry at the same path —
+ *                 don't define the same path in both places.
  *   endpoints   → routes.ts `kind: 'endpoint'` handlers
  *   pages       → GET renders; POST runs a server action, then renders
- *   sub-app     → the user's Hono app, mounted at /
  *
  * Boot: unless RSC_HONO_PRERENDER is set (build-time SSG imports the
  * app without starting a listener), serve() on PORT — or, in dev, on
@@ -306,6 +312,16 @@ function buildApp(): Hono {
     }),
   );
 
+  // The user's Hono sub-app — full Hono power (any method, streaming,
+  // websockets in prod, middleware) at any path not taken by a route.
+  // Mounted BEFORE routes.ts's own routes so `server.use(...)`
+  // middleware there runs on every request (it calls next() and falls
+  // through to the handlers registered below), rather than only on
+  // paths the sub-app itself defines.
+  if (serverApp) {
+    app.route('/', serverApp);
+  }
+
   const ssgDir = join(rootDir, 'dist', 'ssg');
 
   for (const route of routes) {
@@ -338,12 +354,6 @@ function buildApp(): Hono {
       if (method === 'all') app.all(endpoint.path, handler);
       else app.on(method.toUpperCase(), endpoint.path, handler);
     }
-  }
-
-  // The user's Hono sub-app — full Hono power (any method, streaming,
-  // websockets in prod, middleware) at any path not taken by a route.
-  if (serverApp) {
-    app.route('/', serverApp);
   }
 
   // Special pages from routes.ts: real RSC pages, rendered through the

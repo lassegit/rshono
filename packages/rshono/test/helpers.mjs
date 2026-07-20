@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = join(fileURLToPath(import.meta.url), '..', '..', '..', '..');
-export const EXAMPLE_DIR = join(ROOT, 'examples', 'rsc-basic');
+export const EXAMPLE_DIR = join(ROOT, 'examples', 'rs-basic');
 export const EXAMPLE_DIST = join(EXAMPLE_DIR, 'dist');
 const CLI = join(ROOT, 'packages', 'rshono', 'bin', 'cli.cjs');
 
