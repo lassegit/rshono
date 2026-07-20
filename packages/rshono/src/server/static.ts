@@ -19,40 +19,40 @@ import { Hono } from 'hono';
 const CONTENT_HASHED = /\.[0-9a-f]{8,}\./;
 
 interface StaticOptions {
-    roots: string[];
-    isDev: boolean;
+  roots: string[];
+  isDev: boolean;
 }
 
 export function createStaticMiddleware(options: StaticOptions): Hono {
-    const { roots, isDev } = options;
-    const app = new Hono();
+  const { roots, isDev } = options;
+  const app = new Hono();
 
-    // Cache policy is applied after the fact: serveStatic's own onFound
-    // hook runs too late to add headers (the response is already built).
-    const withCacheControl: MiddlewareHandler = async (c, next) => {
-        await next();
-        if (c.res.status !== 200 && c.res.status !== 206) return;
-        c.res.headers.set(
-            'Cache-Control',
-            isDev ? 'no-cache' : CONTENT_HASHED.test(c.req.path) ? 'public, max-age=31536000, immutable' : 'public, max-age=300',
-        );
-    };
-
-    app.on(
-        ['GET', 'HEAD'],
-        '/*',
-        withCacheControl,
-        ...roots.map((root) =>
-            serveStatic({
-                root,
-                // Mounted at /_static, but serveStatic sees the full request path.
-                rewriteRequestPath: (path) => path.replace(/^\/_static/, ''),
-            }),
-        ),
-        // All roots missed — terminate with a plain 404 instead of falling
-        // through to the HTML 404 page.
-        (c) => c.text('Not Found', 404),
+  // Cache policy is applied after the fact: serveStatic's own onFound
+  // hook runs too late to add headers (the response is already built).
+  const withCacheControl: MiddlewareHandler = async (c, next) => {
+    await next();
+    if (c.res.status !== 200 && c.res.status !== 206) return;
+    c.res.headers.set(
+      'Cache-Control',
+      isDev ? 'no-cache' : CONTENT_HASHED.test(c.req.path) ? 'public, max-age=31536000, immutable' : 'public, max-age=300',
     );
+  };
 
-    return app;
+  app.on(
+    ['GET', 'HEAD'],
+    '/*',
+    withCacheControl,
+    ...roots.map((root) =>
+      serveStatic({
+        root,
+        // Mounted at /_static, but serveStatic sees the full request path.
+        rewriteRequestPath: (path) => path.replace(/^\/_static/, ''),
+      }),
+    ),
+    // All roots missed — terminate with a plain 404 instead of falling
+    // through to the HTML 404 page.
+    (c) => c.text('Not Found', 404),
+  );
+
+  return app;
 }

@@ -34,9 +34,8 @@ type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never) exten
  * template-literal machinery so `:id`, `:id?` and `:id{[0-9]+}` behave
  * exactly like `c.req.param()`.
  */
-export type PathParams<P extends string> = ParamKeys<P> extends never
-    ? Record<string, never>
-    : Simplify<UnionToIntersection<ParamKeyToRecord<ParamKeys<P>>>>;
+export type PathParams<P extends string> =
+  ParamKeys<P> extends never ? Record<string, never> : Simplify<UnionToIntersection<ParamKeyToRecord<ParamKeys<P>>>>;
 
 // ─── Page Props ───────────────────────────────────────────────────────────
 
@@ -46,9 +45,9 @@ export type PathParams<P extends string> = ParamKeys<P> extends never
  * `PageProps` keeps the untyped `Record<string, string>` params.
  */
 export interface PageProps<Path extends string = string> {
-    params: string extends Path ? Record<string, string> : PathParams<Path>;
-    /** Full request URL. */
-    url: string;
+  params: string extends Path ? Record<string, string> : PathParams<Path>;
+  /** Full request URL. */
+  url: string;
 }
 
 /** A page component: a (possibly async) React Server Component. */
@@ -58,29 +57,29 @@ export type PageComponent<P = any> = (props: P) => ReactNode | Promise<ReactNode
 
 /** What an endpoint route's `*.server.*` module must export. */
 export interface EndpointServerModule {
-    handler: Handler;
+  handler: Handler;
 }
 
 export interface PageRoute {
-    /** Hono path pattern, e.g. '/docs/:slug'. */
-    path: string;
-    /**
-     * Lazy page import — write it as an inline `() => import('…')` thunk
-     * so the framework can inject 'use server-entry' automatically. The
-     * module must default-export a server component.
-     */
-    component: () => Promise<{ default: PageComponent }>;
-    /**
-     * 'static' pages are pre-rendered to HTML at build time (SSG) and
-     * served from disk in production. Default: 'dynamic' (SSR per request).
-     */
-    kind?: 'static' | 'dynamic';
-    /**
-     * For `kind: 'static'` routes with params (e.g. '/docs/:slug'): the
-     * param sets to prerender at build time. Requests for paths not
-     * returned here fall back to per-request SSR.
-     */
-    staticPaths?: () => Array<Record<string, string>> | Promise<Array<Record<string, string>>>;
+  /** Hono path pattern, e.g. '/docs/:slug'. */
+  path: string;
+  /**
+   * Lazy page import — write it as an inline `() => import('…')` thunk
+   * so the framework can inject 'use server-entry' automatically. The
+   * module must default-export a server component.
+   */
+  component: () => Promise<{ default: PageComponent }>;
+  /**
+   * 'static' pages are pre-rendered to HTML at build time (SSG) and
+   * served from disk in production. Default: 'dynamic' (SSR per request).
+   */
+  kind?: 'static' | 'dynamic';
+  /**
+   * For `kind: 'static'` routes with params (e.g. '/docs/:slug'): the
+   * param sets to prerender at build time. Requests for paths not
+   * returned here fall back to per-request SSR.
+   */
+  staticPaths?: () => Array<Record<string, string>> | Promise<Array<Record<string, string>>>;
 }
 
 /**
@@ -89,10 +88,10 @@ export interface PageRoute {
  * src/index.server.ts Hono sub-app instead.
  */
 export interface EndpointRoute {
-    kind: 'endpoint';
-    path: string;
-    method?: HTTPMethod;
-    server: () => Promise<EndpointServerModule>;
+  kind: 'endpoint';
+  path: string;
+  method?: HTTPMethod;
+  server: () => Promise<EndpointServerModule>;
 }
 
 export type HTTPMethod = 'get' | 'post' | 'put' | 'patch' | 'delete' | 'head' | 'options' | 'all';
@@ -100,26 +99,26 @@ export type HTTPMethod = 'get' | 'post' | 'put' | 'patch' | 'delete' | 'head' | 
 export type Route = PageRoute | EndpointRoute;
 
 export function isPageRoute(route: Route): route is PageRoute {
-    return route.kind !== 'endpoint';
+  return route.kind !== 'endpoint';
 }
 
 // ─── Special pages ────────────────────────────────────────────────────────
 
 /** A page rendered outside the route table (404 / 500). */
 export interface SpecialPage {
-    /**
-     * Lazy page import, same contract as a route component (inline thunk
-     * → 'use server-entry' is injected automatically; default-exports a
-     * server component).
-     */
-    component: () => Promise<{ default: PageComponent }>;
+  /**
+   * Lazy page import, same contract as a route component (inline thunk
+   * → 'use server-entry' is injected automatically; default-exports a
+   * server component).
+   */
+  component: () => Promise<{ default: PageComponent }>;
 }
 
 /** What the server passes about a failure — pre-redacted in production. */
 export interface ErrorInfo {
-    message: string;
-    /** Only present in development. */
-    stack?: string;
+  message: string;
+  /** Only present in development. */
+  stack?: string;
 }
 
 /** Props the `error` page receives: PageProps plus the (safe) error. */
@@ -133,9 +132,9 @@ export type ErrorPageProps = PageProps & { error: ErrorInfo };
  * still get plain-text responses.
  */
 export interface RouteConfig<TRoutes extends readonly Route[] = readonly Route[]> {
-    routes: TRoutes;
-    notFound?: SpecialPage;
-    error?: SpecialPage;
+  routes: TRoutes;
+  notFound?: SpecialPage;
+  error?: SpecialPage;
 }
 
 // ─── defineRoutes ─────────────────────────────────────────────────────────
@@ -146,13 +145,13 @@ export interface RouteConfig<TRoutes extends readonly Route[] = readonly Route[]
  * property's type becomes an error-message string literal.
  */
 type ValidateRoute<R> = R extends {
-    path: infer P extends string;
-    component: () => Promise<{ default: PageComponent<infer CP> }>;
+  path: infer P extends string;
+  component: () => Promise<{ default: PageComponent<infer CP> }>;
 }
-    ? [PageProps<P>] extends [CP]
-        ? R
-        : R & { component: `component props are not satisfied by PageProps<'${P}'>` }
-    : R;
+  ? [PageProps<P>] extends [CP]
+    ? R
+    : R & { component: `component props are not satisfied by PageProps<'${P}'>` }
+  : R;
 
 type ValidateRoutes<TRoutes extends readonly Route[]> = { [K in keyof TRoutes]: ValidateRoute<TRoutes[K]> };
 
@@ -173,9 +172,9 @@ type ValidateRoutes<TRoutes extends readonly Route[]> = { [K in keyof TRoutes]: 
  * A plain array (no special pages) is accepted as shorthand.
  */
 export function defineRoutes<const TRoutes extends readonly Route[]>(
-    config: RouteConfig<TRoutes> & { routes: ValidateRoutes<TRoutes> },
+  config: RouteConfig<TRoutes> & { routes: ValidateRoutes<TRoutes> },
 ): RouteConfig<TRoutes>;
 export function defineRoutes<const TRoutes extends readonly Route[]>(routes: TRoutes & ValidateRoutes<TRoutes>): RouteConfig<TRoutes>;
 export function defineRoutes(input: readonly Route[] | RouteConfig): RouteConfig {
-    return Array.isArray(input) ? { routes: input } : (input as RouteConfig);
+  return Array.isArray(input) ? { routes: input } : (input as RouteConfig);
 }

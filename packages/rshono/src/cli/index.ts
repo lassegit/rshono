@@ -27,52 +27,52 @@ Options:
 `;
 
 async function main(): Promise<void> {
-    const { values, positionals } = parseArgs({
-        options: {
-            port: { type: 'string', short: 'p' },
-            help: { type: 'boolean', short: 'h' },
-            version: { type: 'boolean', short: 'v' },
-        },
-        allowPositionals: true,
-    });
+  const { values, positionals } = parseArgs({
+    options: {
+      port: { type: 'string', short: 'p' },
+      help: { type: 'boolean', short: 'h' },
+      version: { type: 'boolean', short: 'v' },
+    },
+    allowPositionals: true,
+  });
 
-    if (values.version) {
-        const require = createRequire(import.meta.url);
-        console.log(require('rshono/package.json').version);
-        return;
-    }
+  if (values.version) {
+    const require = createRequire(import.meta.url);
+    console.log(require('rshono/package.json').version);
+    return;
+  }
 
-    const command = positionals[0];
-    if (values.help || !command) {
-        console.log(HELP);
-        return;
-    }
+  const command = positionals[0];
+  if (values.help || !command) {
+    console.log(HELP);
+    return;
+  }
 
-    const rootDir = process.cwd();
-    // Real environment > .env.local > .env — before any user code runs.
-    loadEnvFiles(rootDir);
+  const rootDir = process.cwd();
+  // Real environment > .env.local > .env — before any user code runs.
+  loadEnvFiles(rootDir);
 
-    const port = values.port ? Number(values.port) : undefined;
-    if (values.port && Number.isNaN(port)) {
-        console.error(`rshono: invalid --port "${values.port}"`);
-        process.exit(1);
-    }
+  const port = values.port ? Number(values.port) : undefined;
+  if (values.port && Number.isNaN(port)) {
+    console.error(`rshono: invalid --port "${values.port}"`);
+    process.exit(1);
+  }
 
-    switch (command) {
-        case 'dev':
-            return devCommand({ rootDir, port });
-        case 'build':
-            return buildCommand({ rootDir });
-        case 'start':
-            return startCommand({ rootDir, port });
-        default:
-            console.error(`rshono: unknown command "${command}"\n`);
-            console.log(HELP);
-            process.exit(1);
-    }
+  switch (command) {
+    case 'dev':
+      return devCommand({ rootDir, port });
+    case 'build':
+      return buildCommand({ rootDir });
+    case 'start':
+      return startCommand({ rootDir, port });
+    default:
+      console.error(`rshono: unknown command "${command}"\n`);
+      console.log(HELP);
+      process.exit(1);
+  }
 }
 
 main().catch((error) => {
-    console.error(error);
-    process.exit(1);
+  console.error(error);
+  process.exit(1);
 });
