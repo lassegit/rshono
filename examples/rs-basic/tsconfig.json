@@ -9,16 +9,10 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "baseUrl": ".",
     "paths": {
-      "rshono": ["./packages/rshono/src"],
-      "create-rshono": ["./packages/create-rshono/src"]
+      "rshono": ["../../packages/rshono/src"]
     }
   },
-  "exclude": ["node_modules", "dist", "**/templates/**"]
+  "include": ["src"],
+  "exclude": ["node_modules"]
 }
