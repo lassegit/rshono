@@ -1,8 +1,20 @@
 import { Hono } from 'hono';
+import { trimTrailingSlash } from 'hono/trailing-slash';
 import { fakeDB } from './db.server';
 
 const server = new Hono();
 const startedAt = Date.now();
+
+server.use(trimTrailingSlash({ alwaysRedirect: true }));
+
+// Testing middleware
+server.use('*', async (c, next) => {
+    const start = performance.now();
+    await next();
+    const end = performance.now();
+    c.res.headers.set('X-Response-Time', `${(end - start).toFixed(2)} ms`);
+    c.res.headers.set('x-from', 'hey');
+});
 
 server.get('/api/health', (c) => {
     return c.json({ status: 'ok', uptime: (Date.now() - startedAt) / 1000, timestamp: Date.now() });
