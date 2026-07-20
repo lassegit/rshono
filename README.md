@@ -1,8 +1,8 @@
-# Rs-hono: Ultra-minimalist SSR framework — Hono + Rspack
+# Rshono: Ultra-minimalist SSR framework — Hono + Rspack
 
 ## The Idea
 
-Next.js is ~1,500 dependencies. rs-hono is **4 runtime dependencies** (hono, @hono/node-server, @rspack/core, tsx) plus your React. Only ~1,500 lines of source.
+Next.js is ~1,500 dependencies. rshono is **4 runtime dependencies** (hono, @hono/node-server, @rspack/core, tsx) plus your React. Only ~1,500 lines of source.
 
 It gives you the essentials:
 
@@ -19,25 +19,25 @@ Built on two proven foundations:
 ## Quick Start
 
 ```bash
-pnpm create rs-hono@latest my-app
+pnpm create rshono@latest my-app
 cd my-app
 pnpm install
-pnpm dev          # → rs-hono dev on http://localhost:3000
+pnpm dev          # → rshono dev on http://localhost:3000
 ```
 
 ## This Repository
 
-| Path                      | What it is                                                                                              |
-| ------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `packages/rs-hono`        | The framework: CLI (`dev`/`build`/`start`), SSR + hydration runtime, Rspack integration, `*.server` boundary |
-| `packages/create-rs-hono` | The scaffolder behind `pnpm create rs-hono` — copies the starter template into a new project             |
-| `examples/basic`          | Test app exercising every feature: static/dynamic pages, loaders in `*.server` modules, endpoints, a `server.ts` sub-app      |
+| Path                     | What it is                                                                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| `packages/rshono`        | The framework: CLI (`dev`/`build`/`start`), SSR + hydration runtime, Rspack integration, `*.server` boundary             |
+| `packages/create-rshono` | The scaffolder behind `pnpm create rshono` — copies the starter template into a new project                              |
+| `examples/basic`         | Test app exercising every feature: static/dynamic pages, loaders in `*.server` modules, endpoints, a `server.ts` sub-app |
 
 Try the example app:
 
 ```bash
 pnpm install
-pnpm --filter rs-hono-example dev   # → http://localhost:3000
+pnpm --filter rshono-example dev   # → http://localhost:3000
 ```
 
 ## Project Structure
@@ -53,7 +53,7 @@ my-app/
 │   ├── routes.ts         # Single source of truth — all routes, pure data
 │   └── server.ts         # API endpoints (Hono sub-app, optional)
 ├── public/               # Static assets (CSS, images, fonts)
-├── rs-hono.config.ts     # Framework config
+├── rshono.config.ts     # Framework config
 └── package.json
 ```
 
@@ -81,18 +81,18 @@ If client code accidentally calls something from a `*.server` module, it
 fails loudly in the browser console:
 
 ```
-[rs-hono] "getUser" comes from a *.server file and is not available in the browser.
+[rshono] "getUser" comes from a *.server file and is not available in the browser.
 ```
 
 ## Route Types
 
-| Kind         | Behavior                                 | Use case                         |
-| ------------ | ---------------------------------------- | -------------------------------- |
-| `"static"`   | Pre-rendered HTML at build time (SSG)¹   | Landing pages, docs, changelogs  |
-| `"dynamic"`  | Server-rendered on each request (SSR)    | Dashboards, profiles, auth pages |
-| `"endpoint"` | API handler from a `*.server` module     | One-off JSON endpoints, webhooks |
+| Kind         | Behavior                               | Use case                         |
+| ------------ | -------------------------------------- | -------------------------------- |
+| `"static"`   | Pre-rendered HTML at build time (SSG)¹ | Landing pages, docs, changelogs  |
+| `"dynamic"`  | Server-rendered on each request (SSR)  | Dashboards, profiles, auth pages |
+| `"endpoint"` | API handler from a `*.server` module   | One-off JSON endpoints, webhooks |
 
-¹ `rs-hono build` renders each `static` route once and writes the HTML to
+¹ `rshono build` renders each `static` route once and writes the HTML to
 `<outDir>/ssg/`. Static routes with path params (`/docs/:slug`) declare the
 pages to prerender via a `staticPaths()` export in their server module;
 params not returned there fall back to per-request SSR. In dev, static
@@ -104,7 +104,7 @@ routes are always rendered live so edits show up immediately.
 as pure data:
 
 ```ts
-import { defineRoutes } from 'rs-hono';
+import { defineRoutes } from 'rshono';
 
 export const routes = defineRoutes([
     // Static page
@@ -134,7 +134,7 @@ route pattern, which types `c` (`c.req.param('id')` is a plain `string`)
 and is checked against the route's `path` at compile time:
 
 ```ts
-import { defineLoader } from 'rs-hono';
+import { defineLoader } from 'rshono';
 import { db } from './db.server';
 
 export const loader = defineLoader('/profile/:id', async (c) => {
@@ -150,11 +150,15 @@ export const loader = defineLoader('/profile/:id', async (c) => {
 references the server module):
 
 ```tsx
-import type { LoaderProps } from 'rs-hono';
+import type { LoaderProps } from 'rshono';
 import type { loader } from './Profile.server';
 
 export default function Profile({ user, params }: LoaderProps<typeof loader>) {
-    return <h1>{user.name} (id: {params.id})</h1>;
+    return (
+        <h1>
+            {user.name} (id: {params.id})
+        </h1>
+    );
 }
 ```
 
@@ -206,7 +210,7 @@ inline scripts are ordinary props and elements, no head-manager API:
 
 ```tsx
 // layout.tsx — just a component; have as many layouts as you like
-import { Assets } from 'rs-hono';
+import { Assets } from 'rshono';
 import './styles.css'; // global CSS, bundled by Rspack
 
 export function Layout({ title, children }: { title: string; children: ReactNode }) {
@@ -270,11 +274,11 @@ for assets that should skip the bundler entirely.
 
 ## Commands
 
-| Command         | Description                                                        |
-| --------------- | ------------------------------------------------------------------ |
-| `rs-hono dev`   | Dev server on localhost: bundle watcher + server restart on change |
-| `rs-hono build` | Production client bundle (hydration + page chunks) + static assets |
-| `rs-hono start` | Start the production server (`--port` flag > `PORT` env > config)  |
+| Command        | Description                                                        |
+| -------------- | ------------------------------------------------------------------ |
+| `rshono dev`   | Dev server on localhost: bundle watcher + server restart on change |
+| `rshono build` | Production client bundle (hydration + page chunks) + static assets |
+| `rshono start` | Start the production server (`--port` flag > `PORT` env > config)  |
 
 In dev, the server binds to `127.0.0.1` only and restarts automatically
 when any file it imports changes (`tsx watch`); the client bundle rebuilds
@@ -283,8 +287,8 @@ in parallel (Rspack watch). Refresh the browser to pick up changes.
 ## Configuration
 
 ```ts
-// rs-hono.config.ts
-import { defineConfig } from 'rs-hono/config';
+// rshono.config.ts
+import { defineConfig } from 'rshono/config';
 
 export default defineConfig({
     publicDir: 'public',
@@ -312,13 +316,13 @@ export default defineConfig({
 
 ## Design Principles
 
-1. **Single source of truth** — `routes.ts` defines every route, for the server *and* the client. No magic conventions.
+1. **Single source of truth** — `routes.ts` defines every route, for the server _and_ the client. No magic conventions.
 2. **Module-scoped server code** — the `*.server.ts` naming is the entire server/client story. One rule, enforced by the bundler.
 3. **Explicit > implicit** — You choose `static` vs `dynamic` per route. No heuristics.
 4. **No magic files** — Users compose layouts in their components. API routes are standard Hono apps.
 5. **Hono underneath** — Every endpoint is a real Hono handler. Full Hono ecosystem available.
 6. **Rspack is an implementation detail** — You write `import()`, Rspack handles code splitting.
-7. **Reserved prefixes** — `/_static` and `/_rs-hono` are framework-internal. User routes at these paths trigger a warning.
+7. **Reserved prefixes** — `/_static` and `/_rshono` are framework-internal. User routes at these paths trigger a warning.
 
 ## Status (proof of concept)
 
@@ -335,7 +339,7 @@ Honest notes on what is and isn't there yet:
 
 ## Comparison
 
-|               | rs-hono               | Next.js           | Remix            |
+|               | rshono                | Next.js           | Remix            |
 | ------------- | --------------------- | ----------------- | ---------------- |
 | Source lines  | ~1,500                | ~250,000+         | ~70,000+         |
 | Dependencies  | 4 (+ React)           | ~1,500            | ~700             |
