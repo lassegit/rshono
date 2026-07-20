@@ -36,7 +36,7 @@ export const routes = defineRoutes({
 });
 ```
 
-routes.ts only ever runs on the server — importing `*.server` modules from it (e.g. inside `staticPaths`) is safe. A plain array (no special pages) is accepted as shorthand.
+`routes.ts` only ever runs on the server — importing `*.server` modules from it (e.g. inside `staticPaths`) is safe. A plain array (no special pages) is accepted as shorthand.
 
 ## Pages are server components
 
