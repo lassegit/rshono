@@ -127,7 +127,7 @@ test('secrets never reach the client bundle; PUBLIC_ vars are inlined', () => {
   );
   assert.ok(
     sources.every((s) => !s.includes('listDocs')),
-    'db.server code leaked into a client asset',
+    'db module code leaked into a client asset',
   );
 });
 

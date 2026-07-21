@@ -15,7 +15,7 @@ export const routes = defineRoutes({
       kind: 'static',
       component: () => import('./components/documentation'),
       staticPaths: async () => {
-        const { fakeDB } = await import('./db.server');
+        const { fakeDB } = await import('./db');
         return (await fakeDB.listDocs()).map((doc) => ({ slug: doc.slug }));
       },
     },
@@ -30,7 +30,7 @@ export const routes = defineRoutes({
     {
       kind: 'endpoint',
       path: '/api/quick-health',
-      server: () => import('./health.server'),
+      server: () => import('./health'),
     },
   ],
   notFound: {

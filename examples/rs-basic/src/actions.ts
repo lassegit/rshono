@@ -1,6 +1,6 @@
 'use server';
 
-import { fakeDB, type User } from './db.server';
+import { fakeDB, type User } from './db';
 
 export async function createUser(data: { name: string; email: string }): Promise<User> {
   if (!data.name.trim() || !data.email.includes('@')) {

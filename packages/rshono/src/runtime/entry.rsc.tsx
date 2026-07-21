@@ -18,7 +18,7 @@ import {
 } from 'react-server-dom-rspack/server.node';
 // @ts-expect-error — resolved by the '@rshono/routes' alias to the app's routes.ts
 import { routes as userRoutes } from '@rshono/routes';
-// @ts-expect-error — resolved by the '@rshono/server-app' alias (index.server.ts or the empty fallback)
+// @ts-expect-error — resolved by the '@rshono/server-app' alias (src/server.ts or the empty fallback)
 import * as serverAppModule from '@rshono/server-app';
 import {
   isPageRoute,

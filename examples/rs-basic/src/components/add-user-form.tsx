@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { createUser } from '../actions.server';
+import { createUser } from '../actions';
 
 export function AddUserForm() {
   const [name, setName] = useState('');

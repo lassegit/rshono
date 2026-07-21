@@ -1,7 +1,7 @@
 'use server-entry';
 
 import type { PageProps } from 'rshono';
-import { fakeDB } from '../db.server';
+import { fakeDB } from '../db';
 import { Layout } from './layout';
 
 export default async function Documentation({ params }: PageProps<'/docs/:slug'>) {

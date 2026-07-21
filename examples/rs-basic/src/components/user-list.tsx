@@ -1,4 +1,4 @@
-import { fakeDB } from '../db.server';
+import { fakeDB } from '../db';
 import { AddUserForm } from './add-user-form';
 import { Layout } from './layout';
 
@@ -10,7 +10,7 @@ export default async function UserList() {
       <div className="page">
         <h1>Users</h1>
         <p className="description">
-          Fetched inside an <code>async</code> server component, straight from a <code>*.server</code> module.
+          Fetched inside an <code>async</code> server component, straight from a server-only <code>db</code> module.
         </p>
 
         <ul className="user-list">

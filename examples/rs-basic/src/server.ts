@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { trimTrailingSlash } from 'hono/trailing-slash';
-import { fakeDB } from './db.server';
+import { fakeDB } from './db';
 
 const server = new Hono();
 const startedAt = Date.now();

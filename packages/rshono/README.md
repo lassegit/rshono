@@ -2,7 +2,7 @@
 
 Minimalist framework — [Hono](https://hono.dev) + [Rspack](https://rspack.rs) + [React Server Components](https://react.dev/reference/rsc/server-components).
 
-One required file (`src/routes.ts`), one optional file (`src/index.server.ts`), and you get a dev server with HMR, streaming SSR with RSC hydration, server actions with progressive enhancement, soft navigation, build-time prerendering, and hard env/secret safety.
+One required file (`src/routes.ts`), one optional file (`src/server.ts`), and you get a dev server with HMR, streaming SSR with RSC hydration, server actions with progressive enhancement, soft navigation, build-time prerendering, and hard env/secret safety.
 
 ```bash
 rshono dev     # dev server with HMR (default port 3000)
@@ -25,14 +25,14 @@ export const routes = defineRoutes({
       component: () => import('./components/documentation'),
       staticPaths: async () => [{ slug: 'getting-started' }, { slug: 'deployment' }],
     },
-    { kind: 'endpoint', path: '/api/health', server: () => import('./health.server') },
+    { kind: 'endpoint', path: '/api/health', server: () => import('./health') },
   ],
   notFound: { component: () => import('./components/404') },
   error: { component: () => import('./components/500') },
 });
 ```
 
-`routes.ts` only ever runs on the server — importing `*.server` modules from it (e.g. inside `staticPaths`) is safe. A plain array (no special pages) is accepted as shorthand.
+`routes.ts` only ever runs on the server — importing server-only modules from it (e.g. inside `staticPaths`) is safe. A plain array (no special pages) is accepted as shorthand.
 
 ## Pages are server components
 
@@ -42,7 +42,7 @@ If a component is wired up some other way (variable indirection, barrel re-expor
 
 ```tsx
 import type { PageProps } from 'rshono';
-import { db } from '../db.server';
+import { db } from '../db';
 
 export default async function Profile({ params, url }: PageProps<'/profile/:id'>) {
   const user = await db.getUser(params.id);
@@ -68,16 +68,19 @@ Call them directly from client code (typed args and result), or wire them to `<f
 
 ## Full Hono underneath
 
-- `{ kind: 'endpoint' }` routes export a Hono `handler` from a `*.server` module.
-- `src/index.server.ts` may default-export a whole Hono sub-app, mounted at `/` (behind pages): any method, streaming, cookies, middleware. `export type AppType = typeof server` gives end-to-end type safety with `hono/client`.
+- `{ kind: 'endpoint' }` routes export a Hono `handler` from a server module (it only ever runs on the server).
+- `src/server.ts` may default-export a whole Hono sub-app, mounted at `/` (behind pages): any method, streaming, cookies, middleware. `export type AppType = typeof server` gives end-to-end type safety with `hono/client`.
 
 ## Env & secret safety
 
-- **Client bundle**: `process.env` is _replaced at build time_ with a literal containing only `NODE_ENV` and `PUBLIC_`-prefixed variables. A stray `process.env.DATABASE_URL` in client code compiles to `undefined` — the value cannot ship.
-- **`*.server.*` modules** (matching `.server.ts`, `.server.mjs`, …): importing one from client code **fails the build** with the offending module named — a build guarantee, not tree-shaking. Server components may import them freely (they never enter the client graph), and a `*.server` module that opens with `'use server'` is recognized as a server-actions module and compiles to server references as usual. The React `server-only` marker package also works if you prefer that convention (the RSC layer resolves the `react-server` condition), though it only fails at runtime rather than at build time.
-- **Real `process.env` is confined to `*.server.*` modules and `'use server'` action modules.** Everything else — pages, shared components, and especially client components being SSR'd — sees the same PUBLIC_-filtered view as the browser, so SSR HTML and hydration always agree and a `process.env.SECRET` in component code renders empty instead of leaking into the HTML stream. Read secrets in `*.server` modules (or actions) and pass derived data down.
+The client/server boundary is the RSC directives — `'use client'` and `'use server'` — not filenames, and `process.env` access follows it. There is no `*.server` naming convention.
+
+- **Client bundle**: `process.env` is _replaced at build time_ with a literal containing only `NODE_ENV` and `PUBLIC_`-prefixed variables. A stray `process.env.DATABASE_URL` in client code compiles to `undefined` — the value cannot ship. This is a hard guarantee, not tree-shaking.
+- **`'use client'` modules are also SSR'd on the server**, and there they see the same `PUBLIC_`-only view. A `process.env.SECRET` in a client component renders empty instead of leaking into the HTML stream, and SSR output always agrees with hydration.
+- **Server components and `'use server'` actions read the real `process.env`.** They run only on the server — server components stay in the server graph, actions compile to server references — so a secret read there never reaches the browser. Read secrets in server code and pass derived data down.
 - `.env.local` and `.env` are loaded automatically (real environment wins).
-- Mind that anything a server component _renders_ is public by definition.
+- Anything a server component _renders_ is public by definition — whatever you put in the tree ships in the flight payload.
+- Keeping a server-only module out of the client bundle is the module graph's job: import it only from server code. For a hard failure if that ever slips, add React's `server-only` package — the RSC layer resolves its `react-server` condition, so importing it from client code throws.
 
 ## Security & hardening
 
@@ -106,4 +109,3 @@ In production, `dist/server/main.mjs` is self-contained (React, Hono and the fra
 - Node ≥ 20.19 (worker threads, `process.loadEnvFile`), React ≥ 19.1.
 - Dev-mode proxy doesn't forward WebSocket upgrades to a custom sub-app (prod is unaffected — the bundle owns the socket there).
 - Dev source maps embed the original source of `'use server'` action modules (dev binds to 127.0.0.1 only; production ships no client source maps).
-- `props.url` seen by pages in dev is the internal worker URL, not the browser-facing one.

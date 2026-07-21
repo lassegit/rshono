@@ -9,8 +9,6 @@ import { publicEnv } from './public-env.js';
 const FRAMEWORK_SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
 const FRAMEWORK_ROOT = join(FRAMEWORK_SRC, '..');
 
-export const SERVER_MODULE_PATTERN = /\.server(\.[cm]?[tj]sx?)?$/;
-
 const BUNDLED_PACKAGES = /^(rshono|react|react-dom|react-server-dom-rspack|rsc-html-stream|hono|@hono\/node-server)(\/|$)/;
 
 const BROWSER_TARGETS = ['last 2 versions', '> 0.2%', 'not dead', 'Firefox ESR'];
@@ -31,8 +29,8 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
   if (!routesFile) {
     throw new Error(`[rshono] src/routes.ts not found in ${rootDir} — it is the one required file.`);
   }
-  const serverAppFile = join(srcDir, 'index.server.ts');
-  const serverAppAlias = existsSync(serverAppFile) ? serverAppFile : join(FRAMEWORK_SRC, 'runtime', 'empty-server-app.ts');
+  const serverAppFile = ['server.ts', 'server.tsx'].map((f) => join(srcDir, f)).find(existsSync);
+  const serverAppAlias = serverAppFile ?? join(FRAMEWORK_SRC, 'runtime', 'empty-server-app.ts');
 
   const rscEntry = join(FRAMEWORK_SRC, 'runtime', 'entry.rsc.tsx');
   const ssrEntry = join(FRAMEWORK_SRC, 'runtime', 'entry.ssr.tsx');
@@ -101,11 +99,6 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
     },
     module: {
       rules: [
-        {
-          test: SERVER_MODULE_PATTERN,
-          enforce: 'pre',
-          use: [{ loader: join(FRAMEWORK_SRC, 'builder', 'server-boundary-loader.cjs') }],
-        },
         swcRule(BROWSER_TARGETS),
         { test: /\.css$/i, type: 'css/auto' },
         { test: /\.(png|jpe?g|gif|webp|avif|ico|svg|woff2?|ttf|otf)$/i, type: 'asset' },
@@ -176,7 +169,6 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
         {
           test: /\.[cm]?[tj]sx?$/,
           include: srcDir,
-          exclude: [SERVER_MODULE_PATTERN],
           enforce: 'pre',
           use: [
             {
