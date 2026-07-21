@@ -11,9 +11,6 @@ export const routes = defineRoutes({
       component: () => import('./components/signup'),
     },
     {
-      // Pre-rendered at build time (SSG); staticPaths supplies the
-      // param sets. routes.ts only runs on the server, so importing a
-      // *.server module here is safe.
       path: '/docs/:slug',
       kind: 'static',
       component: () => import('./components/documentation'),
@@ -36,9 +33,6 @@ export const routes = defineRoutes({
       server: () => import('./health.server'),
     },
   ],
-  // Special pages — real server components, rendered through the same
-  // RSC pipeline as routes (the 404 also renders for soft navigations
-  // to dead links). Non-HTML clients still get plain-text responses.
   notFound: {
     component: () => import('./components/404'),
   },

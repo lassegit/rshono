@@ -1,20 +1,3 @@
-/**
- * Client entry — the only script the browser boots.
- *
- * Hydrates the document from the flight payload the server inlined into
- * the HTML stream (rsc-html-stream), then owns three concerns:
- *
- *   soft navigation — same-origin link clicks and history traversal
- *     re-fetch the new URL as a flight payload and re-render in a
- *     transition, preserving client component state.
- *   server actions — React calls the registered server callback when
- *     client code invokes a 'use server' function; the POST returns a
- *     fresh flight payload (post-action UI) plus the return value.
- *   dev refresh (dev bundles only) — an SSE connection to the CLI's
- *     /_rshono/hmr endpoint: client edits hot-apply via HMR with
- *     react-refresh (full reload as fallback), server component edits
- *     re-fetch the flight payload in place.
- */
 import React from 'react';
 import { hydrateRoot } from 'react-dom/client';
 import {
@@ -29,15 +12,9 @@ import type { RscPayload } from './entry.rsc.js';
 import { createRscRenderRequest } from './request.js';
 
 async function main() {
-  // CSP mode (RSC_HONO_CSP): the server renders a csp-nonce meta tag;
-  // mirror it into the bundler runtime so dynamically loaded chunks
-  // carry the nonce too. Must happen before the first deserialization,
-  // which may already load client-component chunks.
   const cspMeta = document.querySelector('meta[property="csp-nonce"]') as HTMLMetaElement | null;
   if (cspMeta?.nonce) __webpack_nonce__ = cspMeta.nonce;
 
-  // Stashed so navigation/actions/dev-refresh can re-render from
-  // outside the component.
   let setPayload: (v: RscPayload) => void;
 
   const initialPayload = await createFromReadableStream<RscPayload>(rscStream);
@@ -54,12 +31,8 @@ async function main() {
         listenNavigation((type) => {
           fetchRscPayload()
             .then(() => {
-              // New page via link/pushState starts at the top;
-              // back/forward keeps the browser's position.
               if (type === 'push') requestAnimationFrame(() => window.scrollTo(0, 0));
             })
-            // Payload fetch failed (server restarting, network,
-            // non-page URL) — a full navigation always works.
             .catch(() => window.location.reload());
         }),
       [],
@@ -74,7 +47,6 @@ async function main() {
     setPayload(payload);
   }
 
-  // Transport for 'use server' calls from hydrated client code.
   setServerCallback(async (id, args) => {
     const temporaryReferences = createTemporaryReferenceSet();
     const renderRequest = createRscRenderRequest(window.location.href, {
@@ -99,11 +71,6 @@ async function main() {
 
 type NavigationType = 'push' | 'replace' | 'pop';
 
-/**
- * Intercept same-origin navigation so page transitions become flight
- * fetches. New-tab/download/modified clicks and in-page anchors fall
- * through to the browser.
- */
 function listenNavigation(onNavigation: (type: NavigationType) => void): () => void {
   const onPopState = () => onNavigation('pop');
   window.addEventListener('popstate', onPopState);
@@ -138,7 +105,6 @@ function listenNavigation(onNavigation: (type: NavigationType) => void): () => v
       !e.shiftKey &&
       !e.defaultPrevented
     ) {
-      // In-page anchor (only the hash differs): native scroll, no refetch.
       if (link.hash && link.pathname === location.pathname && link.search === location.search) return;
       e.preventDefault();
       history.pushState(null, '', link.href);
@@ -177,7 +143,6 @@ function initDevRefresh(fetchRscPayload: () => Promise<void>) {
     }
     try {
       await hot.check(true);
-      // More updates may have queued while this one applied.
       if (hash !== __webpack_hash__) await applyClientUpdate(hash);
     } catch (error) {
       console.warn('[rshono] hot update failed, reloading:', error);
@@ -191,7 +156,6 @@ function initDevRefresh(fetchRscPayload: () => Promise<void>) {
     switch (message.type) {
       case 'hello':
         if (connectedOnce) {
-          // Reconnected — we may have missed events.
           if (message.hash && message.hash !== __webpack_hash__) await applyClientUpdate(message.hash);
           await fetchRscPayload().catch(() => window.location.reload());
         }

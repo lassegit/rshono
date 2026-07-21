@@ -21,16 +21,12 @@ export const routes = defineRoutes({
     { path: '/profile/:id', component: () => import('./components/profile') },
     {
       path: '/docs/:slug',
-      kind: 'static', // prerendered at build time
+      kind: 'static',
       component: () => import('./components/documentation'),
       staticPaths: async () => [{ slug: 'getting-started' }, { slug: 'deployment' }],
     },
     { kind: 'endpoint', path: '/api/health', server: () => import('./health.server') },
   ],
-  // Special pages — ordinary server components, rendered through the
-  // same RSC pipeline. notFound also renders for soft navigations to
-  // dead links; error receives `error` props (ErrorPageProps),
-  // pre-redacted in production. Non-HTML clients get plain text.
   notFound: { component: () => import('./components/404') },
   error: { component: () => import('./components/500') },
 });
@@ -49,7 +45,7 @@ import type { PageProps } from 'rshono';
 import { db } from '../db.server';
 
 export default async function Profile({ params, url }: PageProps<'/profile/:id'>) {
-  const user = await db.getUser(params.id); // no loaders — just await
+  const user = await db.getUser(params.id);
   return <Layout>…</Layout>;
 }
 ```

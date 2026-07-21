@@ -2,14 +2,6 @@
 
 import { useEffect, useState } from 'react';
 
-/**
- * A client component island: hydrated in the browser, keeps its state
- * across soft navigations and server-component refreshes.
- *
- * Also demos the env contract — in the client bundle `process.env` is
- * replaced with the PUBLIC_-filtered literal, so the secret reads as
- * undefined while the public var is inlined.
- */
 export function Counter() {
   const [count, setCount] = useState(0);
   const [hydrated, setHydrated] = useState(false);
@@ -34,13 +26,3 @@ export function Counter() {
     </div>
   );
 }
-
-// edit 1784198216827
-
-// edit 1784198242152
-
-// e 1784198290479
-
-// edit 1784198328874
-
-// edit 1784198410165

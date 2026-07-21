@@ -16,6 +16,6 @@
   },
   "devDependencies": {
     "prettier": "^3.9.1",
-    "prettier-plugin-uncomment": "^1.0.0"
+    "prettier-plugin-uncomment": "^1.0.1"
   }
 }

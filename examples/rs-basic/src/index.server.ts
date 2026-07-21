@@ -7,7 +7,6 @@ const startedAt = Date.now();
 
 server.use(trimTrailingSlash({ alwaysRedirect: true }));
 
-// Testing middleware
 server.use('*', async (c, next) => {
   const start = performance.now();
   await next();
@@ -41,4 +40,4 @@ server.get('/api/users/:id', async (c) => {
 });
 
 export default server;
-export type AppType = typeof server; // For end to end type safety
+export type AppType = typeof server;

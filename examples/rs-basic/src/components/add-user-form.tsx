@@ -3,11 +3,6 @@
 import { useState, useTransition } from 'react';
 import { createUser } from '../actions.server';
 
-/**
- * Calls a server action directly (typed args, typed result). The action
- * response carries a fresh page payload, so the surrounding server-
- * rendered user list updates without any client-side cache code.
- */
 export function AddUserForm() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');

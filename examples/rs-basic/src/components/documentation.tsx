@@ -1,16 +1,9 @@
-// The directive is normally injected automatically (see routes.ts);
-// this page keeps it explicit to exercise the manual path too.
 'use server-entry';
 
 import type { PageProps } from 'rshono';
 import { fakeDB } from '../db.server';
 import { Layout } from './layout';
 
-/**
- * A `kind: 'static'` route — `rshono build` prerenders one HTML file
- * per staticPaths() entry, served from disk in production. Unknown
- * slugs fall back to per-request rendering.
- */
 export default async function Documentation({ params }: PageProps<'/docs/:slug'>) {
   const [doc, docs] = await Promise.all([fakeDB.getDoc(params.slug), fakeDB.listDocs()]);
 

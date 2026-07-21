@@ -1,11 +1,3 @@
-/**
- * CLI dispatch. Three commands:
- *
- *   dev    — watch-build both bundles, run the server bundle in a
- *            restarting worker, front everything with one dev server
- *   build  — production compile + SSG prerender
- *   start  — run the built server bundle
- */
 import { createRequire } from 'node:module';
 import { parseArgs } from 'node:util';
 import { loadEnvFiles } from '../server/load-env.js';
@@ -49,7 +41,6 @@ async function main(): Promise<void> {
   }
 
   const rootDir = process.cwd();
-  // Real environment > .env.local > .env — before any user code runs.
   loadEnvFiles(rootDir);
 
   const port = values.port ? Number(values.port) : undefined;

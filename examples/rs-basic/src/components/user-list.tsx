@@ -2,12 +2,6 @@ import { fakeDB } from '../db.server';
 import { AddUserForm } from './add-user-form';
 import { Layout } from './layout';
 
-/**
- * An async server component: it reads the database directly — no
- * loader, no API round-trip — and the result streams to the browser as
- * part of the payload. After the AddUserForm's server action runs, the
- * returned payload re-renders this list with the new user in it.
- */
 export default async function UserList() {
   const users = await fakeDB.listUsers();
 
