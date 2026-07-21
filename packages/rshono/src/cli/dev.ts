@@ -269,6 +269,23 @@ export async function devCommand(options: DevOptions): Promise<void> {
     const responseHeaders = new Headers(response.headers);
     responseHeaders.delete('content-encoding');
     responseHeaders.delete('content-length');
+    // The worker only knows itself as 127.0.0.1:<workerPort>, so any
+    // absolute redirect it emits (Hono's trimTrailingSlash, c.redirect
+    // with a full URL, auth bounces…) points Location at the internal
+    // port, which the browser can't reach. Rewrite worker-origin
+    // redirects to a relative path so the browser resolves them against
+    // the public origin; leave genuinely external redirects untouched.
+    const location = responseHeaders.get('location');
+    if (location) {
+      try {
+        const loc = new URL(location, target);
+        if (loc.host === `127.0.0.1:${workerPort}`) {
+          responseHeaders.set('location', `${loc.pathname}${loc.search}${loc.hash}`);
+        }
+      } catch {
+        // Non-URL Location value — pass it through unchanged.
+      }
+    }
     return new Response(response.body, {
       status: response.status,
       statusText: response.statusText,

@@ -134,6 +134,26 @@ function isSameOriginAction(request: Request): boolean {
 
 // ─── Page rendering ───────────────────────────────────────────────────────
 
+/**
+ * The request URL as the browser sees it, for `props.url`.
+ *
+ * In dev the app runs behind a proxy on an ephemeral worker port, so
+ * `c.req.url` reports the internal `127.0.0.1:<port>` origin. The proxy
+ * forwards the real host/proto in x-forwarded-* headers (as reverse
+ * proxies do in production too), so we rebuild the origin from those
+ * when present. With no forwarded headers (SSG build, direct hits) we
+ * fall back to `c.req.url` unchanged.
+ */
+function publicUrl(c: Context): string {
+  const forwardedHost = c.req.header('x-forwarded-host');
+  if (!forwardedHost) return c.req.url;
+  const url = new URL(c.req.url);
+  url.host = forwardedHost;
+  const forwardedProto = c.req.header('x-forwarded-proto');
+  if (forwardedProto) url.protocol = forwardedProto;
+  return url.toString();
+}
+
 async function loadPageModule(load: () => Promise<{ default: PageComponent }>, label: string): Promise<ServerEntry<PageComponent>> {
   const mod = await load();
   const Page = mod.default as ServerEntry<PageComponent> | undefined;
@@ -186,7 +206,7 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
   } catch {
     // no matched route — special pages get empty params
   }
-  const props = { params, url: c.req.url, ...opts.extraProps };
+  const props = { params, url: publicUrl(c), ...opts.extraProps };
   const root = (
     <>
       {/* React reads this meta for nonces on dynamically inserted
