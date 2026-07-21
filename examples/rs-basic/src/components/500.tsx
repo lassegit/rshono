@@ -1,11 +1,6 @@
 import type { ErrorPageProps } from 'rshono';
 import { Layout } from './layout';
 
-/**
- * The error page from routes.ts — rendered with status 500 when a
- * request handler throws. `error` is pre-redacted by the framework:
- * message + stack in development, a generic message in production.
- */
 export default function ErrorPage({ error }: ErrorPageProps) {
   return (
     <Layout title="Something went wrong — rshono">

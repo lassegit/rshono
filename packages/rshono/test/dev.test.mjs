@@ -1,10 +1,3 @@
-/**
- * Dev-server smoke test: boot `rshono dev` on an ephemeral port,
- * verify a rendered page, the flight protocol, and the HMR SSE channel.
- * (Full edit-cycle behavior — react-refresh, rsc-update — is exercised
- * manually/in the browser; keeping the automated dev test to a boot
- * smoke keeps the suite fast and non-flaky.)
- */
 import assert from 'node:assert/strict';
 import { after, before, test } from 'node:test';
 import { startServer, stopServer } from './helpers.mjs';

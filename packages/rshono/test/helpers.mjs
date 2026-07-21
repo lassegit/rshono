@@ -1,8 +1,3 @@
-/**
- * Test helpers: drive the real CLI against examples/rsc-basic (the
- * designated feature-complete test app, per AGENTS.md). No test-only
- * frameworks — node:test + fetch + child processes.
- */
 import { spawn, spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,7 +7,6 @@ export const EXAMPLE_DIR = join(ROOT, 'examples', 'rs-basic');
 export const EXAMPLE_DIST = join(EXAMPLE_DIR, 'dist');
 const CLI = join(ROOT, 'packages', 'rshono', 'bin', 'cli.cjs');
 
-/** Run `rshono build` in the example app; throws on failure. */
 export function buildExample() {
   const result = spawnSync(process.execPath, [CLI, 'build'], {
     cwd: EXAMPLE_DIR,
@@ -25,10 +19,6 @@ export function buildExample() {
   return result.stdout;
 }
 
-/**
- * Spawn a CLI command and resolve with { child, port, output } once its
- * stdout matches urlPattern (which must capture the port as group 1).
- */
 export function startServer(command, { env = {}, urlPattern, timeoutMs = 60_000 }) {
   const child = spawn(process.execPath, [CLI, command], {
     cwd: EXAMPLE_DIR,
@@ -74,7 +64,6 @@ export function stopServer(child) {
   });
 }
 
-/** Parse the progressive-enhancement $ACTION_* fields out of a page's HTML form. */
 export function parseActionForm(html) {
   const unescape = (s) => s.replaceAll('&quot;', '"').replaceAll('&amp;', '&');
   const field = (name) => {

@@ -1,9 +1,3 @@
-/**
- * Shared document shell — a plain server component that owns the whole
- * <html> document. Pages import it and pass their content as children.
- * The CSS import is picked up per page via the 'use server-entry'
- * asset tracking.
- */
 import type { ReactNode } from 'react';
 import '../styles.css';
 

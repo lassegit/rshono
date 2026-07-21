@@ -1,13 +1,3 @@
-/**
- * Fake database — SERVER-ONLY.
- *
- * The .server.ts suffix is the framework's hard server/client boundary:
- * if any 'use client' code ever imports this module, the BUILD fails —
- * so nothing in here (data, credentials, env access) can ever reach
- * the browser. Server components import it freely. In production,
- * replace with your ORM / database client.
- */
-
 export interface User {
   id: string;
   name: string;

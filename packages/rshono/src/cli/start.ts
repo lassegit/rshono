@@ -1,10 +1,3 @@
-/**
- * Production server: run the self-contained bundle in a child node
- * process. The CLI's only jobs are the preflight check, env (.env was
- * loaded by cli/index.ts before this — the child inherits it), and
- * signal forwarding. `node dist/server/main.mjs` works too, minus the
- * .env-before-user-code guarantee.
- */
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';

@@ -1,25 +1,3 @@
-/**
- * Dev server — three cooperating pieces in one process, one visible port:
- *
- * 1. Rspack MultiCompiler in watch mode (client + server bundles,
- *    written to disk).
- * 2. A worker manager: every successful server build terminates the old
- *    worker and boots dist/server/main.mjs fresh in a worker_thread on
- *    an ephemeral port. The readiness gate is REPLACED the moment a
- *    rebuild starts, so proxied requests wait for the new worker
- *    instead of hitting a half-dead one — no connection-refused gap.
- * 3. A front Hono server on the user's port:
- *      /_static/*      static files from dist/static + public/
- *                      (includes HMR hot-update chunks)
- *      /_rshono/hmr  SSE: 'client-built' after client rebuilds,
- *                      'rsc-update' after server-component rebuilds,
- *                      'hello' (with the current hash) on connect
- *      everything else proxied to the worker.
- *
- * Known dev-only limitation: the proxy speaks plain HTTP — WebSocket
- * upgrades from a custom sub-app don't cross it (they work in prod,
- * where the bundle owns the socket).
- */
 import { serve } from '@hono/node-server';
 import { rspack, type Stats } from '@rspack/core';
 import { Hono } from 'hono';
@@ -42,14 +20,8 @@ export async function devCommand(options: DevOptions): Promise<void> {
   const port = options.port ?? Number(process.env.PORT || 3000);
   const distDir = join(rootDir, 'dist');
 
-  // Fresh slate once per session; during the session stale files are
-  // kept (output.clean is off in dev) so in-flight hot-update fetches
-  // never 404 mid-rebuild. Pre-create dist/static so serveStatic
-  // doesn't warn about a missing root before the first build lands.
   await rm(distDir, { recursive: true, force: true });
   await mkdir(join(distDir, 'static'), { recursive: true });
-
-  // ─── SSE hub ──────────────────────────────────────────────────────
 
   const encoder = new TextEncoder();
   const sseClients = new Set<ReadableStreamDefaultController<Uint8Array>>();
@@ -67,8 +39,6 @@ export async function devCommand(options: DevOptions): Promise<void> {
     }
   }
 
-  // ─── Compiler ─────────────────────────────────────────────────────
-
   let serverComponentsChanged = false;
   const [clientConfig, serverConfig] = createConfigs({
     rootDir,
@@ -80,13 +50,9 @@ export async function devCommand(options: DevOptions): Promise<void> {
   const compiler = rspack([clientConfig, serverConfig]);
   const [clientCompiler, serverCompiler] = compiler.compilers;
 
-  // ─── Worker manager ───────────────────────────────────────────────
-
   let currentWorker: Worker | null = null;
   let workerPort: number | null = null;
-  /** Replaced (re-pended) whenever a server rebuild starts. */
   let workerGate = createGate();
-  /** Serializes restarts so overlapping builds can't race. */
   let restartChain: Promise<void> = Promise.resolve();
 
   function createGate() {
@@ -120,8 +86,6 @@ export async function devCommand(options: DevOptions): Promise<void> {
         reject(error);
       });
       worker.on('exit', (code) => {
-        // Crash after ready (top-level throw on a later request…):
-        // surface it and let the next rebuild recover.
         if (worker === currentWorker && code !== 0) {
           console.error(`  ✗ server worker exited with code ${code} — waiting for the next rebuild`);
           currentWorker = null;
@@ -131,7 +95,6 @@ export async function devCommand(options: DevOptions): Promise<void> {
     });
   }
 
-  // A rebuild has started: close the gate so requests queue up.
   serverCompiler.hooks.invalid.tap('rshono/gate', () => {
     workerGate = createGate();
   });
@@ -176,11 +139,6 @@ export async function devCommand(options: DevOptions): Promise<void> {
   });
 
   let firstBuild = true;
-  // One watchOptions object PER compiler — never a shared one: the RSC
-  // ClientPlugin's coordinator mutates the client's watchOptions
-  // (ignored: () => true; the server watcher proxies invalidation to
-  // the client), and with a shared object that mutation would blind
-  // the server watcher too, silently disabling all rebuilds.
   compiler.watch([{}, {}] as never, (err, multiStats) => {
     if (err) {
       console.error('  ✗ build failed:', err);
@@ -192,8 +150,6 @@ export async function devCommand(options: DevOptions): Promise<void> {
       firstBuild = false;
     }
   });
-
-  // ─── Front server ─────────────────────────────────────────────────
 
   const front = new Hono();
 
@@ -228,7 +184,6 @@ export async function devCommand(options: DevOptions): Promise<void> {
     });
   });
 
-  // Detect dead SSE connections (closed tabs) so the set doesn't grow.
   setInterval(() => {
     for (const controller of sseClients) {
       try {
@@ -249,9 +204,6 @@ export async function devCommand(options: DevOptions): Promise<void> {
     const target = `http://127.0.0.1:${workerPort}${incoming.pathname}${incoming.search}`;
 
     const headers = new Headers(c.req.raw.headers);
-    // The worker never compresses, and a forwarded accept-encoding
-    // would make undici transparently decompress while keeping the
-    // content-encoding header — a corrupted response for the browser.
     headers.delete('accept-encoding');
     headers.set('x-forwarded-host', incoming.host);
     headers.set('x-forwarded-proto', incoming.protocol.replace(':', ''));
@@ -269,12 +221,6 @@ export async function devCommand(options: DevOptions): Promise<void> {
     const responseHeaders = new Headers(response.headers);
     responseHeaders.delete('content-encoding');
     responseHeaders.delete('content-length');
-    // The worker only knows itself as 127.0.0.1:<workerPort>, so any
-    // absolute redirect it emits (Hono's trimTrailingSlash, c.redirect
-    // with a full URL, auth bounces…) points Location at the internal
-    // port, which the browser can't reach. Rewrite worker-origin
-    // redirects to a relative path so the browser resolves them against
-    // the public origin; leave genuinely external redirects untouched.
     const location = responseHeaders.get('location');
     if (location) {
       try {
@@ -282,9 +228,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
         if (loc.host === `127.0.0.1:${workerPort}`) {
           responseHeaders.set('location', `${loc.pathname}${loc.search}${loc.hash}`);
         }
-      } catch {
-        // Non-URL Location value — pass it through unchanged.
-      }
+      } catch {}
     }
     return new Response(response.body, {
       status: response.status,

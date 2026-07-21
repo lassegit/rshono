@@ -1,7 +1,3 @@
-/**
- * Ambient declarations for the Rspack/webpack runtime globals the
- * framework's client entry uses in development (HMR).
- */
 interface ImportMeta {
   webpackHot?: {
     accept(dependencies?: string | string[], callback?: () => void): void;
@@ -11,8 +7,6 @@ interface ImportMeta {
   };
 }
 
-/** Compilation hash of the running client bundle; updated by HMR applies. */
 declare const __webpack_hash__: string;
 
-/** Nonce the bundler runtime stamps on dynamically injected script tags. */
 declare var __webpack_nonce__: string | undefined;

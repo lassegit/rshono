@@ -2,10 +2,6 @@ import type { PageProps } from 'rshono';
 import { fakeDB } from '../db.server';
 import { Layout } from './layout';
 
-/**
- * Route params, typed from the route pattern: PageProps<'/profile/:id'>
- * gives `params.id: string`.
- */
 export default async function Profile({ params }: PageProps<'/profile/:id'>) {
   const user = await fakeDB.getUser(params.id);
 

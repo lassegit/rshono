@@ -2,11 +2,6 @@ import type { PageProps } from 'rshono';
 import { Counter } from './counter';
 import { Layout } from './layout';
 
-/**
- * A server component page: rendered on the server per request, shipped
- * to the browser as a serialized payload. The <Counter/> island is the
- * only part that hydrates.
- */
 export default function Home(props: PageProps) {
   return (
     <Layout title="rshono — Ultra-minimalist RSC framework" description="Hono + Rspack + React Server Components">

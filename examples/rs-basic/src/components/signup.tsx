@@ -1,11 +1,6 @@
 import { Layout } from './layout';
 import { SignupForm } from './signup-form';
 
-/**
- * Server component shell around a client form driven by a server
- * action via useActionState. Try it with JavaScript disabled — the
- * form still works (progressive enhancement).
- */
 export default function Signup() {
   return (
     <Layout title="Sign Up — rshono">

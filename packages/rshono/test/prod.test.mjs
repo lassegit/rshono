@@ -1,9 +1,3 @@
-/**
- * Production e2e: one real `rshono build` of examples/rs-basic, then
- * assertions against a running `rshono start` server — pages, flight
- * protocol, server actions (client + progressive enhancement), CSRF,
- * SSG, caching, secret stripping, and a second instance with CSP on.
- */
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -113,8 +107,6 @@ test('hashed static assets are served immutable', async () => {
 });
 
 test('secrets never render into SSR HTML — even from client components', async () => {
-  // The Counter ('use client') reads process.env.DATABASE_URL; during
-  // SSR it runs on the server, where the env shadow must hide it.
   const html = await (await fetch(`${base}/`)).text();
   assert.doesNotMatch(html, /my private database url/);
   assert.match(html, /public dummy url/);
@@ -180,7 +172,6 @@ test('progressive-enhancement form action works without JavaScript', async () =>
   assert.match(await res.text(), /Welcome aboard, NoScript Nancy/);
 });
 
-/** The createUser reference id lives in the AddUserForm client chunk. */
 function findCreateUserActionId() {
   const staticDir = join(EXAMPLE_DIST, 'static', 'chunks');
   for (const file of readdirSync(staticDir)) {
@@ -235,7 +226,6 @@ test('RSC_HONO_CSP=1 sends a nonce-based CSP and skips the SSG shortcut', async 
     const html = await res.text();
     assert.ok(html.includes(`nonce="${nonce}"`), 'nonce not stamped on scripts');
 
-    // Prerendered file can't carry the per-request nonce → SSR path.
     const ssg = await fetch(`http://localhost:${csp.port}/docs/getting-started`);
     assert.ok(ssg.headers.get('content-security-policy'), 'SSG route missing CSP header');
     assert.match(await ssg.text(), /nonce="/);
