@@ -6,6 +6,11 @@ import { buildExample, EXAMPLE_DIST, parseActionForm, startServer, stopServer } 
 
 const READY = /serving on http:\/\/localhost:(\d+)/;
 
+function readClientChunks() {
+  const staticDir = join(EXAMPLE_DIST, 'static', 'chunks');
+  return readdirSync(staticDir).map((f) => readFileSync(join(staticDir, f), 'utf8'));
+}
+
 let server;
 let base;
 
@@ -99,11 +104,48 @@ test('the navigation URL rides the flight payload so soft navigation stays in sy
 });
 
 test('the client router (useNavigation) is bundled for the browser', () => {
-  const staticDir = join(EXAMPLE_DIST, 'static', 'chunks');
-  const sources = readdirSync(staticDir).map((f) => readFileSync(join(staticDir, f), 'utf8'));
+  const sources = readClientChunks();
   assert.ok(
     sources.some((s) => s.includes('useNavigation() must be called')),
     'the framework-owned router provider must reach the client bundle for hydration to resolve it',
+  );
+});
+
+test('NavigationProgress renders on every page but starts hidden (no hydration flicker)', async () => {
+  const html = await (await fetch(`${base}/`)).text();
+  const bar = html.match(/<div data-rshono-progress="" [^>]*>/)?.[0];
+  assert.ok(bar, 'the opt-in <NavigationProgress /> should render into the layout');
+  assert.match(bar, /opacity:0/, 'the bar must be invisible at rest — nothing is navigating during SSR');
+  assert.match(bar, /width:0%/, 'the bar must have no width until a navigation is pending');
+});
+
+test('data-native links opt out of RSC soft navigation (full browser load)', async () => {
+  const html = await (await fetch(`${base}/`)).text();
+  assert.match(html, /href="\/" data-native/, 'the example demonstrates a data-native link');
+  assert.ok(
+    readClientChunks().some((s) => s.includes('data-native')),
+    'the click interceptor must recognize data-native so it can skip interception',
+  );
+});
+
+test('data-prefetch links warm the flight cache on hover/focus', async () => {
+  const html = await (await fetch(`${base}/`)).text();
+  assert.match(html, /href="\/users" data-prefetch/, 'the example demonstrates a data-prefetch link');
+  const sources = readClientChunks();
+  assert.ok(
+    sources.some((s) => s.includes('data-prefetch')),
+    'the client must look for a[data-prefetch] links',
+  );
+  assert.ok(
+    sources.some((s) => s.includes('pointerover')),
+    'prefetch should be triggered on hover (pointerover) and focus',
+  );
+});
+
+test('the client router takes over scroll restoration for back/forward', () => {
+  assert.ok(
+    readClientChunks().some((s) => s.includes('scrollRestoration')),
+    'manual scrollRestoration is how the router restores position on pop navigations',
   );
 });
 
@@ -180,6 +222,27 @@ test('flight (soft-navigation) errors render the error page as an RSC payload, n
   const payload = await res.text();
   assert.match(payload, /Something went wrong/, 'error page component rendered into the flight payload');
   assert.doesNotMatch(payload, /Failed to find Server Action/, 'real error detail must be redacted in prod');
+});
+
+test('<Boundary> renders its children on the happy path', async () => {
+  const res = await fetch(`${base}/boundary`);
+  assert.equal(res.status, 200);
+  assert.match(await res.text(), /data-section="ok"/, 'the async section should resolve and render through the boundary');
+});
+
+test('<Boundary> contains a thrown error locally instead of failing the whole page', async () => {
+  const res = await fetch(`${base}/boundary?fail=1`, { headers: { Accept: 'text/html' } });
+  assert.equal(res.status, 200, 'the error is caught by the boundary, not escalated to a 500');
+  const html = await res.text();
+  assert.match(html, /This section failed to load/, 'the boundary error fallback is delivered to the client');
+  assert.doesNotMatch(html, /Something went wrong/, 'the global error page must NOT be used — the failure stayed local');
+});
+
+test('a soft-navigation into a boundary error stays a 200 flight (no hard reload)', async () => {
+  const res = await fetch(`${base}/boundary?fail=1`, { headers: { Accept: 'text/x-component' } });
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /text\/x-component/, 'the client gets flight it can swap in, not a redirect/reload');
+  assert.match(await res.text(), /This section failed to load/);
 });
 
 test('static route is prerendered at build time and served in prod', async () => {

@@ -13,12 +13,50 @@ import type { RscPayload } from './entry.rsc.js';
 import { NavRuntimeContext, type Router } from './navigation.js';
 import { createRscRenderRequest } from './request.js';
 
+// In-memory flight-payload cache keyed by same-origin path+search. `data-prefetch`
+// links warm it on hover/focus; a navigation to a warmed URL resolves instantly and
+// clears the entry (a prefetch is used at most once, so re-visits always re-fetch).
+const payloadCache = new Map<string, Promise<RscPayload>>();
+
+function cacheKey(href: string): string | null {
+  const url = new URL(href, location.href);
+  if (url.origin !== location.origin) return null;
+  return url.pathname + url.search;
+}
+
+function requestPayload(href: string): Promise<RscPayload> {
+  return createFromFetch<RscPayload>(fetch(createRscRenderRequest(new URL(href, location.href).href)));
+}
+
+function warmPayload(href: string): void {
+  const key = cacheKey(href);
+  if (!key || key === cacheKey(location.href) || payloadCache.has(key)) return;
+  const promise = requestPayload(href);
+  payloadCache.set(key, promise);
+  // Don't cache failures, and swallow the rejection until (or unless) a nav awaits it.
+  promise.catch(() => {
+    if (payloadCache.get(key) === promise) payloadCache.delete(key);
+  });
+}
+
+function takePayload(href: string): Promise<RscPayload> {
+  const key = cacheKey(href);
+  if (key) {
+    const cached = payloadCache.get(key);
+    if (cached) {
+      payloadCache.delete(key);
+      return cached;
+    }
+  }
+  return requestPayload(href);
+}
+
 async function main() {
   const cspMeta = document.querySelector('meta[property="csp-nonce"]') as HTMLMetaElement | null;
   if (cspMeta?.nonce) __webpack_nonce__ = cspMeta.nonce;
 
   let setPayload: (v: RscPayload) => void;
-  // @HC Runs work inside the nav transition so useNavigation().pending stays true across the round-trip; BrowserRoot swaps in its instance on mount.
+  // Runs work inside the nav transition so useNavigation().pending stays true across the round-trip; BrowserRoot swaps in its instance on mount.
   let startNav: (run: () => void | Promise<void>) => void = (run) => {
     void run();
   };
@@ -45,11 +83,11 @@ async function main() {
 
   const back = () => window.history.back();
   const forward = () => window.history.forward();
-  // @HC A refresh keeps the URL, so it can't ride the history patch like push/replace — it drives the flight re-fetch directly.
+  // A refresh keeps the URL, so it can't ride the history patch like push/replace — it drives the flight re-fetch directly (bypassing any warmed cache to get fresh data).
   const refresh = () =>
     startNav(async () => {
       try {
-        await fetchRscPayload();
+        await fetchRscPayload(true);
       } catch {
         window.location.reload();
       }
@@ -64,11 +102,10 @@ async function main() {
     return true;
   }
 
-  async function fetchRscPayload() {
-    const renderRequest = createRscRenderRequest(window.location.href);
+  async function fetchRscPayload(force = false) {
     let payload: RscPayload;
     try {
-      payload = await createFromFetch<RscPayload>(fetch(renderRequest));
+      payload = await (force ? requestPayload(window.location.href) : takePayload(window.location.href));
     } catch (error) {
       if (handleControlDigest(error)) return;
       throw error;
@@ -88,15 +125,17 @@ async function main() {
 
     React.useEffect(
       () =>
-        listenNavigation((type) =>
-          startNav(async () => {
-            try {
-              await fetchRscPayload();
-              if (type === 'push') requestAnimationFrame(() => window.scrollTo(0, 0));
-            } catch {
-              window.location.reload();
-            }
-          }),
+        listenNavigation(
+          (type, restoreScroll) =>
+            startNav(async () => {
+              try {
+                await fetchRscPayload();
+                restoreScroll();
+              } catch {
+                window.location.reload();
+              }
+            }),
+          warmPayload,
         ),
       [],
     );
@@ -135,27 +174,84 @@ async function main() {
   });
 
   if (import.meta.webpackHot) {
-    initDevRefresh(fetchRscPayload);
+    // Server code may have changed, so drop any warmed payloads and re-fetch fresh.
+    initDevRefresh(() => {
+      payloadCache.clear();
+      return fetchRscPayload(true);
+    });
   }
 }
 
 type NavigationType = 'push' | 'replace' | 'pop';
 
-function listenNavigation(onNavigation: (type: NavigationType) => void): () => void {
-  const onPopState = () => onNavigation('pop');
+// An `<a>` we intercept for soft navigation: same-origin, same tab, not a download,
+// and not explicitly opted out with `data-native` (which forces a full browser navigation).
+function isRouterLink(link: HTMLAnchorElement): boolean {
+  return (
+    !!link.href &&
+    (!link.target || link.target === '_self') &&
+    link.origin === location.origin &&
+    !link.hasAttribute('download') &&
+    !link.hasAttribute('data-native')
+  );
+}
+
+function listenNavigation(onNavigation: (type: NavigationType, restoreScroll: () => void) => void, prefetch: (href: string) => void): () => void {
+  // Scroll restoration. We tag each history entry with a stable numeric key in its
+  // `history.state` and remember scrollY per key, so back/forward restores the exact
+  // position while push scrolls to the top. `manual` hands restoration to us.
+  const scrollByKey = new Map<number, number>();
+  let seq = 0;
+  const prevRestoration = window.history.scrollRestoration;
+  try {
+    window.history.scrollRestoration = 'manual';
+  } catch {}
+
+  const keyOf = (): number | null => {
+    const state = window.history.state as { __rshonoScroll?: unknown } | null;
+    return state && typeof state.__rshonoScroll === 'number' ? state.__rshonoScroll : null;
+  };
+  const tag = (state: unknown, key: number) => ({ ...(state as object | null), __rshonoScroll: key });
+
+  if (keyOf() === null) {
+    window.history.replaceState(tag(window.history.state, seq++), '');
+  }
+
+  let scrollRaf = 0;
+  const onScroll = () => {
+    if (scrollRaf) return;
+    scrollRaf = requestAnimationFrame(() => {
+      scrollRaf = 0;
+      const key = keyOf();
+      if (key !== null) scrollByKey.set(key, window.scrollY);
+    });
+  };
+  window.addEventListener('scroll', onScroll, { passive: true });
+
+  const restoreScrollFor = (type: NavigationType) => () => {
+    if (type === 'replace') return;
+    const key = keyOf();
+    requestAnimationFrame(() => {
+      const y = type === 'pop' && key !== null ? (scrollByKey.get(key) ?? 0) : 0;
+      window.scrollTo(0, y);
+    });
+  };
+  const notify = (type: NavigationType) => onNavigation(type, restoreScrollFor(type));
+
+  const onPopState = () => notify('pop');
   window.addEventListener('popstate', onPopState);
 
   const oldPushState = window.history.pushState;
-  window.history.pushState = function (...args) {
-    const res = oldPushState.apply(this, args);
-    onNavigation('push');
+  window.history.pushState = function (state, unused, url) {
+    const res = oldPushState.call(this, tag(state, seq++), unused, url as string);
+    notify('push');
     return res;
   };
 
   const oldReplaceState = window.history.replaceState;
-  window.history.replaceState = function (...args) {
-    const res = oldReplaceState.apply(this, args);
-    onNavigation('replace');
+  window.history.replaceState = function (state, unused, url) {
+    const res = oldReplaceState.call(this, tag(state, keyOf() ?? seq++), unused, url as string);
+    notify('replace');
     return res;
   };
 
@@ -164,10 +260,7 @@ function listenNavigation(onNavigation: (type: NavigationType) => void): () => v
     if (
       link &&
       link instanceof HTMLAnchorElement &&
-      link.href &&
-      (!link.target || link.target === '_self') &&
-      link.origin === location.origin &&
-      !link.hasAttribute('download') &&
+      isRouterLink(link) &&
       e.button === 0 &&
       !e.metaKey &&
       !e.ctrlKey &&
@@ -182,11 +275,26 @@ function listenNavigation(onNavigation: (type: NavigationType) => void): () => v
   }
   document.addEventListener('click', onClick);
 
+  function onPrefetch(e: Event) {
+    const target = e.target;
+    if (!(target instanceof Element)) return;
+    const link = target.closest('a[data-prefetch]');
+    if (link instanceof HTMLAnchorElement && isRouterLink(link)) prefetch(link.href);
+  }
+  document.addEventListener('pointerover', onPrefetch);
+  document.addEventListener('focusin', onPrefetch);
+
   return () => {
     document.removeEventListener('click', onClick);
+    document.removeEventListener('pointerover', onPrefetch);
+    document.removeEventListener('focusin', onPrefetch);
     window.removeEventListener('popstate', onPopState);
+    window.removeEventListener('scroll', onScroll);
     window.history.pushState = oldPushState;
     window.history.replaceState = oldReplaceState;
+    try {
+      window.history.scrollRestoration = prevRestoration;
+    } catch {}
   };
 }
 

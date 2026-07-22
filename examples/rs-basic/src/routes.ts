@@ -40,6 +40,10 @@ export const routes = defineRoutes({
       component: () => import('./components/whoami'),
     },
     {
+      path: '/boundary',
+      component: () => import('./components/boundary-demo'),
+    },
+    {
       kind: 'endpoint',
       path: '/api/quick-health',
       server: () => import('./health'),

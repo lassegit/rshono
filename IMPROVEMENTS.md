@@ -130,45 +130,105 @@ sent to the server), so it's derived from the server href for consistency rather
 
 ## Tier 2 — Core DX parity (the loved parts of the App Router)
 
-### 2.1 Loading / pending UI during navigation
+### 2.1 Loading / pending UI during navigation ✅ DONE
 
 **Why:** `startTransition` keeps the old page until the new payload arrives, but nothing tells the
 user "navigating…". This is one of Next's most-appreciated behaviors.
 
-**Sketch:** expose the transition's `isPending` via `useRouter().pending`, and/or ship a tiny
-top-progress indicator opt-in. Optionally support a route-level `loading` component rendered inside a
-Suspense boundary around the page.
+**Shipped.** The transition's pending state was already surfaced as `useNavigation().router.pending`
+(landed in 1.3). On top of it, `src/runtime/navigation.tsx` (`rshono/client`) adds an **opt-in**
+`<NavigationProgress>` — a tiny fixed top bar that reads `router.pending` and eases toward the end
+while a soft navigation is in flight, then snaps to 100% and fades. It renders **hidden** during SSR
+(`opacity:0; width:0`), so there's no hydration flicker; drop one instance in the root layout.
 
-**Files:** `entry.client.tsx` (surface `isPending` from the existing `startTransition`), router client.
+**Not done deliberately:** no route-level `loading` file convention. Loading UI is composed instead
+from `<Boundary loading>` / React `<Suspense>` (see 2.2) — more RSC-native and one less convention to
+learn.
 
-### 2.2 Per-route error boundaries + in-place error rendering (pairs with BUGS #4)
+**Tests (`test/prod.test.mjs`):** the bar renders into every page but starts invisible (`opacity:0`,
+`width:0%`), and `pending` is `no` at SSR time (existing 1.3 test).
+
+**Files:** `navigation.tsx` (`NavigationProgress`), `client.ts` (export).
+
+### 2.2 Per-route error boundaries + in-place error rendering (pairs with BUGS #4) ✅ DONE
 
 **Why:** A single global `error` page means any server error is all-or-nothing and soft-nav errors
-hard-reload. Per-route `error` boundaries and RSC error payloads make failures local and stateful.
+hard-reload. Local error boundaries and RSC error payloads make failures local and stateful.
 
-**Sketch:** allow an optional `error`/`loading` per `PageRoute`; wrap the page element in an error
-boundary + Suspense; for flight errors, emit the error page as an RSC payload (fixes BUGS.md #4).
+**Shipped — reusable boundary components, not a route-file convention.** The server-side flight error
+payload (BUGS #4) already landed (`renderComponent` emits the `error` page as an RSC payload; covered
+by the existing flight-error test), so an _uncaught_ error already renders the global `error` page as
+HTML or flight. What was missing was a way to keep a failure **local**:
 
-**Files:** `router.ts` (types), `entry.rsc.tsx` (wrap + flight error payload), `entry.client.tsx`.
+- `src/runtime/boundaries.tsx` (`'use client'`, exported from `rshono/client`) adds a general
+  `<ErrorBoundary>` — a class boundary with `fallback` (a node, or `(error, reset) => node`),
+  `onError`, and `resetKeys` (clears the error when any key changes, e.g. `resetKeys={[pathname]}` to
+  recover on navigation).
+- `<Boundary loading error>` is the combined convenience (the answer to "does it make sense to pair
+  it with Suspense?" — yes): it always renders the same shape — `ErrorBoundary` (outer) wrapping
+  `Suspense` (inner) — so `error` catches throws and `loading` shows while suspended. Both fallbacks
+  are optional: omit `loading` for no visible loading UI; omit `error` and throws propagate to the
+  next boundary out (the `ErrorBoundary` re-throws when it has no fallback). Drop it anywhere from a
+  server or client component.
+- Because these are client boundaries, a server component whose child throws has the error **contained
+  in place** (the client boundary catches it via the flight payload) instead of escalating to the
+  global 500 — and a soft navigation into such an error stays a `200` flight, no hard reload.
 
-### 2.3 `<Link>` with prefetch (keep the `<a>` interception too)
+**Constraint documented:** the `(error, reset) => node` render-function fallback only works when the
+boundary is used from a `'use client'` component (functions can't cross the server→client boundary);
+from a server component, pass a `ReactNode`.
+
+**Not done deliberately:** no `error`/`loading` fields on `PageRoute`. A user-placed boundary is more
+flexible (wrap a whole page _or_ just one risky section) and keeps `routes.ts` minimal.
+
+**Tests (`test/prod.test.mjs`):** `/boundary` renders its async children; `/boundary?fail=1` stays
+**200** (contained, and asserts the global "Something went wrong" page is _not_ used) with the
+fallback delivered; the soft-nav (`text/x-component`) variant stays a **200 flight**.
+
+**Files:** `boundaries.tsx` (new), `client.ts` (exports); server-side flight payload already in
+`entry.rsc.tsx`.
+
+### 2.3 `<Link>` with prefetch (keep the `<a>` interception too) ✅ DONE
 
 **Why:** The global `<a>` click interception is elegant and should stay. But no prefetch means the
 first click on any route always round-trips. A tiny opt-in prefetch closes the perceived-perf gap.
 
-**Sketch:** an optional `<Link prefetch>` (or `data-prefetch` on `<a>`) that, on hover/viewport,
-fetches the flight payload for the target URL into an in-memory cache keyed by URL; navigation then
-resolves instantly. Keep it opt-in to preserve minimalism.
+**Shipped — plain `data-*` attributes on `<a>`, no `<Link>` component.** Both are opt-in and layer
+onto the existing global click handler, so the interception stays exactly as elegant:
 
-**Files:** router client, `entry.client.tsx` (payload cache in `fetchRscPayload`).
+- **`data-prefetch`** — on hover (`pointerover`) and focus (`focusin`), the client warms an in-memory
+  flight-payload cache keyed by same-origin `pathname+search` (`payloadCache` in `entry.client.tsx`).
+  A navigation to a warmed URL resolves from cache instantly; entries are used **once** then dropped,
+  so re-visits always re-fetch (pages are dynamic). Failed prefetches aren't cached.
+- **`data-native`** — opts an `<a>` _out_ of RSC soft navigation entirely (`isRouterLink()` returns
+  false), so the browser does a full-page load. For links to non-SPA resources or where a hard reload
+  is actually wanted.
 
-### 2.4 Scroll restoration on back/forward
+The dev refresh clears the warm cache before re-fetching so stale prefetches never survive an edit.
 
-**Why:** Currently only scroll-to-top on push (`entry.client.tsx`). Back/forward should restore prior
-scroll position — users expect it.
+**Tests (`test/prod.test.mjs`):** the example ships both a `data-prefetch` and a `data-native` link
+(asserted in the SSR HTML), and the client bundle carries the prefetch (`data-prefetch`, `pointerover`)
+and opt-out (`data-native`) logic.
 
-**Sketch:** stash `scrollY` per history entry (in `history.state` or a Map keyed by nav id) and
-restore on `pop`.
+**Files:** `entry.client.tsx` (module-level `payloadCache` + `warmPayload`/`takePayload`, prefetch
+listeners and `data-native` in `listenNavigation`).
+
+### 2.4 Scroll restoration on back/forward ✅ DONE
+
+**Why:** Previously only scroll-to-top on push. Back/forward should restore the prior scroll
+position — users expect it.
+
+**Shipped.** `listenNavigation` (`entry.client.tsx`) now owns scroll: it sets
+`history.scrollRestoration = 'manual'` (taking over from the browser), tags every history entry with
+a stable numeric key injected into `history.state` (through the same `pushState`/`replaceState`
+patch that already drives soft nav), and records `scrollY` per key via a rAF-throttled `scroll`
+listener. After each navigation's payload commits: **push** → scroll to top, **pop** (back/forward) →
+restore the saved position for that entry, **replace** → stay put. All state is cleaned up (and
+`scrollRestoration` restored) when the listener tears down.
+
+**Known limit (shared 2.1–2.4):** the browser-driven behaviors — the progress bar animating, hover
+prefetch firing, `data-native` full loads, and actual back/forward scroll restore — are verified by
+build + HTTP/bundle assertions, not a headless browser (same constraint as 1.2/1.3).
 
 **Files:** `entry.client.tsx`.
 
@@ -265,6 +325,8 @@ intercepting routes, edge-runtime adapters, and an implicit fetch-cache. Runtime
 2. **Tier 1 trio** — request-context (**1.1 done**) → control-flow `redirect`/`notFound` (**1.2 done**) →
    client router (**1.3 done**) — makes real apps buildable. The flight-payload envelope (used by
    1.2/1.3) is landed.
-3. **Tier 2** — loading/error/prefetch polish on top of the router.
+3. **Tier 2 (done)** — loading/error/prefetch/scroll polish on top of the router: `NavigationProgress`
+   (2.1), `ErrorBoundary`/`Boundary` (2.2), `data-prefetch`/`data-native` (2.3), and back/forward
+   scroll restoration (2.4). All exported from `rshono/client`.
 4. **Tier 4** cleanups fold in alongside the above; add the regression tests as each lands so the
    e2e suite stays green and the safety guarantees become executable.

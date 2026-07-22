@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useMemo, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 export interface Router {
   push(href: string): void;
@@ -79,4 +79,65 @@ export function useNavigation(): Navigation {
     );
   }
   return value;
+}
+
+export interface NavigationProgressProps {
+  /** Bar color. Defaults to a neutral blue. */
+  color?: string;
+  /** Bar height in pixels. Defaults to `3`. */
+  height?: number;
+}
+
+/**
+ * An opt-in top progress bar that appears while a client navigation is in
+ * flight (driven by {@link Router.pending}). Drop one instance in your root
+ * layout; it renders nothing on the server and stays invisible until the first
+ * soft navigation, so there's no hydration flicker.
+ *
+ * @example
+ * ```tsx
+ * import { NavigationProgress } from 'rshono/client';
+ *
+ * // in your layout, once:
+ * <body>
+ *   <NavigationProgress />
+ *   {children}
+ * </body>
+ * ```
+ */
+export function NavigationProgress({ color = '#3b82f6', height = 3 }: NavigationProgressProps = {}): ReactNode {
+  const { router } = useNavigation();
+  const [bar, setBar] = useState({ width: 0, opacity: 0 });
+
+  useEffect(() => {
+    if (router.pending) {
+      // Jump in, then creep toward — but never reach — the end while we wait.
+      setBar({ width: 15, opacity: 1 });
+      const ramp = setTimeout(() => setBar({ width: 85, opacity: 1 }), 80);
+      return () => clearTimeout(ramp);
+    }
+    // Done: snap to full, then fade out. (No-op if it was never shown.)
+    setBar((b) => (b.opacity === 0 ? b : { width: 100, opacity: 1 }));
+    const hide = setTimeout(() => setBar({ width: 0, opacity: 0 }), 220);
+    return () => clearTimeout(hide);
+  }, [router.pending]);
+
+  return (
+    <div
+      data-rshono-progress=""
+      aria-hidden="true"
+      style={{
+        position: 'fixed',
+        top: 0,
+        left: 0,
+        height,
+        width: `${bar.width}%`,
+        opacity: bar.opacity,
+        background: color,
+        zIndex: 2147483647,
+        pointerEvents: 'none',
+        transition: 'width 200ms ease-out, opacity 200ms ease-out',
+      }}
+    />
+  );
 }
