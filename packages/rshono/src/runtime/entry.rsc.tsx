@@ -62,6 +62,11 @@ export type RscPayload = {
 };
 
 function isSameOriginAction(request: Request): boolean {
+  const secFetchSite = request.headers.get('sec-fetch-site');
+  if (secFetchSite && secFetchSite !== 'same-origin' && secFetchSite !== 'none') {
+    return false;
+  }
+
   const origin = request.headers.get('origin');
   if (!origin) return true;
   let originHost: string;

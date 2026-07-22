@@ -256,6 +256,18 @@ test('cross-origin action POSTs are rejected (CSRF)', async () => {
   assert.equal(client.status, 403);
 });
 
+test('action POSTs with no Origin but a cross-site Sec-Fetch-Site are rejected (CSRF)', async () => {
+  const form = new FormData();
+  form.set('name', 'evil');
+  form.set('email', 'evil@evil.example');
+  const res = await fetch(`${base}/signup`, {
+    method: 'POST',
+    headers: { 'sec-fetch-site': 'cross-site' },
+    body: form,
+  });
+  assert.equal(res.status, 403);
+});
+
 test('progressive-enhancement form action works without JavaScript', async () => {
   const html = await (await fetch(`${base}/signup`)).text();
   const fields = parseActionForm(html);
