@@ -4,4 +4,4 @@ packages:
 allowBuilds:
   esbuild: false
 minimumReleaseAgeExclude:
-  - prettier-plugin-uncomment@1.0.0 || 1.0.1
+  - prettier-plugin-uncomment@1.0.0 || 1.0.1 || 1.0.2

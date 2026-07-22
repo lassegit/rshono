@@ -12,8 +12,8 @@ importers:
         specifier: ^3.9.1
         version: 3.9.1
       prettier-plugin-uncomment:
-        specifier: ^1.0.1
-        version: 1.0.1(prettier@3.9.1)
+        specifier: ^1.0.2
+        version: 1.0.2(prettier@3.9.1)
 
   examples/rs-basic:
     dependencies:
@@ -388,8 +388,8 @@ packages:
     resolution: {integrity: sha512-1yrb/+w6HWQJrUCLkJ2IF5jNIPvvFkblV5RNOYl6bV+OA6p9GLcMpHFFGTosSvHvcAUibuUukRqhlYI4z32C7Q==}
     engines: {node: '>=16.9.0'}
 
-  prettier-plugin-uncomment@1.0.1:
-    resolution: {integrity: sha512-4MuQzzQtAILH92tS3k63j9OX5088K/6yZAXQbA27xSKh9SXBdBOoMLbGSdth5fIvXVee+cmCEEPC6l0gfeAtDA==}
+  prettier-plugin-uncomment@1.0.2:
+    resolution: {integrity: sha512-pTjMZMfdDVHwUl6EjUiIjsii38vIF2mHIoVX+FN71vtALNTNPF1BXaKN5ilMaw5MRVKY3KNqMYVDExmw9gn+Tg==}
     peerDependencies:
       prettier: '>=3.0.0'
 
@@ -666,7 +666,7 @@ snapshots:
 
   hono@4.12.27: {}
 
-  prettier-plugin-uncomment@1.0.1(prettier@3.9.1):
+  prettier-plugin-uncomment@1.0.2(prettier@3.9.1):
     dependencies:
       prettier: 3.9.1
 
