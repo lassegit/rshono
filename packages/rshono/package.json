@@ -12,6 +12,10 @@
       "types": "./src/runtime/context.ts",
       "import": "./src/runtime/context.ts"
     },
+    "./client": {
+      "types": "./src/runtime/client.ts",
+      "import": "./src/runtime/client.ts"
+    },
     "./package.json": "./package.json"
   },
   "bin": {

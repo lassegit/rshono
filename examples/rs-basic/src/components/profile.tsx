@@ -2,6 +2,7 @@ import type { PageProps } from 'rshono';
 import { notFound } from 'rshono/server';
 import { fakeDB } from '../db';
 import { Layout } from './layout';
+import { NavInfo } from './nav-info';
 
 export default async function Profile({ params }: PageProps<'/profile/:id'>) {
   const user = await fakeDB.getUser(params.id);
@@ -27,6 +28,8 @@ export default async function Profile({ params }: PageProps<'/profile/:id'>) {
             </li>
           ))}
         </ul>
+
+        <NavInfo />
       </div>
     </Layout>
   );

@@ -79,23 +79,52 @@ navigation can't change the response (bytes are committed) — same constraint a
 the initial render (the normal case). Browser-driven soft-nav behaviors are implemented but verified by
 build/HTTP assertions, not a headless browser.
 
-### 1.3 A small client router — `useRouter`, `usePathname`, `useSearchParams`, `useParams`
+### 1.3 A small client router — `useNavigation()` ✅ DONE
 
 **Why:** Interactive client islands need reactive URL access and programmatic navigation. The
-machinery already exists — `fetchRscPayload` and the patched `history.pushState` in `entry.client.tsx`
-— it just isn't exposed or made reactive.
+machinery already existed — `fetchRscPayload` and the patched `history.pushState` in `entry.client.tsx`
+— it just wasn't exposed or made reactive.
 
-**Implementation sketch:**
+**Shipped — one hook, not a family.** Next splits this across `usePathname`/`useSearchParams`/
+`useParams`/`useRouter`, each backed by a client-side store it has to keep in sync (and that store is
+exactly what can lag and flicker). rshono exposes a **single** `useNavigation()` from `rshono/client`
+that returns everything navigation-related in one object:
 
-- A `rshono/client` entry exporting hooks backed by a small context/store updated on every navigation
-  (the nav listener already fires on push/replace/pop).
-- `useRouter()` → `{ push, replace, back, refresh }`. `refresh()` = existing `fetchRscPayload()` for
-  the current URL. `push/replace` = `history.pushState/replaceState` (already wired to trigger nav).
-- `usePathname()/useSearchParams()/useParams()` read from the store so islands re-render on nav.
+- location data (flat): `url` (WHATWG `URL`, proxy-aware — mirrors `getContext().url`), `pathname`,
+  `searchParams` (`URLSearchParams`), `params`;
+- `router` sub-object (`Router` type): `push`, `replace`, `back`, `forward`, `refresh`, and `pending`
+  (`true` while a client navigation is in flight) — "where am I" (flat) vs "how do I move" (`.router`).
 
-**Files:** new `src/runtime/router-client.tsx` (or fold into `entry.client.tsx`), `package.json#exports`.
+**The key idea: URL data rides the flight payload, not a parallel store.** This is what keeps it
+RSC-native and flicker-free, and it drops out of the existing architecture rather than adding a
+store to sync:
 
-**Test:** a client button calling `router.push('/users')` navigates; `usePathname()` updates after nav.
+- `src/runtime/navigation.tsx` (`'use client'`) defines `useNavigation()`, a `RouterProvider`, and two
+  contexts. `RouterProvider` is a client component the **server** render wraps around every page, so
+  `href`/`params` cross the flight boundary as plain data.
+- `entry.rsc.tsx` `renderComponent` wraps `<Page>` in `<RouterProvider href={props.url} params={params}>`.
+  Because the data is server-computed: (a) client islands **SSR with the correct URL** and hydrate against
+  identical values → **no flicker**; (b) `params` work client-side **without shipping route patterns** —
+  Hono's matcher already resolved them; (c) every soft nav re-fetches the payload, so the new
+  `RouterProvider` props flow through context and islands re-render — **no manual sync**.
+- `entry.client.tsx` `BrowserRoot` provides the imperative half via `NavRuntimeContext`
+  (`push`/`replace`/`back`/`forward`/`refresh` + a `useTransition`-backed `pending`); during SSR that
+  provider is absent, so `RouterProvider` falls back to no-op methods and `pending: false`.
+- `package.json#exports` adds `rshono/client` (barrel `src/runtime/client.ts` → `useNavigation`, `Navigation`).
+
+**Server/client parity:** server components keep reading the same shape from `getContext()`
+(`url`/`pathname`/`searchParams`/`params`) — hooks can't run there — so there's one URL surface with two
+entry points and nothing new to learn on the server.
+
+**Tests (`test/prod.test.mjs`):** a client island (`NavInfo` on `/profile/:id`) reads `useNavigation()`;
+asserts the **SSR HTML** carries server-computed `pathname`/`params`/`searchParams` and `pending: false`
+(proves no-flicker hydration), the **flight payload** carries the URL for soft-nav sync, and the
+framework-owned provider reaches the **client bundle** (proves the first rshono-owned `'use client'`
+module is discovered by the RSC/Client plugins).
+
+**Known limit:** the imperative methods and `pending` are exercised by build + SSR assertions, not a
+headless browser — same constraint as 1.2. `url.hash` is always empty server-side (fragments aren't
+sent to the server), so it's derived from the server href for consistency rather than `window.location`.
 
 ---
 
@@ -233,9 +262,9 @@ intercepting routes, edge-runtime adapters, and an implicit fetch-cache. Runtime
 ## Suggested sequencing
 
 1. **BUGS.md #1 (4.1)** and **#2 (3.1)** — safety + conventions; small, high-trust wins.
-2. **Tier 1 trio** — request-context (**1.1 done**) → control-flow `redirect`/`notFound` (1.2) →
-   client router (1.3) — makes real apps buildable. Land the flight-payload envelope (used by
-   1.2/1.3) once, cleanly.
+2. **Tier 1 trio** — request-context (**1.1 done**) → control-flow `redirect`/`notFound` (**1.2 done**) →
+   client router (**1.3 done**) — makes real apps buildable. The flight-payload envelope (used by
+   1.2/1.3) is landed.
 3. **Tier 2** — loading/error/prefetch polish on top of the router.
 4. **Tier 4** cleanups fold in alongside the above; add the regression tests as each lands so the
    e2e suite stays green and the safety guarantees become executable.

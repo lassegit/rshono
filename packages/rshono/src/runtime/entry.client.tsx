@@ -10,6 +10,7 @@ import {
 import { rscStream } from 'rsc-html-stream/client';
 import { isControlDigest, parseRedirectDigest } from './control.js';
 import type { RscPayload } from './entry.rsc.js';
+import { NavRuntimeContext, type Router } from './navigation.js';
 import { createRscRenderRequest } from './request.js';
 
 async function main() {
@@ -17,33 +18,15 @@ async function main() {
   if (cspMeta?.nonce) __webpack_nonce__ = cspMeta.nonce;
 
   let setPayload: (v: RscPayload) => void;
+  // @HC Runs work inside the nav transition so useNavigation().pending stays true across the round-trip; BrowserRoot swaps in its instance on mount.
+  let startNav: (run: () => void | Promise<void>) => void = (run) => {
+    void run();
+  };
 
   const initialPayload = await createFromReadableStream<RscPayload>(rscStream);
 
-  function BrowserRoot() {
-    const [payload, setPayloadState] = React.useState(initialPayload);
-
-    React.useEffect(() => {
-      setPayload = (v) => React.startTransition(() => setPayloadState(v));
-    }, []);
-
-    React.useEffect(
-      () =>
-        listenNavigation((type) => {
-          fetchRscPayload()
-            .then(() => {
-              if (type === 'push') requestAnimationFrame(() => window.scrollTo(0, 0));
-            })
-            .catch(() => window.location.reload());
-        }),
-      [],
-    );
-
-    return payload.root;
-  }
-
-  function navigateTo(to: string) {
-    const target = new URL(to, window.location.href);
+  function push(href: string) {
+    const target = new URL(href, window.location.href);
     if (target.origin !== window.location.origin) {
       window.location.assign(target.href);
       return;
@@ -51,11 +34,32 @@ async function main() {
     window.history.pushState(null, '', target.href);
   }
 
+  function replace(href: string) {
+    const target = new URL(href, window.location.href);
+    if (target.origin !== window.location.origin) {
+      window.location.replace(target.href);
+      return;
+    }
+    window.history.replaceState(null, '', target.href);
+  }
+
+  const back = () => window.history.back();
+  const forward = () => window.history.forward();
+  // @HC A refresh keeps the URL, so it can't ride the history patch like push/replace — it drives the flight re-fetch directly.
+  const refresh = () =>
+    startNav(async () => {
+      try {
+        await fetchRscPayload();
+      } catch {
+        window.location.reload();
+      }
+    });
+
   function handleControlDigest(error: unknown): boolean {
     const digest = (error as { digest?: unknown } | null)?.digest;
     if (!isControlDigest(digest)) return false;
     const redirect = parseRedirectDigest(digest);
-    if (redirect) navigateTo(redirect.location);
+    if (redirect) push(redirect.location);
     else window.location.reload();
     return true;
   }
@@ -69,8 +73,37 @@ async function main() {
       if (handleControlDigest(error)) return;
       throw error;
     }
-    if (payload.redirect) return navigateTo(payload.redirect);
+    if (payload.redirect) return push(payload.redirect);
     setPayload(payload);
+  }
+
+  function BrowserRoot() {
+    const [payload, setPayloadState] = React.useState(initialPayload);
+    const [pending, startTransition] = React.useTransition();
+
+    React.useEffect(() => {
+      setPayload = (v) => setPayloadState(v);
+      startNav = (run) => startTransition(run);
+    }, [startTransition]);
+
+    React.useEffect(
+      () =>
+        listenNavigation((type) =>
+          startNav(async () => {
+            try {
+              await fetchRscPayload();
+              if (type === 'push') requestAnimationFrame(() => window.scrollTo(0, 0));
+            } catch {
+              window.location.reload();
+            }
+          }),
+        ),
+      [],
+    );
+
+    const runtime = React.useMemo<Router>(() => ({ push, replace, back, forward, refresh, pending }), [pending]);
+
+    return <NavRuntimeContext.Provider value={runtime}>{payload.root}</NavRuntimeContext.Provider>;
   }
 
   setServerCallback(async (id, args) => {
@@ -87,10 +120,10 @@ async function main() {
       throw error;
     }
     if (payload.redirect) {
-      navigateTo(payload.redirect);
+      push(payload.redirect);
       return undefined;
     }
-    setPayload(payload);
+    React.startTransition(() => setPayload(payload));
     if (payload.notFound) return undefined;
     const { ok, data } = payload.returnValue!;
     if (!ok) throw data;

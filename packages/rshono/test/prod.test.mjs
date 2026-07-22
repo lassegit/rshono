@@ -85,6 +85,28 @@ test('notFound() in a server component renders the 404 page', async () => {
   assert.match(await res.text(), /404 — nothing here/);
 });
 
+test('useNavigation() gives a client island server-computed pathname/params/searchParams during SSR (no flicker)', async () => {
+  const html = await (await fetch(`${base}/profile/1?tab=settings`)).text();
+  assert.match(html, /data-nav="pathname">(?:<!--[^]*?-->)?\/profile\/1</, 'useNavigation().pathname was wrong at SSR time');
+  assert.match(html, /data-nav="param-id">(?:<!--[^]*?-->)?1</, 'useNavigation().params.id was wrong at SSR time');
+  assert.match(html, /data-nav="query-tab">(?:<!--[^]*?-->)?settings</, 'useNavigation().searchParams was wrong at SSR time');
+  assert.match(html, /data-nav="pending">(?:<!--[^]*?-->)?no</, 'nothing is navigating during SSR, so pending must be false');
+});
+
+test('the navigation URL rides the flight payload so soft navigation stays in sync', async () => {
+  const flight = await (await fetch(`${base}/profile/1?tab=settings`, { headers: { Accept: 'text/x-component' } })).text();
+  assert.match(flight, /profile\/1\?tab=settings/, 'the flight payload should carry the URL for the client router');
+});
+
+test('the client router (useNavigation) is bundled for the browser', () => {
+  const staticDir = join(EXAMPLE_DIST, 'static', 'chunks');
+  const sources = readdirSync(staticDir).map((f) => readFileSync(join(staticDir, f), 'utf8'));
+  assert.ok(
+    sources.some((s) => s.includes('useNavigation() must be called')),
+    'the framework-owned router provider must reach the client bundle for hydration to resolve it',
+  );
+});
+
 test('a server action can redirect (POST-redirect-GET) and set a cookie without JavaScript', async () => {
   const html = await (await fetch(`${base}/login`)).text();
   const fields = parseActionForm(html);

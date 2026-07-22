@@ -3,5 +3,6 @@
   "printWidth": 150,
   "tabWidth": 2,
   "trailingComma": "all",
-  "singleQuote": true
+  "singleQuote": true,
+  "uncommentKeep": ["@keep"]
 }

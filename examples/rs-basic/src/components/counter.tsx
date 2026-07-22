@@ -7,8 +7,6 @@ export function Counter() {
   const [count, setCount] = useState(0);
   const [hydrated, setHydrated] = useState(false);
 
-  console.log(process.env);
-
   useEffect(() => {
     setHydrated(true);
   }, []);
@@ -17,7 +15,12 @@ export function Counter() {
     <div className="feature-card" style={{ margin: '1.5rem auto', maxWidth: '28rem' }}>
       <h3>Client Island {hydrated ? '(hydrated ✓)' : '(hydrating…)'}</h3>
       <p>
-        <button className="btn" onClick={() => setCount((n) => n + 1)}>
+        <button
+          className="btn"
+          onClick={() => {
+            setCount((n) => n + 1);
+          }}
+        >
           Clicked {count} time{count === 1 ? '' : 's'}
         </button>
       </p>

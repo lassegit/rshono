@@ -37,6 +37,7 @@ import { createPublicFallback, createStaticMiddleware } from '../server/static.j
 import { type ControlSignal, isControlSignal, RedirectSignal } from './control.js';
 import { publicUrl, runWithContext } from './context.js';
 import { renderHTML } from './entry.ssr.js';
+import { RouterProvider } from './navigation.js';
 import { parseRenderRequest } from './request.js';
 
 const isDev = process.env.NODE_ENV === 'development';
@@ -124,7 +125,9 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
       {Page.entryCssFiles?.map((href) => (
         <link key={href} rel="stylesheet" href={href} precedence="default" />
       ))}
-      <Page {...props} />
+      <RouterProvider href={props.url} params={params}>
+        <Page {...props} />
+      </RouterProvider>
     </>
   );
 
