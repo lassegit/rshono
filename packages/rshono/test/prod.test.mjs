@@ -164,10 +164,6 @@ test('hashed static assets are served immutable', async () => {
 });
 
 test('secrets never render into SSR HTML — even from a no-directive helper', async () => {
-  // The home page's client island calls readSecretFromHelper() — a plain helper module with
-  // no 'use client' directive that reads process.env.DATABASE_URL. Because it is compiled into
-  // the SSR layer, its process.env must be shadowed with the public env, so it can never see
-  // this runtime secret regardless of what the process env holds.
   const SECRET = 'runtime-db-secret-must-not-leak';
   const srv = await startServer('start', { env: { DATABASE_URL: SECRET }, urlPattern: READY });
   try {
