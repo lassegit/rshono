@@ -3,6 +3,8 @@ import { Counter } from './counter';
 import { Layout } from './layout';
 
 export default function Home(props: PageProps) {
+  console.log(process.env);
+
   return (
     <Layout title="rshono — Ultra-minimalist RSC framework" description="Hono + Rspack + React Server Components">
       <div className="hero">

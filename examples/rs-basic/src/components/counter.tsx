@@ -7,6 +7,8 @@ export function Counter() {
   const [count, setCount] = useState(0);
   const [hydrated, setHydrated] = useState(false);
 
+  console.log(process.env);
+
   useEffect(() => {
     setHydrated(true);
   }, []);

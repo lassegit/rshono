@@ -173,7 +173,7 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
           use: [
             {
               loader: join(FRAMEWORK_SRC, 'builder', 'env-shadow-loader.cjs'),
-              options: { prelude: `const process = { env: ${JSON.stringify(publicEnv(isDev))} }; ` },
+              options: { prelude: `const process = { env: ${JSON.stringify(publicEnv(isDev))} }; `, layer: Layers.ssr },
             },
           ],
         },

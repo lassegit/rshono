@@ -163,12 +163,24 @@ test('hashed static assets are served immutable', async () => {
   assert.equal(res.headers.get('cache-control'), 'public, max-age=31536000, immutable');
 });
 
-test('secrets never render into SSR HTML — even from client components', async () => {
-  const html = await (await fetch(`${base}/`)).text();
-  assert.doesNotMatch(html, /my private database url/);
-  assert.match(html, /public dummy url/);
-  const flight = await (await fetch(`${base}/`, { headers: { Accept: 'text/x-component' } })).text();
-  assert.doesNotMatch(flight, /my private database url/);
+test('secrets never render into SSR HTML — even from a no-directive helper', async () => {
+  // The home page's client island calls readSecretFromHelper() — a plain helper module with
+  // no 'use client' directive that reads process.env.DATABASE_URL. Because it is compiled into
+  // the SSR layer, its process.env must be shadowed with the public env, so it can never see
+  // this runtime secret regardless of what the process env holds.
+  const SECRET = 'runtime-db-secret-must-not-leak';
+  const srv = await startServer('start', { env: { DATABASE_URL: SECRET }, urlPattern: READY });
+  try {
+    const at = `http://localhost:${srv.port}`;
+    const html = await (await fetch(`${at}/`)).text();
+    assert.match(html, /Using leak helper:\s*(?:<!--\s*-->)?\(no secret\)/, 'no-directive helper leaked a real secret into SSR HTML');
+    assert.match(html, /public dummy url/);
+    assert.ok(!html.includes(SECRET), 'DATABASE_URL value must not appear in SSR HTML');
+    const flight = await (await fetch(`${at}/`, { headers: { Accept: 'text/x-component' } })).text();
+    assert.ok(!flight.includes(SECRET), 'DATABASE_URL value must not appear in the flight payload');
+  } finally {
+    await stopServer(srv.child);
+  }
 });
 
 test('secrets never reach the client bundle; PUBLIC_ vars are inlined', () => {
