@@ -147,6 +147,19 @@ test('error page from routes.ts renders with redacted error info in prod', async
   assert.doesNotMatch(html, /Failed to find Server Action/, 'real error detail must be redacted in prod');
 });
 
+test('flight (soft-navigation) errors render the error page as an RSC payload, not plain text', async () => {
+  const res = await fetch(`${base}/users`, {
+    method: 'POST',
+    headers: { Accept: 'text/x-component', Origin: base, 'x-rsc-action': 'deadbeef', 'content-type': 'text/plain' },
+    body: '[]',
+  });
+  assert.equal(res.status, 500);
+  assert.match(res.headers.get('content-type'), /text\/x-component/, 'the client must get flight it can swap in, not plain text');
+  const payload = await res.text();
+  assert.match(payload, /Something went wrong/, 'error page component rendered into the flight payload');
+  assert.doesNotMatch(payload, /Failed to find Server Action/, 'real error detail must be redacted in prod');
+});
+
 test('static route is prerendered at build time and served in prod', async () => {
   const file = join(EXAMPLE_DIST, 'ssg', 'docs', 'getting-started', 'index.html');
   assert.match(readFileSync(file, 'utf8'), /Getting Started/);

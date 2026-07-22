@@ -305,7 +305,8 @@ function buildApp(): Hono {
     if (isControlSignal(error)) return runWithContext(c, () => resolveControl(c, error));
     console.error('[rshono] request error:', error);
     const wantsHtml = c.req.header('accept')?.includes('text/html') ?? false;
-    if (loadErrorPage && wantsHtml) {
+    const { isRsc } = parseRenderRequest(c.req.raw);
+    if (loadErrorPage && (wantsHtml || isRsc)) {
       const errorInfo: ErrorInfo = isDev
         ? {
             message: error instanceof Error ? error.message : String(error),
@@ -316,7 +317,7 @@ function buildApp(): Hono {
         return await runWithContext(c, async () =>
           renderComponent(c, await loadErrorPage(), {
             status: 500,
-            isRsc: false,
+            isRsc,
             extraProps: { error: errorInfo },
           }),
         );
