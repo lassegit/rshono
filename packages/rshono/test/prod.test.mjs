@@ -49,6 +49,63 @@ test('soft-navigation requests get a flight payload', async () => {
   assert.match(await res.text(), /Ada Lovelace/);
 });
 
+test('getContext() exposes url/pathname, headers, cookies and env in an async server component', async () => {
+  const res = await fetch(`${base}/whoami`, {
+    headers: { 'x-test': 'hello-ctx', cookie: 'visitor=ada-cookie' },
+  });
+  assert.equal(res.status, 200);
+  const html = await res.text();
+  assert.match(html, /pathname:.*\/whoami/s, 'ctx.pathname was wrong');
+  assert.match(html, /hello-ctx/, 'x-test header was not visible to the async server component');
+  assert.match(html, /ada-cookie/, 'visitor cookie was not visible to the async server component');
+  assert.match(html, /public dummy url/, 'ctx.env did not expose the PUBLIC_ variable');
+});
+
+test('redirect() in a server component issues an HTTP 3xx on hard navigation', async () => {
+  const res = await fetch(`${base}/dashboard`, { redirect: 'manual' });
+  assert.equal(res.status, 303);
+  assert.match(res.headers.get('location') ?? '', /\/login$/);
+});
+
+test('redirect() rides out as a flight digest on soft navigation', async () => {
+  const res = await fetch(`${base}/dashboard`, { headers: { Accept: 'text/x-component' } });
+  const body = await res.text();
+  assert.match(body, /RSHONO_REDIRECT/, 'flight payload should carry the redirect digest for the client');
+});
+
+test('a cookie-gated server component renders once the session cookie is present', async () => {
+  const res = await fetch(`${base}/dashboard`, { headers: { cookie: 'session=ada%40example.com' } });
+  assert.equal(res.status, 200);
+  assert.match(await res.text(), /Signed in as/);
+});
+
+test('notFound() in a server component renders the 404 page', async () => {
+  const res = await fetch(`${base}/profile/9999`, { headers: { Accept: 'text/html' } });
+  assert.equal(res.status, 404);
+  assert.match(await res.text(), /404 — nothing here/);
+});
+
+test('a server action can redirect (POST-redirect-GET) and set a cookie without JavaScript', async () => {
+  const html = await (await fetch(`${base}/login`)).text();
+  const fields = parseActionForm(html);
+  assert.ok(fields.meta && fields.key, 'login form is missing $ACTION fields');
+
+  const form = new FormData();
+  form.set('$ACTION_REF_1', fields.ref ?? '');
+  form.set('$ACTION_1:0', fields.meta);
+  form.set('$ACTION_1:1', fields.bound ?? '[{}]');
+  form.set('$ACTION_KEY', fields.key);
+  form.set('email', 'ada@example.com');
+
+  const res = await fetch(`${base}/login`, { method: 'POST', headers: { Origin: base }, body: form, redirect: 'manual' });
+  assert.equal(res.status, 303);
+  assert.match(res.headers.get('location') ?? '', /\/dashboard$/);
+  assert.ok(
+    res.headers.getSetCookie().some((c) => /session=/.test(c)),
+    'the action set a session cookie that should survive the redirect',
+  );
+});
+
 test('endpoint route and Hono sub-app respond with JSON', async () => {
   const health = await (await fetch(`${base}/api/quick-health`)).json();
   assert.equal(health.ok, true);
@@ -169,6 +226,11 @@ test('progressive-enhancement form action works without JavaScript', async () =>
     body: form,
   });
   assert.equal(res.status, 200);
+  const cookies = res.headers.getSetCookie();
+  assert.ok(
+    cookies.some((c) => /welcomed=/.test(c)),
+    'server action cookie (getContext + setCookie) did not reach the response',
+  );
   assert.match(await res.text(), /Welcome aboard, NoScript Nancy/);
 });
 

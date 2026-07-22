@@ -8,6 +8,10 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts"
     },
+    "./server": {
+      "types": "./src/runtime/context.ts",
+      "import": "./src/runtime/context.ts"
+    },
     "./package.json": "./package.json"
   },
   "bin": {

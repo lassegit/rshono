@@ -1,6 +1,7 @@
 import { serve } from '@hono/node-server';
 import type { Context, Handler } from 'hono';
 import { Hono } from 'hono';
+import type { ContentfulStatusCode, RedirectStatusCode } from 'hono/utils/http-status';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { parentPort, workerData } from 'node:worker_threads';
@@ -33,6 +34,8 @@ import {
 import { loadEnvFiles } from '../server/load-env.js';
 import { readPrerendered } from '../server/ssg.js';
 import { createStaticMiddleware } from '../server/static.js';
+import { type ControlSignal, isControlSignal, RedirectSignal } from './control.js';
+import { publicUrl, runWithContext } from './context.js';
 import { renderHTML } from './entry.ssr.js';
 import { parseRenderRequest } from './request.js';
 
@@ -54,6 +57,8 @@ export type RscPayload = {
   root: React.ReactNode;
   returnValue?: { ok: boolean; data: unknown };
   formState?: ReactFormState;
+  redirect?: string;
+  notFound?: boolean;
 };
 
 function isSameOriginAction(request: Request): boolean {
@@ -66,16 +71,6 @@ function isSameOriginAction(request: Request): boolean {
     return false;
   }
   return originHost === request.headers.get('x-forwarded-host') || originHost === request.headers.get('host');
-}
-
-function publicUrl(c: Context): string {
-  const forwardedHost = c.req.header('x-forwarded-host');
-  if (!forwardedHost) return c.req.url;
-  const url = new URL(c.req.url);
-  url.host = forwardedHost;
-  const forwardedProto = c.req.header('x-forwarded-proto');
-  if (forwardedProto) url.protocol = forwardedProto;
-  return url.toString();
 }
 
 async function loadPageModule(load: () => Promise<{ default: PageComponent }>, label: string): Promise<ServerEntry<PageComponent>> {
@@ -106,6 +101,7 @@ interface ComponentRenderOptions {
   returnValue?: RscPayload['returnValue'];
   temporaryReferences?: TemporaryReferenceSet;
   extraProps?: Record<string, unknown>;
+  payloadExtras?: Pick<RscPayload, 'redirect' | 'notFound'>;
 }
 
 async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opts: ComponentRenderOptions): Promise<Response> {
@@ -115,7 +111,7 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
   try {
     params = c.req.param();
   } catch {}
-  const props = { params, url: publicUrl(c), ...opts.extraProps };
+  const props = { params, url: publicUrl(c).toString(), ...opts.extraProps };
   const root = (
     <>
       {}
@@ -127,45 +123,51 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
     </>
   );
 
-  const rscPayload: RscPayload = { root, formState: opts.formState, returnValue: opts.returnValue };
+  const rscPayload: RscPayload = { root, formState: opts.formState, returnValue: opts.returnValue, ...opts.payloadExtras };
+
+  let controlSignal: ControlSignal | undefined;
   const rscStream = renderToReadableStream(rscPayload, {
     temporaryReferences: opts.temporaryReferences,
     signal,
     onError(error) {
+      if (isControlSignal(error)) {
+        controlSignal = error;
+        return error.digest;
+      }
       if (!signal.aborted) console.error('[rshono] render error:', error);
     },
   });
 
   if (opts.isRsc) {
-    return new Response(rscStream, {
-      status: opts.status,
-      headers: { 'content-type': 'text/x-component;charset=utf-8' },
+    return c.body(rscStream, (opts.status ?? 200) as ContentfulStatusCode, {
+      'content-type': 'text/x-component;charset=utf-8',
     });
   }
 
-  const ssrResult = await renderHTML(rscStream, {
-    bootstrapScripts: Page.entryJsFiles,
-    formState: opts.formState,
-    signal,
-    nonce,
-  });
-  const headers = new Headers({ 'content-type': 'text/html;charset=utf-8' });
-  if (nonce) {
-    headers.set(
-      'content-security-policy',
-      [
-        `default-src 'self'`,
-        `script-src 'self' 'nonce-${nonce}'${isDev ? " 'unsafe-eval'" : ''}`,
-        `style-src 'self' 'unsafe-inline'`,
-        `img-src 'self' data:`,
-        `connect-src 'self'`,
-      ].join('; '),
-    );
+  let ssrResult: Awaited<ReturnType<typeof renderHTML>>;
+  try {
+    ssrResult = await renderHTML(rscStream, {
+      bootstrapScripts: Page.entryJsFiles,
+      formState: opts.formState,
+      signal,
+      nonce,
+    });
+  } catch (error) {
+    if (controlSignal) throw controlSignal;
+    throw error;
   }
-  return new Response(ssrResult.stream, {
-    status: ssrResult.status ?? opts.status,
-    headers,
-  });
+  if (controlSignal) throw controlSignal;
+  const headers: Record<string, string> = { 'content-type': 'text/html;charset=utf-8' };
+  if (nonce) {
+    headers['content-security-policy'] = [
+      `default-src 'self'`,
+      `script-src 'self' 'nonce-${nonce}'${isDev ? " 'unsafe-eval'" : ''}`,
+      `style-src 'self' 'unsafe-inline'`,
+      `img-src 'self' data:`,
+      `connect-src 'self'`,
+    ].join('; ');
+  }
+  return c.body(ssrResult.stream, (ssrResult.status ?? opts.status ?? 200) as ContentfulStatusCode, headers);
 }
 
 async function renderPage(c: Context, route: PageRoute): Promise<Response> {
@@ -189,6 +191,7 @@ async function renderPage(c: Context, route: PageRoute): Promise<Response> {
       try {
         returnValue = { ok: true, data: await action.apply(null, args) };
       } catch (error) {
+        if (isControlSignal(error)) throw error;
         returnValue = { ok: false, data: error };
         actionStatus = 500;
       }
@@ -200,6 +203,7 @@ async function renderPage(c: Context, route: PageRoute): Promise<Response> {
           const result = await decodedAction();
           formState = (await decodeFormState(result, formData, __rspack_rsc_manifest__.serverManifest)) ?? undefined;
         } catch (error) {
+          if (isControlSignal(error)) throw error;
           console.error('[rshono] progressive-enhancement action failed:', error);
           return c.text('Internal Server Error: server action failed', 500);
         }
@@ -235,15 +239,44 @@ function buildApp(): Hono {
 
   const ssgDir = join(rootDir, 'dist', 'ssg');
 
+  const memoizePage = (page: SpecialPage, label: string) => {
+    let promise: Promise<ServerEntry<PageComponent>> | undefined;
+    return () => (promise ??= loadPageModule(page.component, label));
+  };
+  const loadNotFoundPage = routeConfig.notFound ? memoizePage(routeConfig.notFound, 'the notFound page') : null;
+
+  const resolveControl = async (c: Context, signal: ControlSignal): Promise<Response> => {
+    const { isRsc } = parseRenderRequest(c.req.raw);
+    if (signal instanceof RedirectSignal) {
+      if (isRsc) {
+        c.header('x-rshono-redirect', signal.location);
+        return c.body(renderToReadableStream({ root: null, redirect: signal.location } satisfies RscPayload), 200, {
+          'content-type': 'text/x-component;charset=utf-8',
+        });
+      }
+      return c.redirect(signal.location, signal.status as RedirectStatusCode);
+    }
+    if (loadNotFoundPage) {
+      return renderComponent(c, await loadNotFoundPage(), { status: 404, isRsc, payloadExtras: { notFound: true } });
+    }
+    return c.text('Not Found', 404);
+  };
+
   for (const route of routes) {
     if (isPageRoute(route)) {
-      const handler: Handler = async (c) => {
-        if (!isDev && !cspEnabled && route.kind === 'static' && c.req.method === 'GET' && !parseRenderRequest(c.req.raw).isRsc) {
-          const html = await readPrerendered(ssgDir, c.req.path);
-          if (html !== null) return c.html(html);
-        }
-        return renderPage(c, route);
-      };
+      const handler: Handler = (c) =>
+        runWithContext(c, async () => {
+          try {
+            if (!isDev && !cspEnabled && route.kind === 'static' && c.req.method === 'GET' && !parseRenderRequest(c.req.raw).isRsc) {
+              const html = await readPrerendered(ssgDir, c.req.path);
+              if (html !== null) return c.html(html);
+            }
+            return await renderPage(c, route);
+          } catch (error) {
+            if (isControlSignal(error)) return resolveControl(c, error);
+            throw error;
+          }
+        });
       app.get(route.path, handler);
       app.post(route.path, handler);
     } else {
@@ -260,23 +293,18 @@ function buildApp(): Hono {
     }
   }
 
-  const memoizePage = (page: SpecialPage, label: string) => {
-    let promise: Promise<ServerEntry<PageComponent>> | undefined;
-    return () => (promise ??= loadPageModule(page.component, label));
-  };
-
-  const loadNotFoundPage = routeConfig.notFound ? memoizePage(routeConfig.notFound, 'the notFound page') : null;
   app.notFound(async (c) => {
     const wantsHtml = c.req.header('accept')?.includes('text/html') ?? false;
     const { isRsc } = parseRenderRequest(c.req.raw);
     if (loadNotFoundPage && (wantsHtml || isRsc)) {
-      return renderComponent(c, await loadNotFoundPage(), { status: 404, isRsc });
+      return runWithContext(c, async () => renderComponent(c, await loadNotFoundPage(), { status: 404, isRsc }));
     }
     return c.text('Not Found', 404);
   });
 
   const loadErrorPage = routeConfig.error ? memoizePage(routeConfig.error, 'the error page') : null;
   app.onError(async (error, c) => {
+    if (isControlSignal(error)) return runWithContext(c, () => resolveControl(c, error));
     console.error('[rshono] request error:', error);
     const wantsHtml = c.req.header('accept')?.includes('text/html') ?? false;
     if (loadErrorPage && wantsHtml) {
@@ -287,11 +315,13 @@ function buildApp(): Hono {
           }
         : { message: 'Internal Server Error' };
       try {
-        return await renderComponent(c, await loadErrorPage(), {
-          status: 500,
-          isRsc: false,
-          extraProps: { error: errorInfo },
-        });
+        return await runWithContext(c, async () =>
+          renderComponent(c, await loadErrorPage(), {
+            status: 500,
+            isRsc: false,
+            extraProps: { error: errorInfo },
+          }),
+        );
       } catch (renderError) {
         console.error('[rshono] the error page failed to render:', renderError);
       }

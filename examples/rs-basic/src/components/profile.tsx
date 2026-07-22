@@ -1,22 +1,12 @@
 import type { PageProps } from 'rshono';
+import { notFound } from 'rshono/server';
 import { fakeDB } from '../db';
 import { Layout } from './layout';
 
 export default async function Profile({ params }: PageProps<'/profile/:id'>) {
   const user = await fakeDB.getUser(params.id);
 
-  if (!user) {
-    return (
-      <Layout title="User not found — rshono">
-        <div className="page">
-          <h1>User not found</h1>
-          <p className="description">
-            No user with id <code>{params.id}</code>. <a href="/users">Back to the list</a>.
-          </p>
-        </div>
-      </Layout>
-    );
-  }
+  if (!user) notFound();
 
   const posts = await fakeDB.getUserPosts(user.id);
 

@@ -14,46 +14,70 @@ Tiers are ordered by how much they unblock real apps.
 These are not "more features" in the Next-competitor sense; they are the minimum control surface of
 an RSC app. All three are small, RSC-native, and squarely on-thesis.
 
-### 1.1 Request context in server components & actions — `cookies()` / `headers()`
+### 1.1 Request context in server components & actions — `getContext()` ✅ DONE
 
-**Why:** Today a page receives only `{ params, url }` and an action receives only its args
-(`entry.rsc.tsx`). You **cannot read the session cookie to render per-user UI**, nor read/set cookies
-in a mutation. This is the #1 adoption blocker (see COMPARISON.md).
+**Why:** A page used to receive only `{ params, url }` and an action only its args, so you could not
+read the session cookie to render per-user UI or read/set cookies in a mutation. This was the #1
+adoption blocker (see COMPARISON.md).
 
-**Implementation sketch (minimal deps, RSC-native):**
-- Add a module using Node's `AsyncLocalStorage` (built-in, no dep), e.g. `src/runtime/context.ts`
-  exporting `runWithRequest(ctx, fn)` and the public `cookies()` / `headers()` readers.
-- In `renderComponent` and in both action branches of `renderPage`, wrap the render/dispatch in
-  `als.run({ req: c.req, resHeaders }, () => …)`. Because React invokes server components
-  synchronously within `renderToReadableStream` — which runs inside the Hono handler — ALS context
-  propagates correctly. (This is exactly how Next implements `cookies()`.)
-- Expose a read API from a new `rshono/server` entry (server-only; guard with `server-only`).
-- For **setting** cookies from an action, collect `Set-Cookie` on the shared context and apply them
-  to the outgoing `Response` in `renderComponent`.
+**Shipped — a curated `Ctx`, not the raw Hono `Context`.** `getContext<E>()` returns a single
+rshono object with the useful parts surfaced first-class, so app code needs no `hono/cookie` import
+and no runtime branching:
 
-**Files:** `src/runtime/entry.rsc.tsx`, new `src/runtime/context.ts`, `src/index.ts` (or a new
-`server` export in `package.json#exports`).
+- `src/runtime/context.ts` seeds an `AsyncLocalStorage<Context>` (Node built-in, zero new deps) via
+  `runWithContext(c, fn)` and exposes `getContext<E extends Env = Env>(): Ctx<E>`.
+- `Ctx` surfaces: `url` (WHATWG `URL`, proxy-aware), `pathname`, `searchParams`, `params`, `method`,
+  `req`; `header()` and `cookies.{get,all,set,delete}`; `var` (typed middleware data); `env`
+  (portable — `process.env` on Node, `c.env` bindings on Workers/Deno adapters, since serverless
+  bindings are per-request); and `raw` — the full Hono `Context` escape hatch.
+- `entry.rsc.tsx` wraps the page handler and the `notFound`/`onError` render paths in
+  `runWithContext(c, …)`, so both server-component rendering _and_ action dispatch run inside the
+  store. Verified to propagate across `await` boundaries.
+- `renderComponent` builds responses via `c.body(...)` (not `new Response(...)`), so cookies/headers
+  set through the context (`ctx.cookies.set(...)`, `ctx.header(...)`) are merged into the response.
+- Public entry `rshono/server` (in `package.json#exports`) re-exports `getContext`; `publicUrl` is
+  the single source of truth for both `Ctx.url` and the page's `url` prop.
 
-**Test:** action sets a cookie → server component on the next render reads it.
+**Tests (`test/prod.test.mjs`):** an async server component reads `pathname`, an `x-test` header, a
+cookie and an `env` var _after_ an `await` (proves ALS propagation + the curated surface); the
+`signup` action sets a cookie via `ctx.cookies.set` and the PE test asserts it reaches the response.
 
-### 1.2 Control-flow primitives — `redirect()` and `notFound()`
+**Still open here:** `getContext()` throws outside a request (module load / SSG prerender) by design;
+a route that reads request context is therefore dynamic. A future guard could detect this during
+`kind: 'static'` prerender and fail with a clear message instead of the generic throw.
+
+### 1.2 Control-flow primitives — `redirect()` and `notFound()` ✅ DONE
 
 **Why:** Post-mutation redirect (POST-redirect-GET) and real 404s from inside a page are table stakes.
-`profile.tsx` currently hand-renders "user not found" at HTTP 200 because there's no `notFound()`.
+`profile.tsx` used to hand-render "user not found" at HTTP 200; it now calls `notFound()`.
 
-**Implementation sketch:**
-- `redirect(path, status = 303)` and `notFound()` throw tagged sentinel errors.
-- Catch them in `renderPage`/`renderComponent`:
-  - HTML/hard nav → `redirect` becomes a real 3xx `Location`; `notFound` renders the `notFound` page at 404.
-  - Flight/soft nav → return a small RSC payload the client understands: on `redirect`, the client
-    does `history.pushState(path)` + refetch; on `notFound`, render the notFound page payload at 404.
-- Make the client's `setServerCallback`/`fetchRscPayload` recognize the redirect signal
-  (`entry.client.tsx`).
+**Shipped.** `redirect(location, status = 303)` and `notFound()` are **standalone functions** exported
+from `rshono/server` (not `Ctx` methods): TypeScript only narrows control flow after a
+`never`-returning _function_ call — not a method call — so `if (!user) notFound()` correctly narrows
+`user`. This matches Next/Remix, and keeps the "no Hono import" property (same `rshono/server` import).
 
-**Files:** `src/runtime/entry.rsc.tsx`, `src/runtime/entry.client.tsx`, `src/router.ts` (types),
-`src/index.ts`. Depends on 1.4's flight-payload envelope being a good place to carry signals.
+- `src/runtime/control.ts` (dependency-free, bundled to client too) defines `RedirectSignal` /
+  `NotFoundSignal` and the digest encode/parse (`RSHONO_REDIRECT;<status>;<loc>`, `RSHONO_NOT_FOUND`).
+- Both signals carry a `digest`. Translation points in `entry.rsc.tsx`:
+  - **Server actions** (client + PE) rethrow the signal out of `renderPage`; the page handler catches
+    it via `resolveControl`.
+  - **Hard-navigation renders**: the RSC `onError` captures the signal (and returns its digest);
+    after `renderHTML`, `renderComponent` re-throws it to the handler.
+  - `resolveControl`: PE/hard-nav → `c.redirect(location, status)` (cookies set beforehand survive) or
+    the `notFound` page at 404; client-action (flight) → a payload with `redirect`/`notFound` fields.
+  - **Soft-navigation component renders** can't be caught server-side mid-stream, so the digest rides
+    out on the errored flight; `entry.client.tsx` parses it (redirect → `navigateTo`; notFound →
+    reload so the server renders the 404 page for that URL).
+- `entry.ssr.tsx` lets control-flow digests bubble instead of becoming a 500 shell.
 
-**Test:** action returns `redirect('/users')` → client lands on `/users`; `notFound()` in a page → 404 + notFound page.
+**Tests (`test/prod.test.mjs`):** component redirect on hard nav (303 + `Location`), component redirect
+on soft nav (digest present in flight), cookie-gated component happy path, component `notFound()` → 404
+page, and a PE **server-action redirect** that also sets a cookie (303 + `Location` + `Set-Cookie`).
+
+**Known limit:** a redirect/notFound thrown _after_ a Suspense boundary has already streamed on a hard
+navigation can't change the response (bytes are committed) — same constraint as Next. Call them during
+the initial render (the normal case). Browser-driven soft-nav behaviors are implemented but verified by
+build/HTTP assertions, not a headless browser.
 
 ### 1.3 A small client router — `useRouter`, `usePathname`, `useSearchParams`, `useParams`
 
@@ -62,6 +86,7 @@ machinery already exists — `fetchRscPayload` and the patched `history.pushStat
 — it just isn't exposed or made reactive.
 
 **Implementation sketch:**
+
 - A `rshono/client` entry exporting hooks backed by a small context/store updated on every navigation
   (the nav listener already fires on push/replace/pop).
 - `useRouter()` → `{ push, replace, back, refresh }`. `refresh()` = existing `fetchRscPayload()` for
@@ -188,13 +213,14 @@ after a fast response. It's unref'd so it won't hold the process open, but cance
 ### 4.6 Regression tests for the safety-critical paths
 
 Add e2e coverage that would have caught the issues above and guards them going forward:
+
 - **Secret leak via a plain helper** imported by a `'use client'` component — assert the secret is
   absent from **SSR HTML**, not just the client bundle (the current test only checks the bundle and a
   direct-in-client-component read).
 - **`/favicon.ico` / `/robots.txt`** served at root once 3.1 lands.
 - **No-JS action that throws** renders the error page (BUGS.md #3).
 - **`cookies()` / `redirect()` / `notFound()`** once Tier 1 lands.
-**Files:** `test/prod.test.mjs`, example fixtures.
+  **Files:** `test/prod.test.mjs`, example fixtures.
 
 ---
 
@@ -207,8 +233,9 @@ intercepting routes, edge-runtime adapters, and an implicit fetch-cache. Runtime
 ## Suggested sequencing
 
 1. **BUGS.md #1 (4.1)** and **#2 (3.1)** — safety + conventions; small, high-trust wins.
-2. **Tier 1.1 → 1.2 → 1.3** — the request-context / control-flow / router trio that makes real apps
-   buildable. Land the flight-payload envelope (used by 1.2/1.3) once, cleanly.
+2. **Tier 1 trio** — request-context (**1.1 done**) → control-flow `redirect`/`notFound` (1.2) →
+   client router (1.3) — makes real apps buildable. Land the flight-payload envelope (used by
+   1.2/1.3) once, cleanly.
 3. **Tier 2** — loading/error/prefetch polish on top of the router.
 4. **Tier 4** cleanups fold in alongside the above; add the regression tests as each lands so the
    e2e suite stays green and the safety guarantees become executable.

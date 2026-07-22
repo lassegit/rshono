@@ -3,6 +3,7 @@ import type { ReactFormState } from 'react-dom/client';
 import { renderToReadableStream } from 'react-dom/server';
 import { createFromReadableStream } from 'react-server-dom-rspack/client';
 import { injectRSCPayload } from 'rsc-html-stream/server';
+import { isControlDigest } from './control.js';
 import type { RscPayload } from './entry.rsc.js';
 
 export interface RenderHTMLOptions {
@@ -31,6 +32,7 @@ export async function renderHTML(rscStream: ReadableStream<Uint8Array>, options:
       nonce: options.nonce,
     });
   } catch (error) {
+    if (isControlDigest((error as { digest?: unknown } | null)?.digest)) throw error;
     if (!options.signal?.aborted) console.error('[rshono] SSR shell error:', error);
     status = 500;
     htmlStream = await renderToReadableStream(

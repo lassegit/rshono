@@ -11,6 +11,14 @@ export const routes = defineRoutes({
       component: () => import('./components/signup'),
     },
     {
+      path: '/login',
+      component: () => import('./components/login'),
+    },
+    {
+      path: '/dashboard',
+      component: () => import('./components/dashboard'),
+    },
+    {
       path: '/docs/:slug',
       kind: 'static',
       component: () => import('./components/documentation'),
@@ -26,6 +34,10 @@ export const routes = defineRoutes({
     {
       path: '/users',
       component: () => import('./components/user-list'),
+    },
+    {
+      path: '/whoami',
+      component: () => import('./components/whoami'),
     },
     {
       kind: 'endpoint',

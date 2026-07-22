@@ -8,6 +8,7 @@ import {
   setServerCallback,
 } from 'react-server-dom-rspack/client.browser';
 import { rscStream } from 'rsc-html-stream/client';
+import { isControlDigest, parseRedirectDigest } from './control.js';
 import type { RscPayload } from './entry.rsc.js';
 import { createRscRenderRequest } from './request.js';
 
@@ -41,9 +42,34 @@ async function main() {
     return payload.root;
   }
 
+  function navigateTo(to: string) {
+    const target = new URL(to, window.location.href);
+    if (target.origin !== window.location.origin) {
+      window.location.assign(target.href);
+      return;
+    }
+    window.history.pushState(null, '', target.href);
+  }
+
+  function handleControlDigest(error: unknown): boolean {
+    const digest = (error as { digest?: unknown } | null)?.digest;
+    if (!isControlDigest(digest)) return false;
+    const redirect = parseRedirectDigest(digest);
+    if (redirect) navigateTo(redirect.location);
+    else window.location.reload();
+    return true;
+  }
+
   async function fetchRscPayload() {
     const renderRequest = createRscRenderRequest(window.location.href);
-    const payload = await createFromFetch<RscPayload>(fetch(renderRequest));
+    let payload: RscPayload;
+    try {
+      payload = await createFromFetch<RscPayload>(fetch(renderRequest));
+    } catch (error) {
+      if (handleControlDigest(error)) return;
+      throw error;
+    }
+    if (payload.redirect) return navigateTo(payload.redirect);
     setPayload(payload);
   }
 
@@ -53,8 +79,19 @@ async function main() {
       id,
       body: await encodeReply(args, { temporaryReferences }),
     });
-    const payload = await createFromFetch<RscPayload>(fetch(renderRequest), { temporaryReferences });
+    let payload: RscPayload;
+    try {
+      payload = await createFromFetch<RscPayload>(fetch(renderRequest), { temporaryReferences });
+    } catch (error) {
+      if (handleControlDigest(error)) return undefined;
+      throw error;
+    }
+    if (payload.redirect) {
+      navigateTo(payload.redirect);
+      return undefined;
+    }
     setPayload(payload);
+    if (payload.notFound) return undefined;
     const { ok, data } = payload.returnValue!;
     if (!ok) throw data;
     return data;

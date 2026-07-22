@@ -10,7 +10,7 @@ Ordered by severity. Each entry: what's wrong, why, evidence, and a fix directio
 **Severity: High (security). Contradicts the flagship env-safety guarantee.**
 
 The client-JS guarantee is real: `DefinePlugin` replaces `process.env` in the **client** bundle,
-so a secret never reaches browser JavaScript. But the **SSR side** relies on a *different*
+so a secret never reaches browser JavaScript. But the **SSR side** relies on a _different_
 mechanism — `src/builder/env-shadow-loader.cjs` — which only rewrites a module when its source
 **literally opens with `'use client'`**:
 
@@ -18,7 +18,7 @@ mechanism — `src/builder/env-shadow-loader.cjs` — which only rewrites a modu
 if (!OPENS_WITH_USE_CLIENT.test(source)) return source;
 ```
 
-The server bundle (`serverConfig`) has **no `DefinePlugin`**. So any module *without* the directive
+The server bundle (`serverConfig`) has **no `DefinePlugin`**. So any module _without_ the directive
 — a shared helper, util, or barrel — that reads `process.env.SECRET` and is reachable from a client
 component's render will read the **real** value during SSR and stream it into the HTML.
 
@@ -27,7 +27,6 @@ component's render will read the **real** value during SSR and stream it into th
 A no-directive helper:
 
 ```ts
-// src/leak-helper.ts  (no 'use client')
 export function readSecretFromHelper() {
   return process.env.DATABASE_URL ?? '(no secret)';
 }
@@ -43,8 +42,8 @@ renders the real secret.
 
 ### Why it matters
 
-The README presents env safety as *"a hard guarantee, not tree-shaking"* and *"SSR output always
-agrees with hydration."* Both statements are false for the (very common) case of a client component
+The README presents env safety as _"a hard guarantee, not tree-shaking"_ and _"SSR output always
+agrees with hydration."_ Both statements are false for the (very common) case of a client component
 importing a plain helper that touches `process.env`.
 
 ### Fix direction
@@ -57,7 +56,7 @@ its own first line. Options, best first:
    `'use client'` regex), so transitive helpers are covered too.
 2. Or run a `DefinePlugin`-equivalent (`process.env` → public env literal) scoped to the SSR layer of
    the server compiler, mirroring what the client compiler already does.
-3. At minimum (stopgap): document that the boundary is *per-file directive* and add a regression test
+3. At minimum (stopgap): document that the boundary is _per-file directive_ and add a regression test
    (the repro above) so the hole can't silently widen.
 
 ---
@@ -104,7 +103,7 @@ into a bare text response:
 }
 ```
 
-A no-JS user who submits a form whose action *throws* gets raw text — even though this is an HTML
+A no-JS user who submits a form whose action _throws_ gets raw text — even though this is an HTML
 navigation (`Accept: text/html`) that should render the `error` special page like every other
 server error does. Client-initiated actions and page-render errors both route through the nice error
 page; the no-JS path is the odd one out.
@@ -149,7 +148,7 @@ In `buildApp`'s endpoint handler:
 ```ts
 let modPromise;
 const handler = async (c, next) => {
-  modPromise ??= endpoint.server();   // caches a REJECTED promise on failure
+  modPromise ??= endpoint.server();
   const { handler: endpointHandler } = await modPromise;
   return endpointHandler(c, next);
 };
@@ -190,12 +189,12 @@ primary gate.
 
 ---
 
-## Notes on things that are *not* bugs (checked)
+## Notes on things that are _not_ bugs (checked)
 
 - **`process.env` in the client JS bundle** — correctly stripped; `PUBLIC_` vars correctly inlined. ✅
 - **`server.ts` middleware wrapping pages** — works; a mounted Hono `use('*')` runs for the
   later-registered page routes (verified with a standalone Hono 4.12 test). ✅
 - **SSG path traversal** — `readPrerendered` rejects `..` and enforces the resolved path stays under
   the ssg root. ✅
-- **CSRF for the normal cross-origin cases** — cross-origin `Origin` (form post *and* JSON client) is
+- **CSRF for the normal cross-origin cases** — cross-origin `Origin` (form post _and_ JSON client) is
   rejected with 403; covered by tests. ✅
