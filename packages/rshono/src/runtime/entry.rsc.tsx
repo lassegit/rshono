@@ -199,14 +199,8 @@ async function renderPage(c: Context, route: PageRoute): Promise<Response> {
       const formData = await request.formData();
       const decodedAction = await decodeAction(formData, __rspack_rsc_manifest__.serverManifest);
       if (decodedAction) {
-        try {
-          const result = await decodedAction();
-          formState = (await decodeFormState(result, formData, __rspack_rsc_manifest__.serverManifest)) ?? undefined;
-        } catch (error) {
-          if (isControlSignal(error)) throw error;
-          console.error('[rshono] progressive-enhancement action failed:', error);
-          return c.text('Internal Server Error: server action failed', 500);
-        }
+        const result = await decodedAction();
+        formState = (await decodeFormState(result, formData, __rspack_rsc_manifest__.serverManifest)) ?? undefined;
       }
     }
   }
