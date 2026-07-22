@@ -4,5 +4,5 @@
   "tabWidth": 2,
   "trailingComma": "all",
   "singleQuote": true,
-  "uncommentKeep": ["@keep"]
+  "uncommentKeep": ["@example", "@link", "@type", "@param", "@return", "@callback", "@const"]
 }
