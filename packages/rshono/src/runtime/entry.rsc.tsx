@@ -110,8 +110,29 @@ interface ComponentRenderOptions {
   payloadExtras?: Pick<RscPayload, 'redirect' | 'notFound'>;
 }
 
+/**
+ * Passes a render's output stream through unchanged, but clears the render-timeout
+ * timer the moment the stream finishes — so a fast response doesn't leave a pending
+ * timer to fire (and pile up under load). The deadline still guards the whole render:
+ * it stays armed until the last byte streams, not just until `renderComponent` returns.
+ */
+function clearTimeoutOnStreamEnd(stream: ReadableStream<Uint8Array>, clear: () => void): ReadableStream<Uint8Array> {
+  return stream.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({ flush: clear }));
+}
+
 async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opts: ComponentRenderOptions): Promise<Response> {
-  const signal = AbortSignal.any([c.req.raw.signal, AbortSignal.timeout(RENDER_TIMEOUT_MS)]);
+  // A manually-cleared timer instead of AbortSignal.timeout(): we cancel it as soon as
+  // the render settles, rather than leaving one pending per request to fire later.
+  const timeoutController = new AbortController();
+  const timeoutTimer = setTimeout(() => {
+    timeoutController.abort(new Error(`[rshono] render exceeded ${RENDER_TIMEOUT_MS}ms`));
+  }, RENDER_TIMEOUT_MS);
+  timeoutTimer.unref?.();
+  const signal = AbortSignal.any([c.req.raw.signal, timeoutController.signal]);
+  const clearRenderTimeout = () => clearTimeout(timeoutTimer);
+  // Release the timer promptly on client disconnect (and, harmlessly, when it fires itself).
+  signal.addEventListener('abort', clearRenderTimeout, { once: true });
+
   const nonce = cspEnabled && !opts.isRsc ? crypto.randomUUID() : undefined;
   let params: Record<string, string> = {};
   try {
@@ -147,7 +168,7 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
   });
 
   if (opts.isRsc) {
-    return c.body(rscStream, (opts.status ?? 200) as ContentfulStatusCode, {
+    return c.body(clearTimeoutOnStreamEnd(rscStream, clearRenderTimeout), (opts.status ?? 200) as ContentfulStatusCode, {
       'content-type': 'text/x-component;charset=utf-8',
     });
   }
@@ -161,10 +182,14 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
       nonce,
     });
   } catch (error) {
+    clearRenderTimeout();
     if (controlSignal) throw controlSignal;
     throw error;
   }
-  if (controlSignal) throw controlSignal;
+  if (controlSignal) {
+    clearRenderTimeout();
+    throw controlSignal;
+  }
   const headers: Record<string, string> = { 'content-type': 'text/html;charset=utf-8' };
   if (nonce) {
     headers['content-security-policy'] = [
@@ -175,7 +200,7 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
       `connect-src 'self'`,
     ].join('; ');
   }
-  return c.body(ssrResult.stream, (ssrResult.status ?? opts.status ?? 200) as ContentfulStatusCode, headers);
+  return c.body(clearTimeoutOnStreamEnd(ssrResult.stream, clearRenderTimeout), (ssrResult.status ?? opts.status ?? 200) as ContentfulStatusCode, headers);
 }
 
 async function renderPage(c: Context, route: PageRoute): Promise<Response> {

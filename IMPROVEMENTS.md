@@ -61,12 +61,6 @@ Extend the type helper (or document the limitation), and add a route-name → pa
 `<Link href>` can be type-checked.
 _Files:_ `router.ts`.
 
-**4.5 — Deterministic render-timeout cleanup.** `AbortSignal.any([signal, AbortSignal.timeout(...)])`
-in `renderComponent` leaves the timeout pending after a fast response. It's unref'd so it won't hold
-the process open, but cancelling it on completion (or using a manually-cleared controller) avoids stray
-timers under load and makes intent explicit.
-_Files:_ `entry.rsc.tsx`.
-
 **Static-prerender guard for `getContext()`.** `getContext()` throws outside a request, so a route that
 reads request context is dynamic. A guard could detect this during `kind: 'static'` prerender and fail
 with a clear message instead of the generic throw.
