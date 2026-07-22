@@ -1,7 +1,6 @@
 import { serve } from '@hono/node-server';
 import { rspack, type Stats } from '@rspack/core';
 import { Hono } from 'hono';
-import { existsSync } from 'node:fs';
 import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Worker } from 'node:worker_threads';
@@ -153,11 +152,10 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
   const front = new Hono();
 
-  const publicDir = join(rootDir, 'public');
   front.route(
     '/_static',
     createStaticMiddleware({
-      roots: [join(distDir, 'static'), ...(existsSync(publicDir) ? [publicDir] : [])],
+      roots: [join(distDir, 'static')],
       isDev: true,
     }),
   );

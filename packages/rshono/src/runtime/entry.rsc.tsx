@@ -33,7 +33,7 @@ import {
 } from '../router.js';
 import { loadEnvFiles } from '../server/load-env.js';
 import { readPrerendered } from '../server/ssg.js';
-import { createStaticMiddleware } from '../server/static.js';
+import { createPublicFallback, createStaticMiddleware } from '../server/static.js';
 import { type ControlSignal, isControlSignal, RedirectSignal } from './control.js';
 import { publicUrl, runWithContext } from './context.js';
 import { renderHTML } from './entry.ssr.js';
@@ -224,11 +224,10 @@ async function renderPage(c: Context, route: PageRoute): Promise<Response> {
 function buildApp(): Hono {
   const app = new Hono();
 
-  const publicDir = join(rootDir, 'public');
   app.route(
     '/_static',
     createStaticMiddleware({
-      roots: [join(rootDir, 'dist', 'static'), ...(isDev && existsSync(publicDir) ? [publicDir] : [])],
+      roots: [join(rootDir, 'dist', 'static')],
       isDev,
     }),
   );
@@ -291,6 +290,11 @@ function buildApp(): Hono {
       if (method === 'all') app.all(endpoint.path, handler);
       else app.on(method.toUpperCase(), endpoint.path, handler);
     }
+  }
+
+  const publicDir = isDev ? join(rootDir, 'public') : join(rootDir, 'dist', 'public');
+  if (existsSync(publicDir)) {
+    app.on(['GET', 'HEAD'], '/*', createPublicFallback(publicDir, isDev));
   }
 
   app.notFound(async (c) => {

@@ -9,10 +9,7 @@ export function Layout({ title = 'rshono', description, children }: { title?: st
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>{title}</title>
         {description && <meta name="description" content={description} />}
-        <link
-          rel="icon"
-          href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>"
-        />
+        <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
       </head>
       <body>
         <header>

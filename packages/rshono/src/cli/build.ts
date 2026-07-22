@@ -37,8 +37,8 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
 
   const publicDir = join(rootDir, 'public');
   if (existsSync(publicDir)) {
-    cpSync(publicDir, join(distDir, 'static'), { recursive: true });
-    console.log('  • copied public/ into dist/static');
+    cpSync(publicDir, join(distDir, 'public'), { recursive: true });
+    console.log('  • copied public/ into dist/public (served at /)');
   }
 
   const ssgDir = join(distDir, 'ssg');

@@ -4,6 +4,17 @@ import { Hono } from 'hono';
 
 const CONTENT_HASHED = /\.[0-9a-f]{8,}\./;
 
+function cacheControl(isDev: boolean): MiddlewareHandler {
+  return async (c, next) => {
+    await next();
+    if (c.res.status !== 200 && c.res.status !== 206) return;
+    c.res.headers.set(
+      'Cache-Control',
+      isDev ? 'no-cache' : CONTENT_HASHED.test(c.req.path) ? 'public, max-age=31536000, immutable' : 'public, max-age=300',
+    );
+  };
+}
+
 interface StaticOptions {
   roots: string[];
   isDev: boolean;
@@ -13,19 +24,10 @@ export function createStaticMiddleware(options: StaticOptions): Hono {
   const { roots, isDev } = options;
   const app = new Hono();
 
-  const withCacheControl: MiddlewareHandler = async (c, next) => {
-    await next();
-    if (c.res.status !== 200 && c.res.status !== 206) return;
-    c.res.headers.set(
-      'Cache-Control',
-      isDev ? 'no-cache' : CONTENT_HASHED.test(c.req.path) ? 'public, max-age=31536000, immutable' : 'public, max-age=300',
-    );
-  };
-
   app.on(
     ['GET', 'HEAD'],
     '/*',
-    withCacheControl,
+    cacheControl(isDev),
     ...roots.map((root) =>
       serveStatic({
         root,
@@ -36,4 +38,15 @@ export function createStaticMiddleware(options: StaticOptions): Hono {
   );
 
   return app;
+}
+
+export function createPublicFallback(root: string, isDev: boolean): MiddlewareHandler {
+  const serve = serveStatic({ root });
+  return async (c, next) => {
+    const result = await serve(c, next);
+    if (result instanceof Response && (result.status === 200 || result.status === 206)) {
+      result.headers.set('Cache-Control', isDev ? 'no-cache' : 'public, max-age=300');
+    }
+    return result;
+  };
 }

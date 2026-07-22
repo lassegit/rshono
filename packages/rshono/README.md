@@ -71,6 +71,12 @@ Call them directly from client code (typed args and result), or wire them to `<f
 - `{ kind: 'endpoint' }` routes export a Hono `handler` from a server module (it only ever runs on the server).
 - `src/server.ts` may default-export a whole Hono sub-app, mounted at `/` (behind pages): any method, streaming, cookies, middleware. `export type AppType = typeof server` gives end-to-end type safety with `hono/client`.
 
+## Static files
+
+- Drop anything you want served verbatim into `public/` — it's mounted at the **web root**, so `public/favicon.ico` → `/favicon.ico`, `public/robots.txt` → `/robots.txt`, `public/.well-known/…` resolves too. This is the home for the conventional files browsers and crawlers request by path.
+- It's a **fallback**: your routes always win, and unmatched paths still fall through to the `notFound` page — so a `public/` file never shadows a real route. `build` copies `public/` into `dist/` so a deployed build is self-contained.
+- Hashed bundle output is served separately under `/_static/` with long-lived immutable caching; `public/` files get a short `max-age` (and `no-cache` in dev).
+
 ## Env & secret safety
 
 The client/server boundary is the RSC directives — `'use client'` and `'use server'` — not filenames, and `process.env` access follows it. There is no `*.server` naming convention.

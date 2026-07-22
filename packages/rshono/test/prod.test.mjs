@@ -155,6 +155,34 @@ test('static route is prerendered at build time and served in prod', async () =>
   assert.match(await res.text(), /pre-rendered at build time/);
 });
 
+test('conventional root files in public/ are served at the web root', async () => {
+  const robots = await fetch(`${base}/robots.txt`);
+  assert.equal(robots.status, 200);
+  assert.match(robots.headers.get('content-type'), /text\/plain/);
+  assert.match(await robots.text(), /User-agent: \*/);
+  assert.equal(robots.headers.get('cache-control'), 'public, max-age=300', 'public files are short-lived, not immutable');
+
+  const favicon = await fetch(`${base}/favicon.svg`);
+  assert.equal(favicon.status, 200);
+  assert.match(favicon.headers.get('content-type'), /image\/svg\+xml/);
+});
+
+test('public/ is copied into dist/public so the build is self-contained', () => {
+  assert.match(readFileSync(join(EXAMPLE_DIST, 'public', 'robots.txt'), 'utf8'), /User-agent/);
+});
+
+test('the layout links a real favicon served from public/ (no data: URI workaround)', async () => {
+  const html = await (await fetch(`${base}/`)).text();
+  assert.match(html, /<link rel="icon" href="\/favicon\.svg"/);
+  assert.doesNotMatch(html, /href="data:image\/svg/, 'the demo should no longer paper over missing static serving');
+});
+
+test('unknown root paths fall through to a 404 — the public fallback never shadows routing', async () => {
+  const res = await fetch(`${base}/does-not-exist.txt`);
+  assert.equal(res.status, 404);
+  assert.equal(await res.text(), 'Not Found');
+});
+
 test('hashed static assets are served immutable', async () => {
   const html = await (await fetch(`${base}/`)).text();
   const src = html.match(/src="(\/_static\/chunks\/main\.[0-9a-f]+\.js)"/)[1];

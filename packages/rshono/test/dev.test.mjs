@@ -28,6 +28,13 @@ test('dev flight requests work through the proxy', async () => {
   assert.match(res.headers.get('content-type'), /text\/x-component/);
 });
 
+test('public/ files are served at the web root in dev (through the worker proxy)', async () => {
+  const res = await fetch(`${base}/robots.txt`);
+  assert.equal(res.status, 200);
+  assert.match(await res.text(), /User-agent: \*/);
+  assert.equal(res.headers.get('cache-control'), 'no-cache', 'dev serves public assets without caching');
+});
+
 test('HMR SSE channel greets with the current build hash', async () => {
   const controller = new AbortController();
   const res = await fetch(`${base}/_rshono/hmr`, { signal: controller.signal });
