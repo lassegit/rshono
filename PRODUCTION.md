@@ -23,14 +23,22 @@ Legend: 🔴 blocker · 🟠 hardening · 🟡 ops/docs · 🟢 done · ⚪ defe
 - 🔴 **LICENSE + package metadata.** `package.json` has no `license`, `repository`, `author`,
   `keywords`, `homepage`, or `bugs`, and there's no `LICENSE` file. All required before publishing
   `rshono` to npm.
-- 🔴 **Root `build` script is broken.** Root `package.json` runs `pnpm --filter "./packages/*" build`,
-  but `packages/rshono` has no `build` script (it ships TypeScript source). Add a `build` alias
-  (typecheck, or a no-op) or fix the root script so `pnpm build` doesn't fail.
-- 🔴 **Confirm the ships-TypeScript-source model.** `rshono`, `rshono/server`, and `rshono/client`
-  resolve to `.ts` files, compiled by the *consumer's* rspack/swc — fine — but `tsx` and `@rspack/core`
-  are runtime `dependencies`, so every production install pulls them. This is defensible for a build
-  tool, but should be a deliberate, documented decision plus a smoke test that a fresh consumer app
-  installs and builds cleanly against the published tarball (`npm pack` + install).
+- 🟢 **Root `build` script — FIXED.** It ran `pnpm --filter "./packages/*" build`, but the framework
+  has no `build` script by design (it ships TS source), so `pnpm build` failed with
+  `ERR_PNPM_RECURSIVE_RUN_NO_SCRIPT`. Repointed it at the workspace members that actually produce
+  artifacts: `pnpm --filter "./examples/*" build`. Also fixed `example:dev`, which filtered a
+  non-existent `rshono-example` (the example package is `rs-basic`). `pnpm build` now builds the example
+  (client + server + SSG) green.
+- 🟢 **Ships-TypeScript-source model — CONFIRMED.** `rshono`, `rshono/server`, and `rshono/client`
+  resolve to `.ts`, compiled by the *consumer's* rspack/swc; `tsx` + `@rspack/core` are runtime
+  `dependencies` (deliberate for a source-shipped build tool). Verified three ways: (1) the packed
+  tarball ships all of `src/**` — including the `.cjs` loaders — plus `bin/cli.cjs` (`files: ["src",
+  "bin"]` is sufficient, 29 files); (2) every runtime import maps to a `dependency` or
+  `peerDependency`, none to a devDependency-only path; (3) a fresh app installing **only the packed
+  tarball** + peers (react/react-dom/hono), outside the workspace, both **builds** (client+server+SSG,
+  even against a newer Rspack 2.1.5 within the allowed `^2.1.3` range) and **serves** (`/`, `/users`,
+  `/robots.txt`, `/docs/*` all 200). _Follow-up:_ wire this `npm pack` → isolated install → build
+  smoke test into CI so tarball-completeness can't silently regress.
 - 🔴 **Versioning & changelog.** Decide semver policy and move off `0.1.0` intentionally; add a
   `CHANGELOG.md`. RSC internals (`react-server-dom-rspack@0.0.2`) are pre-1.0 — pin deliberately and
   document the supported React/Rspack range.
