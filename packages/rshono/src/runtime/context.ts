@@ -19,6 +19,20 @@ const store = new AsyncLocalStorage<Context>();
 const wrappers = new WeakMap<Context, Ctx>();
 
 /**
+ * True when this process is the SSG build prerendering `kind: 'static'` routes,
+ * rather than a server handling real requests. `build.ts` sets `RSC_HONO_PRERENDER`
+ * before importing the app bundle and starting the prerender pass; the app bundle
+ * inlines its own copy of this module, so a shared `process.env` (not a module-level
+ * flag) is what reliably crosses that boundary. Read by {@link getContext} to turn a
+ * static route's request-context read into a clear build-time error instead of
+ * silently baking synthetic build-time values (a `localhost` URL, no cookies, build
+ * env) into the snapshot.
+ */
+function isPrerendering(): boolean {
+  return typeof process !== 'undefined' && !!process.env?.RSC_HONO_PRERENDER;
+}
+
+/**
  * Runs `fn` with the given Hono {@link Context} bound as the ambient request
  * context, so that {@link getContext} resolves to it anywhere in the call tree.
  *
@@ -190,8 +204,9 @@ export class Ctx<E extends Env = Env> {
  * the same request are cheap and return the same instance.
  *
  * @typeParam E - The app's Hono {@link Env}, to type {@link Ctx.var} and {@link Ctx.env}.
- * @throws If called outside of a request — i.e. at module load, or during
- *   static prerendering, where there is no ambient context to resolve.
+ * @throws If called at module load, where there is no ambient context to resolve.
+ * @throws If called while prerendering a `kind: 'static'` route, which has no
+ *   per-request context at build time — mark the route `dynamic` instead.
  *
  * @example
  * ```ts
@@ -205,10 +220,18 @@ export class Ctx<E extends Env = Env> {
  * ```
  */
 export function getContext<E extends Env = Env>(): Ctx<E> {
+  if (isPrerendering()) {
+    throw new Error(
+      "[rshono] getContext() was called while prerendering a `kind: 'static'` route. A static page " +
+        'is rendered once at build time, so it has no per-request context to read (URL, cookies, ' +
+        "headers, env). Change this route to `kind: 'dynamic'` so it renders per request, or remove " +
+        'the getContext() call.',
+    );
+  }
   const c = store.getStore();
   if (!c) {
     throw new Error(
-      '[rshono] getContext() was called outside a request. It only works inside a server component or a server action (not at module load, and not during static prerendering).',
+      '[rshono] getContext() was called outside a request. It only works inside a server component or a server action, not at module load.',
     );
   }
   let ctx = wrappers.get(c);

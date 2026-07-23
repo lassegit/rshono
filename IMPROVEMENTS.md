@@ -26,8 +26,17 @@ The former Tier-1/Tier-2 roadmap and the safety-critical bug fixes have all land
   server errors (HTML, flight, and no-JS action) route through the `error` page; `Sec-Fetch-Site` CSRF
   check; conventional root files served from `public/`.
 - **Robustness (was 4.2)** — a shared `memoizeModuleLoad` helper backs the endpoint handler and the
-  notFound/error page loads; it clears the memo when a module *load* rejects, so a transient import
+  notFound/error page loads; it clears the memo when a module _load_ rejects, so a transient import
   failure no longer poisons the route (a resolved module stays cached). See `BUGS.md`.
+- **Static-prerender guard for `getContext()`** — reading request context while prerendering a
+  `kind: 'static'` route now throws a clear, actionable error ("mark this route `dynamic`") instead of
+  silently baking synthetic build-time values (localhost URL, no cookies, build env) into the snapshot.
+  Detection rides the shared `RSC_HONO_PRERENDER` process signal, which crosses the framework↔app-bundle
+  boundary that a module-level flag could not (the app inlines its own copy of the runtime). The route
+  degrades gracefully to per-request SSR.
+- **No-JS action-throw regression test** — an explicit e2e test now asserts that a progressive-enhancement
+  form action that _throws_ renders the `error` page (500, redacted in prod), closing the coverage gap
+  noted in `BUGS.md` (the fix had landed; the PE-throw test had not).
 
 See `BUGS.md` for the exact regression tests, and `git log` for the landing commits.
 
@@ -52,23 +61,6 @@ _Files:_ `server/ssg.ts`, README.
 styling stack works without guesswork. If wiring is trivial, add zero-config detection of
 `postcss.config.*`.
 _Files:_ `builder/rspack-config.ts` (optional), README/example.
-
-### Internal code quality & robustness
-
-**4.4 — Typed catch-all params + typed links.** `PathParams` doesn't model `*` / optional `:id?`.
-Extend the type helper (or document the limitation), and add a route-name → path type so a future
-`<Link href>` can be type-checked.
-_Files:_ `router.ts`.
-
-**Static-prerender guard for `getContext()`.** `getContext()` throws outside a request, so a route that
-reads request context is dynamic. A guard could detect this during `kind: 'static'` prerender and fail
-with a clear message instead of the generic throw.
-_Files:_ `server/ssg.ts`, `runtime/context.ts`.
-
-**One remaining regression test.** The safety-critical paths are largely covered; still worth adding: a
-**no-JS action that throws** asserts the `error` page renders (the fix landed; the explicit PE-throw test
-did not).
-_Files:_ `test/prod.test.mjs`, example fixtures.
 
 ---
 

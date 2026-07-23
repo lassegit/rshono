@@ -380,6 +380,30 @@ test('progressive-enhancement form action works without JavaScript', async () =>
   assert.match(await res.text(), /Welcome aboard, NoScript Nancy/);
 });
 
+test('a no-JS (progressive-enhancement) action that throws renders the error page', async () => {
+  const html = await (await fetch(`${base}/crash`)).text();
+  const fields = parseActionForm(html);
+  assert.ok(fields.meta && fields.key, 'crash form is missing $ACTION fields');
+
+  const form = new FormData();
+  form.set('$ACTION_REF_1', fields.ref ?? '');
+  form.set('$ACTION_1:0', fields.meta);
+  form.set('$ACTION_1:1', fields.bound ?? '[{}]');
+  form.set('$ACTION_KEY', fields.key);
+
+  const res = await fetch(`${base}/crash`, {
+    method: 'POST',
+    headers: { Accept: 'text/html', Origin: base },
+    body: form,
+    redirect: 'manual',
+  });
+  assert.equal(res.status, 500, 'a thrown PE action must not swallow into a blank/redirect response');
+  const body = await res.text();
+  assert.match(body, /Something went wrong/, 'the error page component must render for a thrown PE action');
+  assert.match(body, /Internal Server Error/, 'prod error page shows the generic redacted message');
+  assert.doesNotMatch(body, /Intentional server-action failure/, 'the real error detail must be redacted in prod');
+});
+
 function findCreateUserActionId() {
   const staticDir = join(EXAMPLE_DIST, 'static', 'chunks');
   for (const file of readdirSync(staticDir)) {

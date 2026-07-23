@@ -11,6 +11,10 @@ export const routes = defineRoutes({
       component: () => import('./components/signup'),
     },
     {
+      path: '/crash',
+      component: () => import('./components/crash'),
+    },
+    {
       path: '/login',
       component: () => import('./components/login'),
     },

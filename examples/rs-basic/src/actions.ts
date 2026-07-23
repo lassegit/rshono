@@ -21,6 +21,19 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   redirect('/dashboard');
 }
 
+export interface CrashState {
+  ok?: boolean;
+}
+
+/**
+ * Always throws — a deliberate demo that a progressive-enhancement form action
+ * failure is routed to the `error` page even without JavaScript, rather than
+ * swallowed into a blank 500. Exercised by the e2e suite.
+ */
+export async function crash(_prev: CrashState, _formData: FormData): Promise<CrashState> {
+  throw new Error('Intentional server-action failure (progressive-enhancement demo).');
+}
+
 export interface SignupState {
   message?: string;
   error?: string;
