@@ -25,6 +25,9 @@ The former Tier-1/Tier-2 roadmap and the safety-critical bug fixes have all land
 - **Safety / conventions** — layer-based env shadow (no more SSR secret leak, regression-tested); all
   server errors (HTML, flight, and no-JS action) route through the `error` page; `Sec-Fetch-Site` CSRF
   check; conventional root files served from `public/`.
+- **Robustness (was 4.2)** — a shared `memoizeModuleLoad` helper backs the endpoint handler and the
+  notFound/error page loads; it clears the memo when a module *load* rejects, so a transient import
+  failure no longer poisons the route (a resolved module stays cached). See `BUGS.md`.
 
 See `BUGS.md` for the exact regression tests, and `git log` for the landing commits.
 
@@ -51,10 +54,6 @@ styling stack works without guesswork. If wiring is trivial, add zero-config det
 _Files:_ `builder/rspack-config.ts` (optional), README/example.
 
 ### Internal code quality & robustness
-
-**4.2 — Reset memoized endpoint module on failure (BUGS.md #1).** `modPromise ??= endpoint.server()`
-should clear the cache if the import rejects, so a transient failure doesn't poison the route.
-_Files:_ `entry.rsc.tsx`.
 
 **4.4 — Typed catch-all params + typed links.** `PathParams` doesn't model `*` / optional `:id?`.
 Extend the type helper (or document the limitation), and add a route-name → path type so a future

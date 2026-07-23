@@ -5,35 +5,22 @@ Ordered by severity. Each entry: what's wrong, why, evidence, and a fix directio
 
 ---
 
-## 🟢 #1 — Failed endpoint module import is permanently memoized as a rejected promise (By inspection)
+## No open bugs
 
-**Severity: Low (robustness).**
-
-In `buildApp`'s endpoint handler (`src/runtime/entry.rsc.tsx`):
-
-```ts
-let modPromise;
-const handler = async (c, next) => {
-  modPromise ??= endpoint.server();
-  const { handler: endpointHandler } = await modPromise;
-  return endpointHandler(c, next);
-};
-```
-
-If `endpoint.server()` rejects once, the rejected promise is cached and **every** subsequent request
-to that endpoint awaits the same rejection. Low real-world impact (module specifiers resolve at build
-time), but a transient failure shouldn't poison the route for the process lifetime.
-
-### Fix direction
-
-Reset on failure: `try { modPromise ??= endpoint.server(); ... } catch (e) { modPromise = undefined; throw e; }`.
-(Tracked as IMPROVEMENTS.md 4.2.)
+All known bugs have been resolved. See below for the history.
 
 ---
 
 ## Fixed since the last revision
 
 All previously-listed bugs have been resolved and are covered by the e2e suite (`test/prod.test.mjs`):
+
+- **Failed endpoint module import was permanently memoized as a rejected promise** — a shared
+  `memoizeModuleLoad` helper now backs both the endpoint handler and the notFound/error page loads
+  (`memoizePage`). It caches the load promise but attaches a `.catch` that clears the memo when the
+  load *rejects*, so a transient import failure no longer poisons the route for the process lifetime;
+  the next request retries. A resolved module stays cached, and errors thrown while *using* the module
+  (a per-request handler throw) don't invalidate it. Was IMPROVEMENTS.md 4.2.
 
 - **Secrets leaking into SSR HTML from non-`'use client'` helpers** — the env shadow is now
   **layer-based** (`env-shadow-loader.cjs` gates on the SSR module layer, applied to all of `src/`)

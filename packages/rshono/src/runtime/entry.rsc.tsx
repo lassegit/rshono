@@ -34,8 +34,8 @@ import {
 import { loadEnvFiles } from '../server/load-env.js';
 import { readPrerendered } from '../server/ssg.js';
 import { createPublicFallback, createStaticMiddleware } from '../server/static.js';
-import { type ControlSignal, isControlSignal, RedirectSignal } from './control.js';
 import { publicUrl, runWithContext } from './context.js';
+import { isControlSignal, RedirectSignal, type ControlSignal } from './control.js';
 import { renderHTML } from './entry.ssr.js';
 import { RouterProvider } from './navigation.js';
 import { parseRenderRequest } from './request.js';
@@ -98,6 +98,20 @@ async function loadPageModule(load: () => Promise<{ default: PageComponent }>, l
 
 function loadPage(route: PageRoute): Promise<ServerEntry<PageComponent>> {
   return loadPageModule(route.component, `"${route.path}"`);
+}
+
+function memoizeModuleLoad<T>(load: () => Promise<T>): () => Promise<T> {
+  let promise: Promise<T> | undefined;
+  return () => {
+    if (!promise) {
+      const pending = (promise = load());
+      pending.catch(() => {
+        // Only clear if we're still holding the rejected promise (a later successful load may have already replaced it).
+        if (promise === pending) promise = undefined;
+      });
+    }
+    return promise;
+  };
 }
 
 interface ComponentRenderOptions {
@@ -200,7 +214,11 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
       `connect-src 'self'`,
     ].join('; ');
   }
-  return c.body(clearTimeoutOnStreamEnd(ssrResult.stream, clearRenderTimeout), (ssrResult.status ?? opts.status ?? 200) as ContentfulStatusCode, headers);
+  return c.body(
+    clearTimeoutOnStreamEnd(ssrResult.stream, clearRenderTimeout),
+    (ssrResult.status ?? opts.status ?? 200) as ContentfulStatusCode,
+    headers,
+  );
 }
 
 async function renderPage(c: Context, route: PageRoute): Promise<Response> {
@@ -265,10 +283,7 @@ function buildApp(): Hono {
 
   const ssgDir = join(rootDir, 'dist', 'ssg');
 
-  const memoizePage = (page: SpecialPage, label: string) => {
-    let promise: Promise<ServerEntry<PageComponent>> | undefined;
-    return () => (promise ??= loadPageModule(page.component, label));
-  };
+  const memoizePage = (page: SpecialPage, label: string) => memoizeModuleLoad(() => loadPageModule(page.component, label));
   const loadNotFoundPage = routeConfig.notFound ? memoizePage(routeConfig.notFound, 'the notFound page') : null;
 
   const resolveControl = async (c: Context, signal: ControlSignal): Promise<Response> => {
@@ -307,10 +322,9 @@ function buildApp(): Hono {
       app.post(route.path, handler);
     } else {
       const endpoint = route as EndpointRoute;
-      let modPromise: ReturnType<EndpointRoute['server']> | undefined;
+      const loadEndpoint = memoizeModuleLoad(() => endpoint.server());
       const handler: Handler = async (c, next) => {
-        modPromise ??= endpoint.server();
-        const { handler: endpointHandler } = await modPromise;
+        const { handler: endpointHandler } = await loadEndpoint();
         return endpointHandler(c, next);
       };
       const method = endpoint.method ?? 'all';
