@@ -1,1 +1,1 @@
-# Rshono: Minimalist web framework — Hono + Rspack + React Server Components
+# Rshono: Minimalist web framework (ALPHA)

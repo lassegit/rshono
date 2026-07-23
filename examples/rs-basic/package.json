@@ -16,8 +16,8 @@
     "rshono": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^22.20.0",
+    "@types/node": "^26.1.1",
     "@types/react": "^19.2.17",
-    "typescript": "^5.5.0"
+    "typescript": "^7.0.2"
   }
 }
