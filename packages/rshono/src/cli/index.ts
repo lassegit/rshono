@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module';
 import { parseArgs } from 'node:util';
+import { loadConfig, applyConfigToEnv } from '../server/load-config.js';
 import { loadEnvFiles } from '../server/load-env.js';
 import { buildCommand } from './build.js';
 import { devCommand } from './dev.js';
@@ -42,6 +43,8 @@ async function main(): Promise<void> {
 
   const rootDir = process.cwd();
   loadEnvFiles(rootDir);
+  const config = await loadConfig(rootDir);
+  applyConfigToEnv(config);
 
   const port = values.port ? Number(values.port) : undefined;
   if (values.port && Number.isNaN(port)) {
@@ -51,9 +54,9 @@ async function main(): Promise<void> {
 
   switch (command) {
     case 'dev':
-      return devCommand({ rootDir, port });
+      return devCommand({ rootDir, port, rspack: config.rspack });
     case 'build':
-      return buildCommand({ rootDir });
+      return buildCommand({ rootDir, rspack: config.rspack });
     case 'start':
       return startCommand({ rootDir, port });
     default:

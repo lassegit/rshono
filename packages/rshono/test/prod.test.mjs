@@ -381,6 +381,50 @@ test('an oversized action POST body is rejected with 413 (memory-exhaustion guar
   }
 });
 
+test('RSC_HONO_ALLOWED_ORIGINS lets a listed cross-origin action through (CSRF allowlist)', async () => {
+  const srv = await startServer('start', { env: { RSC_HONO_ALLOWED_ORIGINS: 'https://admin.example' }, urlPattern: READY });
+  try {
+    const at = `http://localhost:${srv.port}`;
+    // An allowlisted cross-origin clears the CSRF gate (then 500 on the bogus action id — not 403).
+    const allowed = await fetch(`${at}/users`, {
+      method: 'POST',
+      headers: { Origin: 'https://admin.example', 'x-rsc-action': 'whatever', 'content-type': 'text/plain' },
+      body: '[]',
+    });
+    assert.notEqual(allowed.status, 403, 'an allowlisted cross-origin action must not be rejected as CSRF');
+
+    // An origin that is not listed is still rejected.
+    const denied = await fetch(`${at}/users`, {
+      method: 'POST',
+      headers: { Origin: 'https://evil.example', 'x-rsc-action': 'whatever', 'content-type': 'text/plain' },
+      body: '[]',
+    });
+    assert.equal(denied.status, 403, 'a cross-origin action not on the allowlist is still rejected');
+  } finally {
+    await stopServer(srv.child);
+  }
+});
+
+test('RSC_HONO_CHECK_ORIGIN=0 disables the CSRF origin check', async () => {
+  const srv = await startServer('start', { env: { RSC_HONO_CHECK_ORIGIN: '0' }, urlPattern: READY });
+  try {
+    const at = `http://localhost:${srv.port}`;
+    const res = await fetch(`${at}/users`, {
+      method: 'POST',
+      headers: {
+        Origin: 'https://evil.example',
+        'sec-fetch-site': 'cross-site',
+        'x-rsc-action': 'whatever',
+        'content-type': 'text/plain',
+      },
+      body: '[]',
+    });
+    assert.notEqual(res.status, 403, 'with the origin check disabled, a cross-origin action must not be rejected');
+  } finally {
+    await stopServer(srv.child);
+  }
+});
+
 test('action POSTs with no Origin but a cross-site Sec-Fetch-Site are rejected (CSRF)', async () => {
   const form = new FormData();
   form.set('name', 'evil');

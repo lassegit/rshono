@@ -15,4 +15,6 @@ export {
   type SpecialPage,
 } from './router.js';
 
+export { defineConfig, type RSHonoConfig, type RspackHookContext } from './config.js';
+
 export type { Context, Handler } from 'hono';

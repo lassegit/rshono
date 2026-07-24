@@ -49,6 +49,25 @@ const RENDER_TIMEOUT_MS = Number(process.env.RSC_HONO_RENDER_TIMEOUT_MS || 10_00
 
 const cspEnabled = !!process.env.RSC_HONO_CSP;
 
+// CSRF origin check on action POSTs. On by default; RSC_HONO_CHECK_ORIGIN=0 disables it.
+const checkOrigin = process.env.RSC_HONO_CHECK_ORIGIN !== '0';
+
+// Cross-origin hosts explicitly permitted to post server actions, in addition to the app's own
+// origin. Entries may be full origins or bare hosts — both are normalized to a `URL.host`.
+const allowedOrigins = new Set(
+  (process.env.RSC_HONO_ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      try {
+        return new URL(entry).host;
+      } catch {
+        return entry;
+      }
+    }),
+);
+
 // Max bytes we'll buffer from an action POST body before rejecting with 413 — a memory-exhaustion
 // guard. Set RSC_HONO_MAX_BODY_BYTES=0 (or a negative value) to disable the cap. Default 1 MiB,
 // matching Next.js's server-action body-size limit.
@@ -68,20 +87,35 @@ export type RscPayload = {
 };
 
 function isSameOriginAction(request: Request): boolean {
-  const secFetchSite = request.headers.get('sec-fetch-site');
-  if (secFetchSite && secFetchSite !== 'same-origin' && secFetchSite !== 'none') {
-    return false;
-  }
+  if (!checkOrigin) return true;
 
   const origin = request.headers.get('origin');
-  if (!origin) return true;
-  let originHost: string;
-  try {
-    originHost = new URL(origin).host;
-  } catch {
-    return false;
+  let originHost: string | null = null;
+  if (origin) {
+    try {
+      originHost = new URL(origin).host;
+    } catch {
+      return false;
+    }
   }
-  return originHost === request.headers.get('x-forwarded-host') || originHost === request.headers.get('host');
+
+  // The Origin is trusted when it matches our own host or was explicitly allowlisted.
+  const trusted =
+    originHost !== null &&
+    (originHost === request.headers.get('x-forwarded-host') ||
+      originHost === request.headers.get('host') ||
+      allowedOrigins.has(originHost));
+
+  const secFetchSite = request.headers.get('sec-fetch-site');
+  if (secFetchSite && secFetchSite !== 'same-origin' && secFetchSite !== 'none') {
+    // The browser tells us (unforgeably) this didn't originate from our own site — only a
+    // trusted (allowlisted) Origin may proceed.
+    return trusted;
+  }
+
+  // No Origin header — common for no-JS form posts — is treated as same-origin.
+  if (originHost === null) return true;
+  return trusted;
 }
 
 /** Thrown when an action POST body exceeds {@link MAX_BODY_BYTES}. Caught in `renderPage` and turned into a 413. */

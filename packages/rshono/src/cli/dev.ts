@@ -5,6 +5,7 @@ import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { createConfigs } from '../builder/rspack-config.js';
+import type { RSHonoConfig } from '../config.js';
 import { createStaticMiddleware } from '../server/static.js';
 
 const WORKER_READY_TIMEOUT_MS = 15_000;
@@ -12,6 +13,7 @@ const WORKER_READY_TIMEOUT_MS = 15_000;
 interface DevOptions {
   rootDir: string;
   port?: number;
+  rspack?: RSHonoConfig['rspack'];
 }
 
 export async function devCommand(options: DevOptions): Promise<void> {
@@ -42,6 +44,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
   const [clientConfig, serverConfig] = createConfigs({
     rootDir,
     isDev: true,
+    rspack: options.rspack,
     onServerComponentChanges: () => {
       serverComponentsChanged = true;
     },

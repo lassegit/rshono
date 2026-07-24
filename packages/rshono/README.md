@@ -88,12 +88,35 @@ The client/server boundary is the RSC directives — `'use client'` and `'use se
 - Anything a server component _renders_ is public by definition — whatever you put in the tree ships in the flight payload.
 - Keeping a server-only module out of the client bundle is the module graph's job: import it only from server code. For a hard failure if that ever slips, add React's `server-only` package — the RSC layer resolves its `react-server` condition, so importing it from client code throws.
 
+## Configuration: rshono.config.ts
+
+An optional `rshono.config.ts` (`.js` / `.mjs` also work) at the project root tunes the framework. Every field is optional; delete the file to accept all defaults.
+
+```ts
+import { defineConfig } from 'rshono';
+
+export default defineConfig({
+  port: 3000,             // default port for dev/start (--port or PORT env override)
+  host: '0.0.0.0',        // bind address for start (HOST env overrides)
+  checkOrigin: true,      // CSRF origin check on server-action POSTs
+  allowedOrigins: [],     // extra origins allowed to post actions, e.g. ['https://admin.example.com']
+  csp: false,             // strict per-request-nonce Content-Security-Policy
+  bodySizeLimit: '1mb',   // action body cap: '512kb' | 4_000_000 | false to disable
+  renderTimeout: 10_000,  // ms deadline for a page render (flight + SSR)
+  rspack(config, { isServer, isDev }) {
+    return config;        // escape hatch: mutate the generated Rspack config
+  },
+});
+```
+
+`defineConfig` is an identity helper for editor autocomplete; `export default { … } satisfies RSHonoConfig` works too. **Precedence** for the settings that also read the environment: a CLI flag (`--port`) beats an env var (`PORT`, `RSC_HONO_*`) beats the config file beats the built-in default — so a deploy can always override the config without editing it. `port`/`host`/`rspack` are consumed by the CLI; the rest are delivered to the server bundle.
+
 ## Security & hardening
 
-- **CSRF**: server-action POSTs are origin-checked automatically — a cross-origin `Origin` header (against `Host`/`x-forwarded-host`) is rejected with 403. Applies to both client-initiated calls and no-JS form posts.
-- **Render deadline**: every page render (flight + SSR) races a timeout (`RSC_HONO_RENDER_TIMEOUT_MS`, default 10000) and the client-disconnect signal, so hung data fetches can't pin sockets open.
-- **Request-body limit**: server-action POST bodies are capped (`RSC_HONO_MAX_BODY_BYTES`, default 1048576 = 1 MiB) before they're buffered into memory — oversized bodies are rejected with `413 Payload Too Large`. An over-cap `Content-Length` is refused up front; bodies that omit it (chunked) or under-report it are still cut off mid-stream. Set to `0` to disable (e.g. behind a proxy that already enforces a limit). Raise it for large multipart uploads.
-- **CSP (opt-in)**: set `RSC_HONO_CSP=1` to send a strict per-request-nonce `Content-Security-Policy` with every HTML document (nonce stamped on bootstrap scripts, inlined flight payload, and dynamically loaded chunks). While enabled, `kind: 'static'` routes render per request — prerendered files can't carry a per-request nonce.
+- **CSRF**: server-action POSTs are origin-checked automatically — a cross-origin `Origin` header (against `Host`/`x-forwarded-host`) is rejected with 403. Applies to both client-initiated calls and no-JS form posts. Turn it off with `checkOrigin: false` (or `RSC_HONO_CHECK_ORIGIN=0`) behind a gateway that already enforces it, or list trusted cross-origins in `allowedOrigins` (`RSC_HONO_ALLOWED_ORIGINS`, comma-separated).
+- **Render deadline**: every page render (flight + SSR) races a timeout (`renderTimeout`, `RSC_HONO_RENDER_TIMEOUT_MS`, default 10000) and the client-disconnect signal, so hung data fetches can't pin sockets open.
+- **Request-body limit**: server-action POST bodies are capped (`bodySizeLimit`, `RSC_HONO_MAX_BODY_BYTES`, default 1048576 = 1 MiB) before they're buffered into memory — oversized bodies are rejected with `413 Payload Too Large`. An over-cap `Content-Length` is refused up front; bodies that omit it (chunked) or under-report it are still cut off mid-stream. Set to `false`/`0` to disable (e.g. behind a proxy that already enforces a limit). Raise it for large multipart uploads.
+- **CSP (opt-in)**: set `csp: true` (or `RSC_HONO_CSP=1`) to send a strict per-request-nonce `Content-Security-Policy` with every HTML document (nonce stamped on bootstrap scripts, inlined flight payload, and dynamically loaded chunks). While enabled, `kind: 'static'` routes render per request — prerendered files can't carry a per-request nonce.
 - **Error responses**: thrown server-action errors are redacted in production payloads (React digest behavior) — return values, not throws, for user-facing errors. Custom 404/500 pages are real server components declared in routes.ts (`notFound` / `error`); the error page's `error` prop is message-only in production, message + stack in dev.
 
 ## Testing

@@ -5,11 +5,13 @@ import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createConfigs } from '../builder/rspack-config.js';
+import type { RSHonoConfig } from '../config.js';
 import type { Route } from '../router.js';
 import { prerenderStaticRoutes } from '../server/ssg.js';
 
 interface BuildOptions {
   rootDir: string;
+  rspack?: RSHonoConfig['rspack'];
 }
 
 export async function buildCommand(options: BuildOptions): Promise<void> {
@@ -17,7 +19,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   const distDir = join(rootDir, 'dist');
 
   console.log('  • building client + server bundles…');
-  const configs = createConfigs({ rootDir, isDev: false });
+  const configs = createConfigs({ rootDir, isDev: false, rspack: options.rspack });
   const compiler = rspack(configs);
 
   const stats = await new Promise<MultiStats>((resolve, reject) => {

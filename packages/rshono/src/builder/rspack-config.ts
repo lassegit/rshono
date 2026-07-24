@@ -18,6 +18,8 @@ export interface ConfigOptions {
   rootDir: string;
   isDev: boolean;
   onServerComponentChanges?: () => void;
+  /** {@link RSHonoConfig.rspack} — mutates each generated config just before it's returned. */
+  rspack?: (config: RspackOptions, ctx: { isServer: boolean; isDev: boolean }) => RspackOptions | void;
 }
 
 export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOptions] {
@@ -201,5 +203,12 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
     performance: false,
   };
 
+  const { rspack: rspackHook } = options;
+  if (rspackHook) {
+    return [
+      rspackHook(clientConfig, { isServer: false, isDev }) ?? clientConfig,
+      rspackHook(serverConfig, { isServer: true, isDev }) ?? serverConfig,
+    ];
+  }
   return [clientConfig, serverConfig];
 }
