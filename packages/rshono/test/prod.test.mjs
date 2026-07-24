@@ -341,6 +341,46 @@ test('cross-origin action POSTs are rejected (CSRF)', async () => {
   assert.equal(client.status, 403);
 });
 
+test('an oversized action POST body is rejected with 413 (memory-exhaustion guard)', async () => {
+  const srv = await startServer('start', { env: { RSC_HONO_MAX_BODY_BYTES: '1024' }, urlPattern: READY });
+  try {
+    const at = `http://localhost:${srv.port}`;
+    const oversized = JSON.stringify([{ blob: 'x'.repeat(4096) }]);
+
+    // Content-Length present: rejected up front, before the body is buffered.
+    const declared = await fetch(`${at}/users`, {
+      method: 'POST',
+      headers: { Origin: at, 'x-rsc-action': 'whatever', 'content-type': 'text/plain' },
+      body: oversized,
+    });
+    assert.equal(declared.status, 413, 'a body over the cap with a Content-Length should be rejected with 413');
+
+    // No Content-Length (chunked stream): the streaming byte-counter still trips the cap.
+    const chunked = await fetch(`${at}/users`, {
+      method: 'POST',
+      headers: { Origin: at, 'x-rsc-action': 'whatever', 'content-type': 'text/plain' },
+      body: new ReadableStream({
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode(oversized));
+          controller.close();
+        },
+      }),
+      duplex: 'half',
+    });
+    assert.equal(chunked.status, 413, 'a chunked body over the cap (no Content-Length) should still be rejected with 413');
+
+    // A body under the cap is processed normally (here it fails to resolve the bogus action → 500, not 413).
+    const under = await fetch(`${at}/users`, {
+      method: 'POST',
+      headers: { Origin: at, 'x-rsc-action': 'whatever', Accept: 'text/html', 'content-type': 'text/plain' },
+      body: '[]',
+    });
+    assert.notEqual(under.status, 413, 'a body under the cap must not be rejected as too large');
+  } finally {
+    await stopServer(srv.child);
+  }
+});
+
 test('action POSTs with no Origin but a cross-site Sec-Fetch-Site are rejected (CSRF)', async () => {
   const form = new FormData();
   form.set('name', 'evil');

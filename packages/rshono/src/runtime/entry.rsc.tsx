@@ -49,6 +49,11 @@ const RENDER_TIMEOUT_MS = Number(process.env.RSC_HONO_RENDER_TIMEOUT_MS || 10_00
 
 const cspEnabled = !!process.env.RSC_HONO_CSP;
 
+// Max bytes we'll buffer from an action POST body before rejecting with 413 — a memory-exhaustion
+// guard. Set RSC_HONO_MAX_BODY_BYTES=0 (or a negative value) to disable the cap. Default 1 MiB,
+// matching Next.js's server-action body-size limit.
+const MAX_BODY_BYTES = Number(process.env.RSC_HONO_MAX_BODY_BYTES ?? 1024 * 1024);
+
 loadEnvFiles(rootDir);
 
 const routeConfig = userRoutes as RouteConfig;
@@ -77,6 +82,41 @@ function isSameOriginAction(request: Request): boolean {
     return false;
   }
   return originHost === request.headers.get('x-forwarded-host') || originHost === request.headers.get('host');
+}
+
+/** Thrown when an action POST body exceeds {@link MAX_BODY_BYTES}. Caught in `renderPage` and turned into a 413. */
+class BodyTooLargeError extends Error {}
+
+/**
+ * Guards an action POST against a memory-exhaustion (oversized body) attack. Rejects up front on a
+ * `Content-Length` over the cap, and — because that header can be absent (chunked) or lie about the
+ * real size — also wraps the body stream in a byte counter that aborts the read once the cap is
+ * exceeded. The stream error surfaces from `request.formData()` / `request.text()` as a
+ * {@link BodyTooLargeError}. Returns the request untouched when the cap is disabled (`MAX_BODY_BYTES <= 0`).
+ */
+function enforceBodyLimit(request: Request): Request {
+  if (!(MAX_BODY_BYTES > 0)) return request;
+  const declared = Number(request.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) throw new BodyTooLargeError();
+  const body = request.body;
+  if (!body) return request;
+  let seen = 0;
+  const limited = body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        seen += chunk.byteLength;
+        if (seen > MAX_BODY_BYTES) controller.error(new BodyTooLargeError());
+        else controller.enqueue(chunk);
+      },
+    }),
+  );
+  return new Request(request.url, {
+    method: request.method,
+    headers: request.headers,
+    body: limited,
+    // Node requires `duplex` when a request carries a streaming body; not yet in the DOM lib types.
+    duplex: 'half',
+  } as RequestInit & { duplex: 'half' });
 }
 
 async function loadPageModule(load: () => Promise<{ default: PageComponent }>, label: string): Promise<ServerEntry<PageComponent>> {
@@ -233,26 +273,32 @@ async function renderPage(c: Context, route: PageRoute): Promise<Response> {
     if (!isSameOriginAction(request)) {
       return c.text('Forbidden: cross-origin server action rejected', 403);
     }
-    if (renderRequest.actionId) {
-      const contentType = request.headers.get('content-type');
-      const body = contentType?.startsWith('multipart/form-data') ? await request.formData() : await request.text();
-      temporaryReferences = createTemporaryReferenceSet();
-      const args = await decodeReply<unknown[]>(body, { temporaryReferences });
-      const action = loadServerAction(renderRequest.actionId);
-      try {
-        returnValue = { ok: true, data: await action.apply(null, args) };
-      } catch (error) {
-        if (isControlSignal(error)) throw error;
-        returnValue = { ok: false, data: error };
-        actionStatus = 500;
+    try {
+      const limited = enforceBodyLimit(request);
+      if (renderRequest.actionId) {
+        const contentType = request.headers.get('content-type');
+        const body = contentType?.startsWith('multipart/form-data') ? await limited.formData() : await limited.text();
+        temporaryReferences = createTemporaryReferenceSet();
+        const args = await decodeReply<unknown[]>(body, { temporaryReferences });
+        const action = loadServerAction(renderRequest.actionId);
+        try {
+          returnValue = { ok: true, data: await action.apply(null, args) };
+        } catch (error) {
+          if (isControlSignal(error)) throw error;
+          returnValue = { ok: false, data: error };
+          actionStatus = 500;
+        }
+      } else {
+        const formData = await limited.formData();
+        const decodedAction = await decodeAction(formData, __rspack_rsc_manifest__.serverManifest);
+        if (decodedAction) {
+          const result = await decodedAction();
+          formState = (await decodeFormState(result, formData, __rspack_rsc_manifest__.serverManifest)) ?? undefined;
+        }
       }
-    } else {
-      const formData = await request.formData();
-      const decodedAction = await decodeAction(formData, __rspack_rsc_manifest__.serverManifest);
-      if (decodedAction) {
-        const result = await decodedAction();
-        formState = (await decodeFormState(result, formData, __rspack_rsc_manifest__.serverManifest)) ?? undefined;
-      }
+    } catch (error) {
+      if (error instanceof BodyTooLargeError) return c.text('Payload Too Large', 413);
+      throw error;
     }
   }
 

@@ -45,9 +45,12 @@ Legend: 🔴 blocker · 🟠 hardening · 🟡 ops/docs · 🟢 done · ⚪ defe
 
 ## 2. Runtime hardening — real exposure on a live deployment
 
-- 🟠 **Unbounded request bodies.** `renderPage` (`src/runtime/entry.rsc.tsx`) calls `request.formData()`
-  / `request.text()` on action POSTs with no size cap — a memory-exhaustion vector. Add a configurable
-  limit (e.g. `RSC_HONO_MAX_BODY_BYTES`) and reject oversized bodies with `413`.
+- 🟢 **Unbounded request bodies — FIXED.** `renderPage` (`src/runtime/entry.rsc.tsx`) buffered action POST
+  bodies via `request.formData()` / `request.text()` with no size cap — a memory-exhaustion vector. Now
+  capped by `RSC_HONO_MAX_BODY_BYTES` (default 1 MiB, matching Next.js; `0` disables). An over-cap
+  `Content-Length` is rejected up front with `413`; bodies that omit it (chunked) or under-report it are
+  cut off mid-stream by a byte-counting `TransformStream` whose error surfaces as `413`. Covered by an e2e
+  test (Content-Length path, chunked path, and under-cap pass-through). Full suite green.
 - 🟠 **Blind trust of `x-forwarded-*`.** `publicUrl` (`src/runtime/context.ts`) and `isSameOriginAction`
   (`src/runtime/entry.rsc.tsx`) trust `x-forwarded-host` / `x-forwarded-proto` unconditionally. A
   browser can't forge `Origin` cross-site, so this isn't a browser CSRF bypass — but if the app is ever
@@ -86,7 +89,7 @@ Legend: 🔴 blocker · 🟠 hardening · 🟡 ops/docs · 🟢 done · ⚪ defe
 
 - 🟠 No-JS (progressive-enhancement) action that **throws** renders the `error` page (fix landed; explicit
   test still missing — see `IMPROVEMENTS.md`).
-- 🟠 Oversized request body is rejected with `413` (once §2 lands).
+- 🟢 Oversized request body is rejected with `413` — DONE (Content-Length, chunked, and under-cap cases).
 - 🟠 Forwarded-header behavior under the trust flag (once §2 lands).
 - 🟢 Endpoint-import-failure recovery (once BUGS.md #1 lands).
 - 🟡 Render-deadline behavior (a route that hangs past the timeout aborts cleanly).
