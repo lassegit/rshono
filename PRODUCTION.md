@@ -30,18 +30,27 @@ Legend: 🔴 blocker · 🟠 hardening · 🟡 ops/docs · 🟢 done · ⚪ defe
   non-existent `rshono-example` (the example package is `rs-basic`). `pnpm build` now builds the example
   (client + server + SSG) green.
 - 🟢 **Ships-TypeScript-source model — CONFIRMED.** `rshono`, `rshono/server`, and `rshono/client`
-  resolve to `.ts`, compiled by the *consumer's* rspack/swc; `tsx` + `@rspack/core` are runtime
+  resolve to `.ts`, compiled by the _consumer's_ rspack/swc; `tsx` + `@rspack/core` are runtime
   `dependencies` (deliberate for a source-shipped build tool). Verified three ways: (1) the packed
   tarball ships all of `src/**` — including the `.cjs` loaders — plus `bin/cli.cjs` (`files: ["src",
-  "bin"]` is sufficient, 29 files); (2) every runtime import maps to a `dependency` or
+"bin"]` is sufficient, 29 files); (2) every runtime import maps to a `dependency` or
   `peerDependency`, none to a devDependency-only path; (3) a fresh app installing **only the packed
   tarball** + peers (react/react-dom/hono), outside the workspace, both **builds** (client+server+SSG,
   even against a newer Rspack 2.1.5 within the allowed `^2.1.3` range) and **serves** (`/`, `/users`,
   `/robots.txt`, `/docs/*` all 200). _Follow-up:_ wire this `npm pack` → isolated install → build
   smoke test into CI so tarball-completeness can't silently regress.
 - 🔴 **Versioning & changelog.** Decide semver policy and move off `0.1.0` intentionally; add a
-  `CHANGELOG.md`. RSC internals (`react-server-dom-rspack@0.0.2`) are pre-1.0 — pin deliberately and
-  document the supported React/Rspack range.
+  `CHANGELOG.md`.
+  - 🟢 **RSC version pinning — DONE.** `react-server-dom-rspack@0.0.2` is built from React canary
+    `19.3.0-canary-b49e2031-20260127` yet declares peers `^19.1.0`, so a caret range let a consumer
+    pair it with any 19.x — exactly the split the React team warns about, since the flight wire
+    format and `ReactSharedInternals` access are only guaranteed within one build. Now pinned exact:
+    `react-server-dom-rspack@0.0.2`, `@rspack/core@2.1.5`, `@rspack/plugin-react-refresh@2.0.2`,
+    `react-refresh@0.18.0` in `dependencies`, and `react`/`react-dom` at exactly `19.2.8` in
+    `peerDependencies` (the lockfile doesn't ship, so peer ranges are all a consumer resolves
+    against). `overrides` in `pnpm-workspace.yaml` keeps one resolution across the workspace.
+    Bumping React now requires a matching `react-server-dom-rspack` release and a deliberate
+    version bump here. `hono` stays `^4.8.0` — not part of the RSC coupling.
 
 ## 2. Runtime hardening — real exposure on a live deployment
 
@@ -54,13 +63,13 @@ Legend: 🔴 blocker · 🟠 hardening · 🟡 ops/docs · 🟢 done · ⚪ defe
 - 🟠 **Blind trust of `x-forwarded-*`.** `publicUrl` (`src/runtime/context.ts`) and `isSameOriginAction`
   (`src/runtime/entry.rsc.tsx`) trust `x-forwarded-host` / `x-forwarded-proto` unconditionally. A
   browser can't forge `Origin` cross-site, so this isn't a browser CSRF bypass — but if the app is ever
-  exposed *without* a normalizing proxy, a client can spoof the public URL (wrong absolute links /
+  exposed _without_ a normalizing proxy, a client can spoof the public URL (wrong absolute links /
   redirect targets, cache-poisoning-style issues). Gate forwarded-header trust behind a flag
   (e.g. `RSC_HONO_TRUST_PROXY`), or clearly document "must run behind a trusted proxy."
 - 🟠 **No default security headers.** Add `X-Content-Type-Options: nosniff` and a sane `Referrer-Policy`
   to HTML responses by default (CSP is already available opt-in via `RSC_HONO_CSP=1`).
 - 🟠 **Endpoint module memoized as a rejected promise (BUGS.md #1).** In `buildApp`, `modPromise ??=
-  endpoint.server()` never resets on failure, so one transient import error poisons the route for the
+endpoint.server()` never resets on failure, so one transient import error poisons the route for the
   process lifetime. Reset `modPromise = undefined` in a `catch`.
 - 🟢 **Render-timeout timer cleanup — DONE.** `renderComponent` now uses a manually-cleared
   `AbortController` + `setTimeout` (unref'd) instead of `AbortSignal.timeout()`. The timer is cleared

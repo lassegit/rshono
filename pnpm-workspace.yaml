@@ -1,6 +1,14 @@
 packages:
   - 'packages/*'
   - 'examples/*'
+# RSC internals are coupled across builds: react-server-dom-rspack reaches into
+# ReactSharedInternals and emits a flight payload the matching react-dom must parse.
+# A single resolution of each is enforced here so no transitive dep can split them.
+overrides:
+  react: 19.2.8
+  react-dom: 19.2.8
+  react-server-dom-rspack: 0.0.2
+  '@rspack/core': 2.1.5
 allowBuilds:
   esbuild: false
 minimumReleaseAgeExclude:
