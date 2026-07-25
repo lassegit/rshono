@@ -332,3 +332,71 @@ export function redirect(location: string, status: RedirectStatus = 303): never 
 export function notFound(): never {
   throw new NotFoundSignal();
 }
+
+/**
+ * Which stage of a request produced an error handed to an {@link ServerErrorHandler}.
+ *
+ * - `action` — a `'use server'` function threw. React sends the client an opaque marker with no
+ *   message in production, so this is the only place the real error is visible.
+ * - `render` — a server component threw while the flight payload was being produced.
+ * - `ssr` — SSR failed before the HTML shell could be sent, so the `error` page was unreachable too.
+ * - `request` — anything else that reached the top-level handler, including a thrown endpoint route.
+ */
+export type ServerErrorSource = 'action' | 'render' | 'ssr' | 'request';
+
+/** What an {@link ServerErrorHandler} is told about an error, beyond the error itself. */
+export interface ServerErrorContext {
+  /** The stage that produced it — see {@link ServerErrorSource}. */
+  source: ServerErrorSource;
+  /** The request being served, for the URL, method and headers. */
+  request: Request;
+}
+
+/** Handler registered with {@link onServerError}. Called for the side effect; its return value is ignored. */
+export type ServerErrorHandler = (error: unknown, context: ServerErrorContext) => void;
+
+let errorHandler: ServerErrorHandler | undefined;
+
+/**
+ * Registers a handler for every error the framework catches, so they can reach an error tracker
+ * (Sentry, Datadog, a log pipeline) instead of only `stderr`.
+ *
+ * Call it **once, at the top level of `src/server.ts`** — that module is imported as the server
+ * starts, before any request is served. Registering again replaces the previous handler.
+ *
+ * Errors are still written to `stderr` either way, so a handler adds a destination rather than
+ * replacing one. A handler that throws is caught and logged: reporting must never be able to fail
+ * a request.
+ *
+ * @example
+ * ```ts
+ * // src/server.ts
+ * import * as Sentry from '@sentry/node';
+ * import { onServerError } from 'rshono/server';
+ *
+ * onServerError((error, { source, request }) => {
+ *   Sentry.captureException(error, { tags: { source }, extra: { url: request.url } });
+ * });
+ * ```
+ */
+export function onServerError(handler: ServerErrorHandler): void {
+  errorHandler = handler;
+}
+
+/**
+ * Logs an error and forwards it to the registered {@link ServerErrorHandler}.
+ *
+ * Framework internal — the single funnel every caught server-side error goes through, so that
+ * adding a reporting destination is one registration rather than a hook per call site.
+ *
+ * @internal
+ */
+export function reportServerError(error: unknown, info: ServerErrorContext & { message: string }): void {
+  console.error(info.message, error);
+  if (!errorHandler) return;
+  try {
+    errorHandler(error, { source: info.source, request: info.request });
+  } catch (handlerError) {
+    console.error('[rshono] the onServerError handler threw:', handlerError);
+  }
+}

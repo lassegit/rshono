@@ -1,6 +1,9 @@
 packages:
   - 'packages/*'
   - 'examples/*'
+  # Test fixture apps. Real workspace members so they resolve `rshono` through node_modules exactly
+  # the way an installed app does — which is half of what they are there to check.
+  - 'packages/*/test/fixtures/*'
 # RSC internals are coupled across builds: react-server-dom-rspack reaches into
 # ReactSharedInternals and emits a flight payload the matching react-dom must parse.
 # A single resolution of each is enforced here so no transitive dep can split them.

@@ -23,6 +23,8 @@ export interface ServerConfig {
   allowedOrigins: string[];
   /** Max request body in bytes before a 413; `0` disables the cap. */
   maxBodyBytes: number;
+  /** Gzip compressible responses on the way out. */
+  compress: boolean;
   /** Default listen port for `start` (overridden by `PORT`). */
   port?: number;
   /** Default bind address for `start` (overridden by `HOST`). */
@@ -115,6 +117,7 @@ export function resolveServerConfig(config: RSHonoConfig, { isDev }: { isDev: bo
       .filter(Boolean)
       .map(normalizeOrigin),
     maxBodyBytes: parseByteSize(config.bodySizeLimit) ?? SERVER_DEFAULTS.maxBodyBytes,
+    compress: config.compress ?? true,
     port: config.port,
     host: config.host,
   };

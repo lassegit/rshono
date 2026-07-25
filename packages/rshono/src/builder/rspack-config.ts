@@ -7,13 +7,15 @@ import { resolveServerConfig } from '../server/server-config.js';
 import { scanPageFiles } from './page-files.js';
 import { publicEnv } from './public-env.js';
 
-const FRAMEWORK_SRC = join(import.meta.dirname, '..');
-const FRAMEWORK_ROOT = join(FRAMEWORK_SRC, '..');
+// The framework's own compiled output (this file lives in `dist/builder/`), which is what the two
+// compilers consume: the entries and loaders below are the *built* framework, not its TypeScript.
+const FRAMEWORK_DIST = join(import.meta.dirname, '..');
+const FRAMEWORK_ROOT = join(FRAMEWORK_DIST, '..');
 
 const BUNDLED_PACKAGES = /^(rshono|react|react-dom|react-server-dom-rspack|rsc-html-stream|hono|@hono\/node-server)(\/|$)/;
 
 const BROWSER_TARGETS = ['last 2 versions', '> 0.2%', 'not dead', 'Firefox ESR'];
-const NODE_TARGETS = ['node >= 20.19'];
+const NODE_TARGETS = ['node >= 22'];
 
 export interface ConfigOptions {
   rootDir: string;
@@ -33,11 +35,11 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
     throw new Error(`[rshono] src/routes.ts not found in ${rootDir} — it is the one required file.`);
   }
   const serverAppFile = ['server.ts', 'server.tsx'].map((f) => join(srcDir, f)).find(existsSync);
-  const serverAppAlias = serverAppFile ?? join(FRAMEWORK_SRC, 'runtime', 'empty-server-app.ts');
+  const serverAppAlias = serverAppFile ?? join(FRAMEWORK_DIST, 'runtime', 'empty-server-app.js');
 
-  const rscEntry = join(FRAMEWORK_SRC, 'runtime', 'entry.rsc.tsx');
-  const ssrEntry = join(FRAMEWORK_SRC, 'runtime', 'entry.ssr.tsx');
-  const clientEntry = join(FRAMEWORK_SRC, 'runtime', 'entry.client.tsx');
+  const rscEntry = join(FRAMEWORK_DIST, 'runtime', 'entry.rsc.js');
+  const ssrEntry = join(FRAMEWORK_DIST, 'runtime', 'entry.ssr.js');
+  const clientEntry = join(FRAMEWORK_DIST, 'runtime', 'entry.client.js');
 
   const swcRule = (targets: string[]): RuleSetRule => ({
     test: /\.[cm]?[jt]sx?$/,
@@ -167,7 +169,7 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
         {
           test: (resource: string) => pageFiles.has(resource),
           enforce: 'pre',
-          use: [{ loader: join(FRAMEWORK_SRC, 'builder', 'page-entry-loader.cjs') }],
+          use: [{ loader: join(FRAMEWORK_DIST, 'builder', 'page-entry-loader.cjs') }],
         },
         {
           test: /\.[cm]?[tj]sx?$/,
@@ -175,7 +177,7 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
           enforce: 'pre',
           use: [
             {
-              loader: join(FRAMEWORK_SRC, 'builder', 'env-shadow-loader.cjs'),
+              loader: join(FRAMEWORK_DIST, 'builder', 'env-shadow-loader.cjs'),
               options: { prelude: `const process = { env: ${JSON.stringify(publicEnv(isDev))} }; `, layer: Layers.ssr },
             },
           ],

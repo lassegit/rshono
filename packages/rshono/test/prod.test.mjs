@@ -301,6 +301,47 @@ test('a prerendered static page is served with a public cache header', async () 
   assert.match(res.headers.get('cache-control') ?? '', /public/, 'a request-independent prerendered page should be publicly cacheable');
 });
 
+test('a prerendered page carries an ETag and answers a revalidation with 304', async () => {
+  const first = await fetch(`${base}/docs/getting-started`);
+  const etag = first.headers.get('etag');
+  assert.ok(etag, 'a prerendered page has fixed bytes, so it can carry a validator');
+
+  const revalidated = await fetch(`${base}/docs/getting-started`, { headers: { 'if-none-match': etag } });
+  assert.equal(revalidated.status, 304, 'the client already holds this exact page');
+  assert.equal(revalidated.headers.get('etag'), etag);
+  assert.match(revalidated.headers.get('cache-control') ?? '', /public/, 'a 304 must repeat the freshness directives');
+  assert.equal(await revalidated.text(), '', 'the whole point is not to resend the body');
+
+  const changed = await fetch(`${base}/docs/getting-started`, { headers: { 'if-none-match': '"not-the-one"' } });
+  assert.equal(changed.status, 200, 'a stale validator must get the current page');
+});
+
+test('dynamic pages are never stored by a shared cache, and vary on Accept', async () => {
+  // Same URL, two representations: a shared cache keyed on the URL alone would otherwise be free to
+  // hand an HTML document to a soft navigation asking for flight — or one user's page to another.
+  for (const accept of ['text/html', 'text/x-component']) {
+    const res = await fetch(`${base}/whoami`, { headers: { Accept: accept, cookie: 'visitor=someone' } });
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('cache-control'), 'private, no-cache', `${accept}: a personalised page must not be publicly cacheable`);
+    assert.match(res.headers.get('vary'), /\bAccept\b/, `${accept}: content negotiation must be declared`);
+  }
+});
+
+test('a route that sets its own cache-control keeps it', async () => {
+  const res = await fetch(`${base}/api/health`);
+  assert.equal(res.headers.get('cache-control'), null, 'endpoint routes are raw Hono — the page default must not bleed into them');
+});
+
+test('compressible responses are gzipped, and say so in Vary', async () => {
+  const res = await fetch(`${base}/users`, { headers: { 'accept-encoding': 'gzip' } });
+  assert.equal(res.headers.get('content-encoding'), 'gzip');
+  assert.match(res.headers.get('vary'), /Accept-Encoding/);
+  assert.match(await res.text(), /Ada Lovelace/, 'and it still decodes to the real page');
+
+  const identity = await fetch(`${base}/users`, { headers: { 'accept-encoding': 'identity' } });
+  assert.equal(identity.headers.get('content-encoding'), null, 'a client that asks for no encoding gets none');
+});
+
 test('static route is prerendered at build time and served in prod', async () => {
   const file = join(EXAMPLE_DIST, 'ssg', 'docs', 'getting-started', 'index.html');
   assert.match(readFileSync(file, 'utf8'), /Getting Started/);
@@ -481,11 +522,35 @@ test('__proto__ as an action id is rejected instead of resolving through the pro
   assert.equal(res.status, 400);
 });
 
+test('onServerError receives the errors the framework catches, tagged by source', async () => {
+  const logsBefore = server.getOutput().length;
+
+  // A thrown endpoint (reaches the top-level handler) and a thrown server component (fails the
+  // render) take completely different paths out of the framework; both must be reported.
+  await fetch(`${base}/api/boom`, { headers: { Accept: 'text/html' } });
+  await fetch(`${base}/crash?render=1`);
+  await new Promise((resolve) => setTimeout(resolve, 200)); // the child's stdout reaches us asynchronously
+
+  const logged = server.getOutput().slice(logsBefore);
+  assert.match(logged, /\[error-reporter\] request \/api\/boom: Intentional endpoint failure/, 'a thrown endpoint must be reported');
+  assert.match(logged, /\[error-reporter\] (?:render|ssr) \/crash/, 'a failed render must be reported');
+});
+
+test('a handler registered with onServerError does not replace the server log', async () => {
+  const logsBefore = server.getOutput().length;
+  await fetch(`${base}/api/boom`, { headers: { Accept: 'text/html' } });
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const logged = server.getOutput().slice(logsBefore);
+  assert.match(logged, /\[rshono\] request error:/, 'stderr stays the fallback signal even with a reporter wired up');
+});
+
 test('baseline security headers are set on every response', async () => {
   for (const path of ['/', '/api/health', '/favicon.ico']) {
     const res = await fetch(`${base}${path}`);
     assert.equal(res.headers.get('x-content-type-options'), 'nosniff', `${path} is missing nosniff`);
     assert.equal(res.headers.get('referrer-policy'), 'strict-origin-when-cross-origin', `${path} is missing referrer-policy`);
+    // CSP is opt-in, so without this there is no framing protection at all by default.
+    assert.equal(res.headers.get('x-frame-options'), 'SAMEORIGIN', `${path} is missing x-frame-options`);
   }
 });
 
@@ -605,4 +670,3 @@ test('thrown action errors are redacted in production payloads', async () => {
   const payload = await res.text();
   assert.doesNotMatch(payload, /A name and a valid email are required/);
 });
-

@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (node ${{ matrix.node }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22 is the floor declared in engines; 24 is current. Windows is here because the framework
+        # resolves and compares absolute paths in a few places, which is exactly where it would break.
+        os: [ubuntu-latest, windows-latest]
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Typecheck the framework
+        run: pnpm --filter rshono typecheck
+
+      # Builds the package, then the unit, compression, minimal-app, dev and production e2e suites.
+      - name: Test
+        run: pnpm --filter rshono test
+
+      # The example is typechecked against the *built* declarations, which is the only check that
+      # what gets published is usable by a consumer.
+      - name: Typecheck the example against the published types
+        run: pnpm --filter rs-basic typecheck
+
+  browser:
+    name: browser
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Install Chromium
+        run: pnpm --filter rshono exec playwright install --with-deps chromium
+
+      # Soft navigation, prefetching, scroll restoration and the fatal overlay only exist in a real
+      # browser; nothing in the node:test suite can reach them.
+      - name: Browser tests
+        run: pnpm --filter rshono test:browser
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: packages/rshono/playwright-report/
+          retention-days: 7
+
+  package:
+    name: package contents
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # A tarball that is missing the compiled runtime, or that ships the whole repo, is a broken
+      # release — and neither shows up in any other job.
+      - name: Pack and inspect the tarball
+        run: pnpm --filter rshono pack --pack-destination "$RUNNER_TEMP"
+
+      - name: Check the published entry points exist
+        run: |
+          tar -tzf "$RUNNER_TEMP"/rshono-*.tgz | sort > /tmp/files.txt
+          for required in \
+            package/dist/index.js \
+            package/dist/index.d.ts \
+            package/dist/runtime/context.js \
+            package/dist/runtime/client.js \
+            package/dist/runtime/entry.rsc.js \
+            package/dist/runtime/entry.ssr.js \
+            package/dist/runtime/entry.client.js \
+            package/dist/builder/page-entry-loader.cjs \
+            package/dist/builder/env-shadow-loader.cjs \
+            package/bin/rshono.mjs
+          do
+            grep -qx "$required" /tmp/files.txt || { echo "missing from the tarball: $required"; exit 1; }
+          done
+          ! grep -q '^package/src/' /tmp/files.txt || { echo "the tarball should not ship src/"; exit 1; }

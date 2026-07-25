@@ -83,6 +83,13 @@ export interface RSHonoConfig {
   /** Deadline in milliseconds for a single page render (flight + SSR). Default `10000`. */
   renderTimeout?: number;
   /**
+   * Gzip compressible responses (HTML, flight payloads, JSON, CSS, JS). Streaming-safe — each
+   * chunk the renderer flushes is flushed on the wire too. Default `true`.
+   *
+   * Set `false` behind a proxy or CDN that already compresses, to avoid doing the work twice.
+   */
+  compress?: boolean;
+  /**
    * Escape hatch: mutate the generated Rspack config just before it's compiled. Called once per
    * compiler — inspect {@link RspackHookContext.isServer} to tell them apart. Mutate `config` in
    * place and return nothing, or return a replacement.

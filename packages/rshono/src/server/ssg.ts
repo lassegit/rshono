@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
@@ -34,18 +35,56 @@ function interpolatePath(pattern: string, params: Record<string, string>): strin
     .join('/');
 }
 
-export async function readPrerendered(ssgDir: string, requestPath: string): Promise<string | null> {
+/** A prerendered page, ready to serve: its HTML and a validator derived from that exact HTML. */
+export interface PrerenderedPage {
+  html: string;
+  /**
+   * `ETag` for the page, so a revalidating client can be answered with a 304 instead of the body.
+   *
+   * Deliberately **weak**. The bytes on the wire depend on whether the client took gzip, and a
+   * strong validator would have to differ between those two — so the 200 and the 304 that
+   * revalidates it would disagree, and a cache would treat them as different pages. A weak tag
+   * says "the same representation", which is exactly what is true across content codings.
+   */
+  etag: string;
+}
+
+/**
+ * Prerendered pages, keyed by resolved file path.
+ *
+ * Bounded so a site with thousands of prerendered pages keeps a working set rather than the whole
+ * build in memory. Only *hits* are cached: caching misses would let anyone mint entries by
+ * requesting paths that don't exist. The files are written at build time and never change while
+ * the server is up, so an entry never needs invalidating.
+ */
+const pageCache = new Map<string, PrerenderedPage>();
+const MAX_CACHED_PAGES = 128;
+
+export async function readPrerendered(ssgDir: string, requestPath: string): Promise<PrerenderedPage | null> {
   if (/(^|\/)\.\.?(\/|$)/.test(requestPath)) return null;
   const relPath = ssgFilePath(requestPath);
   if (relPath === null) return null;
   const root = resolve(ssgDir);
   const file = resolve(root, relPath);
   if (!file.startsWith(root + sep)) return null;
+
+  const cached = pageCache.get(file);
+  if (cached) return cached;
+
+  let html: string;
   try {
-    return await readFile(file, 'utf8');
+    html = await readFile(file, 'utf8');
   } catch {
     return null;
   }
+
+  const page: PrerenderedPage = { html, etag: `W/"${createHash('sha256').update(html).digest('base64url').slice(0, 22)}"` };
+  pageCache.set(file, page);
+  for (const oldest of pageCache.keys()) {
+    if (pageCache.size <= MAX_CACHED_PAGES) break;
+    pageCache.delete(oldest);
+  }
+  return page;
 }
 
 interface PrerenderOptions {

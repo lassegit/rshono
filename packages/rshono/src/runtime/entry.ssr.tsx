@@ -11,6 +11,12 @@ export interface RenderHTMLOptions {
   formState?: ReactFormState;
   signal?: AbortSignal;
   nonce?: string;
+  /**
+   * Called when SSR fails before the shell is sent. Reporting is the RSC layer's job — this module
+   * is compiled into the SSR layer, which gets its own instance of every module it imports, so a
+   * handler registered through `rshono/server` isn't reachable from in here.
+   */
+  onShellError?: (error: unknown) => void;
 }
 
 const isDev = process.env.NODE_ENV === 'development';
@@ -83,7 +89,7 @@ export async function renderHTML(rscStream: ReadableStream<Uint8Array>, options:
     });
   } catch (error) {
     if (isControlDigest((error as { digest?: unknown } | null)?.digest)) throw error;
-    if (!options.signal?.aborted) console.error('[rshono] SSR shell error:', error);
+    if (!options.signal?.aborted) options.onShellError?.(error);
     status = 500;
     htmlStream = await renderToReadableStream(<SsrFailureDocument error={error} />, { nonce: options.nonce });
   }

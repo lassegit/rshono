@@ -32,11 +32,13 @@ import {
   type RouteConfig,
   type SpecialPage,
 } from '../router.js';
+import { compress } from '../server/compress.js';
+import { appendVary, etagMatches } from '../server/headers.js';
 import { loadEnvFiles } from '../server/load-env.js';
 import { onShutdown } from '../server/shutdown.js';
 import { readPrerendered } from '../server/ssg.js';
 import { createPublicFallback, createStaticMiddleware } from '../server/static.js';
-import { publicUrl, readParams, runWithContext } from './context.js';
+import { publicUrl, readParams, reportServerError, runWithContext } from './context.js';
 import { isControlSignal, RedirectSignal, type ControlSignal } from './control.js';
 import { renderHTML } from './entry.ssr.js';
 import { RouterProvider } from './navigation.js';
@@ -55,6 +57,16 @@ const cspEnabled = CONFIG.cspEnabled;
 const checkOrigin = CONFIG.checkOrigin; // CSRF origin check on action POSTs.
 const allowedOrigins = new Set(CONFIG.allowedOrigins); // extra cross-origin hosts permitted to post actions.
 const MAX_BODY_BYTES = CONFIG.maxBodyBytes; // request body cap in bytes; 0 disables it.
+const compressEnabled = CONFIG.compress;
+
+/** How long a prerendered page may be reused before revalidating. Also what `public/` files get. */
+const SSG_CACHE_CONTROL = 'public, max-age=300';
+
+/**
+ * The two content types a page can be served as. Both come back from the *same* URL depending on
+ * the `Accept` header, which is what makes `Vary` non-optional here.
+ */
+const PAGE_CONTENT_TYPE = /^(?:text\/html|text\/x-component)\b/;
 
 // The CSP is fixed per build apart from the nonce, so assemble everything but `script-src` once.
 const CSP_STATIC = Object.entries(CONFIG.cspDirectives)
@@ -100,7 +112,7 @@ function isSameOriginAction(c: Context): boolean {
   if (secFetchSite === 'same-origin') return true;
 
   const origin = c.req.header('origin');
-  const originHost = origin ? (URL.parse(origin)?.host.toLowerCase() || null) : null;
+  const originHost = origin ? URL.parse(origin)?.host.toLowerCase() || null : null;
   if (origin !== undefined && originHost === null) return false; // an Origin we can't parse is untrusted.
 
   const trusted = originHost !== null && (originHost === publicUrl(c).host.toLowerCase() || allowedOrigins.has(originHost));
@@ -244,7 +256,7 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
         controlSignal = error;
         return error.digest;
       }
-      if (!signal.aborted) console.error('[rshono] render error:', error);
+      if (!signal.aborted) reportServerError(error, { source: 'render', request: c.req.raw, message: '[rshono] render error:' });
     },
   });
 
@@ -261,6 +273,7 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
       formState: opts.formState,
       signal,
       nonce,
+      onShellError: (error) => reportServerError(error, { source: 'ssr', request: c.req.raw, message: '[rshono] SSR shell error:' }),
     });
   } catch (error) {
     deadline.clear();
@@ -317,7 +330,7 @@ async function renderPage(c: Context, route: PageRoute): Promise<Response> {
         if (isControlSignal(error)) throw error;
         // React sends a thrown action error to the client as an opaque marker in production — no
         // message, no digest — so without this the failure would be invisible on both ends.
-        console.error('[rshono] server action error:', error);
+        reportServerError(error, { source: 'action', request, message: '[rshono] server action error:' });
         returnValue = { ok: false, error };
         actionStatus = 500;
       }
@@ -345,13 +358,32 @@ async function renderPage(c: Context, route: PageRoute): Promise<Response> {
 function buildApp(): Hono {
   const app = new Hono();
 
+  // Outermost, so it wraps the finished response — headers and all — on the way out.
+  if (compressEnabled) app.use(compress());
+
   // Cheap, unconditional headers that only matter when something else has gone wrong: stop
-  // content-type sniffing, and keep the full URL (paths, query) out of cross-origin referrers.
+  // content-type sniffing, keep the full URL (paths, query) out of cross-origin referrers, and
+  // refuse to be framed by another origin (clickjacking). `frame-ancestors` in the opt-in CSP is
+  // stricter and takes precedence where both apply; this is the floor for everyone else.
   // Set after `next()` so a route or middleware that sets its own value wins.
   app.use(async (c, next) => {
     await next();
-    if (!c.res.headers.has('x-content-type-options')) c.res.headers.set('x-content-type-options', 'nosniff');
-    if (!c.res.headers.has('referrer-policy')) c.res.headers.set('referrer-policy', 'strict-origin-when-cross-origin');
+    const headers = c.res.headers;
+    if (!headers.has('x-content-type-options')) headers.set('x-content-type-options', 'nosniff');
+    if (!headers.has('referrer-policy')) headers.set('referrer-policy', 'strict-origin-when-cross-origin');
+    if (!headers.has('x-frame-options')) headers.set('x-frame-options', 'SAMEORIGIN');
+
+    // Page responses only, from here down. Two things are true of them and of nothing else served
+    // here: one URL answers with either an HTML document or a flight payload depending on `Accept`,
+    // and the default page is request-specific (cookies, session, headers).
+    if (!PAGE_CONTENT_TYPE.test(headers.get('content-type') ?? '')) return;
+    appendVary(headers, 'Accept');
+    // Without this a page carries no cache directives at all, and a shared cache — a CDN, a
+    // corporate proxy — is free to store a logged-in user's page and hand it to someone else.
+    // `private` forbids exactly that; `no-cache` makes the browser revalidate its own copy rather
+    // than re-showing a stale personalised page. Neither blocks bfcache, which `no-store` would.
+    // A prerendered page, or anything a route set deliberately, already has its own value.
+    if (!headers.has('cache-control')) headers.set('cache-control', 'private, no-cache');
   });
 
   // A memory-exhaustion guard for *every* route — pages and actions, `{ type: 'endpoint' }` routes
@@ -386,18 +418,17 @@ function buildApp(): Hono {
     const isRsc = wantsRsc(parseRenderRequest(c.req.raw));
     if (signal instanceof RedirectSignal) {
       if (isRsc) {
-        return c.body(
-          renderToReadableStream({ root: null, redirect: signal.location } satisfies RscPayload, { signal: c.req.raw.signal }),
-          200,
-          { 'content-type': 'text/x-component;charset=utf-8' },
-        );
+        return c.body(renderToReadableStream({ root: null, redirect: signal.location } satisfies RscPayload, { signal: c.req.raw.signal }), 200, {
+          'content-type': 'text/x-component;charset=utf-8',
+        });
       }
       return c.redirect(signal.location, signal.status as RedirectStatusCode);
     }
     if (loadNotFoundPage) {
       return renderComponent(c, await loadNotFoundPage(), { status: 404, isRsc, payloadExtras: { notFound: true } });
     }
-    return c.text('Not Found', 404);
+    // Plain text, but still one of the two answers this URL gives depending on `Accept`.
+    return c.text('Not Found', 404, { vary: 'Accept' });
   };
 
   for (const route of routes) {
@@ -406,10 +437,15 @@ function buildApp(): Hono {
         runWithContext(c, async () => {
           try {
             if (!isDev && !cspEnabled && route.render === 'static' && c.req.method === 'GET' && !wantsRsc(parseRenderRequest(c.req.raw))) {
-              const html = await readPrerendered(ssgDir, c.req.path);
+              const page = await readPrerendered(ssgDir, c.req.path);
               // A prerendered page is request-independent by construction, so it is safe to cache
-              // publicly; the short max-age matches what `public/` files get.
-              if (html !== null) return c.html(html, 200, { 'cache-control': 'public, max-age=300' });
+              // publicly; the short max-age matches what `public/` files get. The ETag turns the
+              // revalidation that follows into a 304 rather than the page all over again.
+              if (page !== null) {
+                const headers = { 'cache-control': SSG_CACHE_CONTROL, etag: page.etag, vary: 'Accept' };
+                if (etagMatches(c.req.header('if-none-match'), page.etag)) return c.body(null, 304, headers);
+                return c.html(page.html, 200, headers);
+              }
             }
             return await renderPage(c, route);
           } catch (error) {
@@ -443,13 +479,13 @@ function buildApp(): Hono {
     if (loadNotFoundPage && (wantsHtml || isRsc)) {
       return runWithContext(c, async () => renderComponent(c, await loadNotFoundPage(), { status: 404, isRsc }));
     }
-    return c.text('Not Found', 404);
+    return c.text('Not Found', 404, { vary: 'Accept' });
   });
 
   const loadErrorPage = routeConfig.error ? memoizePage(routeConfig.error, 'the error page') : null;
   app.onError(async (error, c) => {
     if (isControlSignal(error)) return runWithContext(c, () => resolveControl(c, error));
-    console.error('[rshono] request error:', error);
+    reportServerError(error, { source: 'request', request: c.req.raw, message: '[rshono] request error:' });
     const wantsHtml = c.req.header('accept')?.includes('text/html') ?? false;
     const isRsc = wantsRsc(parseRenderRequest(c.req.raw));
     if (loadErrorPage && (wantsHtml || isRsc)) {
@@ -468,11 +504,11 @@ function buildApp(): Hono {
           }),
         );
       } catch (renderError) {
-        console.error('[rshono] the error page failed to render:', renderError);
+        reportServerError(renderError, { source: 'request', request: c.req.raw, message: '[rshono] the error page failed to render:' });
       }
     }
     const detail = isDev ? `\n\n${error instanceof Error ? (error.stack ?? error.message) : String(error)}` : '';
-    return c.text(`Internal Server Error${detail}`, 500);
+    return c.text(`Internal Server Error${detail}`, 500, { vary: 'Accept' });
   });
 
   return app;

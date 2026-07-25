@@ -13,6 +13,7 @@ export default defineConfig({
   cspDirectives: {}, // widen it, e.g. { 'img-src': "'self' https://cdn.example.com" }
   bodySizeLimit: '1mb', // '512kb' | 4_000_000 | false to disable; applies to every route
   renderTimeout: 10_000, // ms deadline for a request (server action + flight + SSR)
+  compress: true, // gzip compressible responses; false behind a proxy that already does it
 
   // Build — mutate the generated Rspack config just before it compiles
   rspack(config) {

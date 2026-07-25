@@ -1,0 +1,80 @@
+// Everything except `src/routes.ts` is optional — this app proves it by leaving all of it out:
+// no server.ts, no public/, no rshono.config, no notFound page, no error page. The rest of the
+// suite runs against one richly-configured example, which is exactly the app that would never
+// catch "the framework assumes X exists".
+import assert from 'node:assert/strict';
+import { after, before, test } from 'node:test';
+import { buildApp, MINIMAL_APP_DIR, START_READY, startApp, stopServer } from './helpers.mjs';
+
+let server;
+let base;
+
+before(async () => {
+  buildApp(MINIMAL_APP_DIR);
+  server = await startApp(MINIMAL_APP_DIR, 'start', { urlPattern: START_READY });
+  base = `http://localhost:${server.port}`;
+});
+
+after(async () => {
+  if (server) await stopServer(server.child);
+});
+
+test('an app with only src/routes.ts builds and serves', async () => {
+  const res = await fetch(`${base}/`);
+  assert.equal(res.status, 200);
+  const html = await res.text();
+  assert.match(html, /^<!DOCTYPE html>/);
+  assert.match(html, /data-page="home"/);
+  assert.match(html, /__FLIGHT_DATA/, 'the page still hydrates without any optional file present');
+});
+
+test('the routes array shorthand is accepted (no notFound/error wrapper object)', async () => {
+  assert.equal((await fetch(`${base}/files/a/b/c`)).status, 200);
+});
+
+test('a hand-written "use server-entry" works when the thunk is not inline', async () => {
+  const res = await fetch(`${base}/manual`);
+  assert.equal(res.status, 200, 'the manual directive must attach client assets on its own');
+  const html = await res.text();
+  assert.match(html, /data-page="manual"/);
+  assert.match(html, /\/_static\/chunks\/main\.[0-9a-f]+\.js/, 'without the directive there would be no bootstrap script');
+});
+
+test('a wildcard route matches and sees the full path', async () => {
+  const html = await (await fetch(`${base}/files/deep/nested/path`)).text();
+  assert.match(html, /data-page="wildcard"/);
+  assert.match(html, /data-path="\/files\/deep\/nested\/path"/);
+});
+
+test('with no notFound page, an unmatched path is a plain 404', async () => {
+  const res = await fetch(`${base}/nothing-here`, { headers: { Accept: 'text/html' } });
+  assert.equal(res.status, 404);
+  assert.match(res.headers.get('content-type'), /text\/plain/);
+  assert.match(res.headers.get('vary'), /\bAccept\b/, 'the same URL answers differently per Accept');
+});
+
+test('with no error page, a thrown page falls back to the framework 500 without leaking the message', async () => {
+  const res = await fetch(`${base}/boom`, { headers: { Accept: 'text/html' } });
+  assert.equal(res.status, 500);
+  const body = await res.text();
+  assert.match(body, /Internal Server Error/);
+  assert.doesNotMatch(body, /blew up on purpose/, 'the real message must stay server-side in production');
+});
+
+test('the security and caching defaults apply with no config file at all', async () => {
+  const res = await fetch(`${base}/`);
+  assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+  assert.equal(res.headers.get('x-frame-options'), 'SAMEORIGIN');
+  assert.equal(res.headers.get('referrer-policy'), 'strict-origin-when-cross-origin');
+  assert.equal(res.headers.get('cache-control'), 'private, no-cache');
+  assert.match(res.headers.get('vary'), /Accept/);
+});
+
+test('a cross-origin action POST is rejected even with no config file', async () => {
+  const res = await fetch(`${base}/`, {
+    method: 'POST',
+    headers: { origin: 'https://evil.test', 'content-type': 'application/x-www-form-urlencoded' },
+    body: 'x=1',
+  });
+  assert.equal(res.status, 403);
+});

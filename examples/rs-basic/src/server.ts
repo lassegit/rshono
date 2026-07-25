@@ -1,9 +1,18 @@
 import { Hono } from 'hono';
 import { trimTrailingSlash } from 'hono/trailing-slash';
+import { onServerError } from 'rshono/server';
 import { fakeDB } from './db';
 
 const server = new Hono();
 const startedAt = Date.now();
+
+// Where an error tracker goes. Registered at module load — src/server.ts is imported as the server
+// starts — so every error the framework catches (a thrown action, a failed render, SSR falling
+// over) reaches one place. A real app would call Sentry.captureException here instead of logging.
+onServerError((error, { source, request }) => {
+  const message = error instanceof Error ? error.message : String(error);
+  console.log(`[error-reporter] ${source} ${new URL(request.url).pathname}: ${message}`);
+});
 
 server.use(trimTrailingSlash({ alwaysRedirect: true }));
 

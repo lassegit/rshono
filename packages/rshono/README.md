@@ -2,6 +2,11 @@
 
 Minimalist framework — [Hono](https://hono.dev) + [Rspack](https://rspack.rs) + [React Server Components](https://react.dev/reference/rsc/server-components).
 
+> **Alpha.** The framework itself is covered by an end-to-end suite (see [Testing](#testing)), but it
+> is built on Rspack's experimental RSC support (`rspack.experiments.rsc`) and `react-server-dom-rspack`,
+> which is still `0.0.x`. Those two move underneath us, so `@rspack/core` and `react-server-dom-rspack`
+> are pinned to exact versions and a release of rshono is what moves them.
+
 One required file (`src/routes.ts`), one optional file (`src/server.ts`), and you get a dev server with HMR, streaming SSR with RSC hydration, server actions with progressive enhancement, soft navigation, build-time prerendering, and hard env/secret safety.
 
 ```bash
@@ -97,22 +102,23 @@ An optional `rshono.config.ts` (`.js` / `.mjs` also work) at the project root tu
 import { defineConfig } from 'rshono';
 
 export default defineConfig({
-  port: 3000,             // default port for dev/start (--port or PORT env override)
-  host: '0.0.0.0',        // bind address for start (HOST env overrides)
-  trustProxy: false,      // honour X-Forwarded-Host/-Proto — only behind a proxy you control
-  checkOrigin: true,      // CSRF origin check on server-action POSTs
-  allowedOrigins: [],     // extra origins allowed to post actions, e.g. ['https://admin.example.com']
-  csp: false,             // strict per-request-nonce Content-Security-Policy
-  cspDirectives: {},      // widen the built-in CSP, e.g. { 'img-src': "'self' https://cdn.example.com" }
-  bodySizeLimit: '1mb',   // request body cap: '512kb' | 4_000_000 | false to disable
-  renderTimeout: 10_000,  // ms deadline for a request (action + flight + SSR)
+  port: 3000, // default port for dev/start (--port or PORT env override)
+  host: '0.0.0.0', // bind address for start (HOST env overrides)
+  trustProxy: false, // honour X-Forwarded-Host/-Proto — only behind a proxy you control
+  checkOrigin: true, // CSRF origin check on server-action POSTs
+  allowedOrigins: [], // extra origins allowed to post actions, e.g. ['https://admin.example.com']
+  csp: false, // strict per-request-nonce Content-Security-Policy
+  cspDirectives: {}, // widen the built-in CSP, e.g. { 'img-src': "'self' https://cdn.example.com" }
+  bodySizeLimit: '1mb', // request body cap: '512kb' | 4_000_000 | false to disable
+  renderTimeout: 10_000, // ms deadline for a request (action + flight + SSR)
+  compress: true, // gzip compressible responses (streaming-safe)
   rspack(config, { isServer, isDev }) {
-    return config;        // escape hatch: mutate the generated Rspack config
+    return config; // escape hatch: mutate the generated Rspack config
   },
 });
 ```
 
-`defineConfig` is an identity helper for editor autocomplete; `export default { … } satisfies RSHonoConfig` works too. `port`/`host`/`rspack` are consumed by the CLI; the framework settings (`trustProxy`, `checkOrigin`, `allowedOrigins`, `csp`, `cspDirectives`, `bodySizeLimit`, `renderTimeout`) are resolved from this file at build time and **compiled into the server bundle** — there is no parallel `RSC_HONO_*` env-var interface (environment variables are for secrets). Changing one of these settings means a rebuild. The two deployment-conventional exceptions stay env-overridable: `--port`/`PORT` and `HOST` win over the file, which wins over the built-in default. Point `rshono build` at a different config with `--config <path>`.
+`defineConfig` is an identity helper for editor autocomplete; `export default { … } satisfies RSHonoConfig` works too. `port`/`host`/`rspack` are consumed by the CLI; the framework settings (`trustProxy`, `checkOrigin`, `allowedOrigins`, `csp`, `cspDirectives`, `bodySizeLimit`, `renderTimeout`, `compress`) are resolved from this file at build time and **compiled into the server bundle** — there is no parallel `RSC_HONO_*` env-var interface (environment variables are for secrets). Changing one of these settings means a rebuild. The two deployment-conventional exceptions stay env-overridable: `--port`/`PORT` and `HOST` win over the file, which wins over the built-in default. Point `rshono build` at a different config with `--config <path>`.
 
 ## Security & hardening
 
@@ -121,8 +127,21 @@ export default defineConfig({
 - **Proxy headers are not trusted by default.** `X-Forwarded-Host` / `-Proto` are client-supplied, so honouring them blindly lets anyone who can reach the server dictate the origin of every absolute URL the app builds (`getContext().url`, a page's `url` prop) — poisoning canonical tags, emails and redirects, and any shared cache in front. Set `trustProxy: true` only when a proxy you control sets those headers; `rshono dev` forces it on for its own localhost-bound proxy.
 - **Request deadline**: every request races a timeout (`renderTimeout`, default 10000) and the client-disconnect signal — covering the server action as well as flight + SSR — so neither a hung data fetch nor a hung mutation can pin sockets open.
 - **Request-body limit**: request bodies are capped (`bodySizeLimit`, default 1048576 = 1 MiB) before they're buffered into memory — oversized bodies are rejected with `413 Payload Too Large`. This covers **every** route, not just server actions: `{ type: 'endpoint' }` routes and the `src/server.ts` sub-app are equally exposed the moment they call `.json()` or `.formData()`. An over-cap `Content-Length` is refused up front; bodies that omit it (chunked) are cut off mid-stream. Set to `false`/`0` to disable (e.g. behind a proxy that already enforces a limit, or to stream a large upload yourself). Raise it for large multipart uploads.
-- **Baseline response headers**: `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin` on every response, unconditionally. Set either one in your own middleware to override it.
+- **Baseline response headers**: `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin` and `X-Frame-Options: SAMEORIGIN` on every response, unconditionally. The framing header is the floor for everyone who hasn't opted into `csp` — that policy's `frame-ancestors 'none'` is stricter and takes precedence where both apply. Set any of them in your own middleware to override.
+- **Caching defaults**: a dynamic page is answered with `Cache-Control: private, no-cache` — a page is request-specific by default (cookies, session, headers), and with no directives at all a shared cache is free to store one user's page and serve it to the next. `private` forbids exactly that, and `no-cache` makes the browser revalidate rather than re-show a stale personalised page; neither disables bfcache the way `no-store` would. Set your own value (from middleware, or `getContext().header(…)`) and it is left alone. Prerendered pages keep `public, max-age=300` and carry a weak `ETag`, so a revalidation costs a 304 instead of the page.
+- **`Vary: Accept` on page responses.** One URL answers with an HTML document or a flight payload depending on `Accept`. Without `Vary` a cache keyed on the URL alone will eventually hand a document to a soft navigation that asked for flight — a hard reload at best. Compression appends `Accept-Encoding` to the same header rather than replacing it.
 - **CSP (opt-in)**: set `csp: true` to send a strict per-request-nonce `Content-Security-Policy` with every HTML document (nonce stamped on bootstrap scripts, inlined flight payload, and dynamically loaded chunks). Beyond `default-src 'self'` it also closes the gaps `default-src` doesn't cover — `base-uri`, `object-src`, `frame-ancestors`, `form-action` — so it blocks framing and third-party assets until you widen it with `cspDirectives` (the nonce is always re-appended to `script-src`, and `''` drops a directive). While enabled, `render: 'static'` routes render per request — prerendered files can't carry a per-request nonce.
+- **Error reporting**: every error the framework catches — a thrown action, a failed render, SSR falling over, anything reaching the top-level handler — goes through one funnel. Register a handler at the top level of `src/server.ts` to send them somewhere real; they keep going to `stderr` either way, and a handler that throws is caught rather than failing the request.
+
+  ```ts
+  // src/server.ts
+  import { onServerError } from 'rshono/server';
+
+  onServerError((error, { source, request }) => {
+    Sentry.captureException(error, { tags: { source }, extra: { url: request.url } });
+  });
+  ```
+
 - **Error responses**: thrown server-action errors are logged server-side and redacted in the production payload (React sends no message or digest for them) — so return values, not throws, for anything the user should see. Custom 404/500 pages are real server components declared in routes.ts (`notFound` / `error`); the error page's `error` prop is message-only in production, message + stack in dev.
 - **No blank screens.** Three fallbacks behind the `error` page, so a failure is always something you can read:
   - An **uncaught client-side render error** makes React tear down its root — which here is the whole `document`, so the page would go genuinely white with the reason only in the console. The runtime paints a fatal overlay over it instead: full stack and component stack in dev, a generic notice plus a reload button in production (the dev detail is compiled out of the production bundle).
@@ -131,7 +150,15 @@ export default defineConfig({
 
 ## Testing
 
-`pnpm --filter rshono test` — a node:test e2e suite that builds `examples/rs-basic`, boots the real production server plus a dev-server smoke, and asserts pages, flight protocol, actions (client + progressive enhancement), CSRF rejection, secret stripping in bundles _and_ rendered HTML, SSG output, and cache headers. Security settings (CSP, CSRF allowlist/origin-check, body-size cap) are baked into the bundle, so each is exercised against its own build from a fixture config (`test/fixtures/`, via `rshono build --config`).
+`pnpm --filter rshono test` builds the package and runs everything that doesn't need a browser:
+
+- **unit** — the parsers and path maths (`bodySizeLimit`, `allowedOrigins`, SSG paths and traversal, control-signal digests, page-file scanning, `Vary`/`ETag` helpers). Imports the built `dist/`, so it also proves the published output loads in plain Node.
+- **compression** — that gzip does not swallow a streamed response: a chunk the renderer flushes has to reach the client while the response is still open, which is the one property the platform `CompressionStream` would quietly break.
+- **production e2e** — builds `examples/rs-basic`, boots the real production server, and asserts pages, flight protocol, actions (client + progressive enhancement), CSRF rejection, secret stripping in bundles _and_ rendered HTML, SSG output with `ETag`/304, cache and security headers, and error reporting. Settings baked into the bundle (CSP, CSRF allowlist/origin-check, body-size cap) each get their own build from a fixture config (`test/fixtures/`, via `rshono build --config`).
+- **minimal app** — a fixture with `src/routes.ts` and nothing else: no `server.ts`, no `public/`, no config, no `notFound`/`error` pages. Everything the docs call optional, actually left out.
+- **dev** — a smoke test through the dev server's worker + proxy.
+
+`pnpm --filter rshono test:browser` runs the Playwright suite against a production build: hydration, soft navigation, prefetch-on-hover, `useNavigation`, client-initiated actions, boundary fallbacks, scroll restoration and the fatal overlay — the client runtime, which no amount of asserting on HTML can reach.
 
 ## How it works
 
@@ -146,6 +173,7 @@ In production, `dist/server/main.mjs` is self-contained (React, Hono and the fra
 
 ## Requirements & limitations
 
-- Node ≥ 22 (worker threads, `process.loadEnvFile`, `Promise.withResolvers`, `URL.parse`), React ≥ 19.1.
+- Node ≥ 22.1 (worker threads, `process.loadEnvFile`, `Promise.withResolvers`, `URL.parse`), React ≥ 19.1 (the floor `react-server-dom-rspack` itself requires).
+- Responses are gzipped, not brotli — one encoding every client accepts, chosen per chunk so streaming survives. Set `compress: false` behind a proxy that does better.
 - Dev-mode proxy doesn't forward WebSocket upgrades to a custom sub-app (prod is unaffected — the bundle owns the socket there).
 - Dev source maps embed the original source of `'use server'` action modules (dev binds to 127.0.0.1 only; production ships no client source maps).
