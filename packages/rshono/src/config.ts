@@ -29,6 +29,18 @@ export interface RSHonoConfig {
   /** Bind address for `start`. Overridden by the `HOST` env var. Default `'0.0.0.0'`. */
   host?: string;
   /**
+   * Honour `X-Forwarded-Host` / `X-Forwarded-Proto` when resolving the browser-facing request
+   * URL (`getContext().url`, a page's `url` prop, and the origin the CSRF check compares against).
+   *
+   * **Off by default, and leave it off unless a proxy you control sets those headers**, because
+   * any client can send them: with it on and nothing stripping them at the edge, one request can
+   * point every absolute URL your app builds at an attacker's host (and poison a shared cache).
+   * Turn it on when you terminate TLS or rewrite `Host` at a reverse proxy / load balancer.
+   * Always `true` under `rshono dev`, where the framework's own proxy sets them and binds to
+   * localhost. Default `false`.
+   */
+  trustProxy?: boolean;
+  /**
    * CSRF origin check on server-action POSTs — rejects a cross-origin request with 403.
    * Turn off only behind a gateway that already enforces it. Default `true`.
    */
@@ -44,6 +56,24 @@ export interface RSHonoConfig {
    * per-request nonce). Default `false`.
    */
   csp?: boolean;
+  /**
+   * Directives merged over the built-in {@link csp} policy, which is deliberately strict
+   * (`default-src 'self'`, no framing, no plugins) and so blocks third-party images, fonts and
+   * API hosts until you widen it here. Set a directive to `''` to drop it entirely.
+   *
+   * The per-request nonce is always appended to `script-src`, whatever you put there.
+   * Ignored unless `csp` is `true`.
+   *
+   * @example
+   * ```ts
+   * cspDirectives: {
+   *   'img-src': "'self' data: https://images.example.com",
+   *   'font-src': "'self' https://fonts.gstatic.com",
+   *   'frame-ancestors': "'self'",
+   * }
+   * ```
+   */
+  cspDirectives?: Record<string, string>;
   /**
    * Max server-action request body before it's rejected with 413 — a memory-exhaustion guard.
    * A number is bytes; a string carries a unit (`'512kb'`, `'4mb'`); `false` (or `0`) disables the cap.

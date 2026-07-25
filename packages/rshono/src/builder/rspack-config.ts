@@ -205,7 +205,7 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
       new ServerPlugin({ onServerComponentChanges }),
       // Bake the framework settings from rshono.config.ts into the bundle (read as __RSHONO_CONFIG__
       // in entry.rsc.tsx) — the server-side counterpart to the client's publicEnv injection.
-      new rspack.DefinePlugin({ __RSHONO_CONFIG__: JSON.stringify(resolveServerConfig(config)) }),
+      new rspack.DefinePlugin({ __RSHONO_CONFIG__: JSON.stringify(resolveServerConfig(config, { isDev })) }),
     ],
     performance: false,
   };

@@ -39,8 +39,19 @@ test('csp: true sends a nonce-based CSP and skips the SSG shortcut', async () =>
   assert.match(await ssg.text(), /nonce="/);
 });
 
+test('the CSP closes the gaps default-src does not cover, and cspDirectives merge over it', async () => {
+  const header = (await fetch(`${base}/`)).headers.get('content-security-policy');
+  // None of these are covered by default-src, and each closes an injection route of its own.
+  for (const directive of ['base-uri', 'object-src', 'form-action']) {
+    assert.match(header, new RegExp(`(^|; )${directive} `), `CSP is missing ${directive}`);
+  }
+  assert.match(header, /img-src 'self' https:\/\/images\.example/, 'a cspDirectives entry should widen the built-in directive');
+  assert.match(header, /frame-ancestors 'self'/, 'a cspDirectives entry should replace the built-in default');
+  assert.match(header, /script-src [^;]*'nonce-/, 'the per-request nonce must survive directive overrides');
+});
+
 test('allowedOrigins lets a listed cross-origin action through, others still rejected', async () => {
-  // An allowlisted cross-origin clears the CSRF gate (then 500 on the bogus action id — not 403).
+  // An allowlisted cross-origin clears the CSRF gate (then 400 on the bogus action id — not 403).
   const allowed = await fetch(`${base}/users`, {
     method: 'POST',
     headers: { Origin: 'https://admin.example', 'x-rsc-action': 'whatever', 'content-type': 'text/plain' },
@@ -54,6 +65,80 @@ test('allowedOrigins lets a listed cross-origin action through, others still rej
     body: '[]',
   });
   assert.equal(denied.status, 403, 'a cross-origin action not on the allowlist is still rejected');
+});
+
+test('a bare host:port allowedOrigins entry is honoured, and Origin host case is normalized', async () => {
+  // 'alt.example:8443' parses as a *scheme* on its own, so it used to normalize to an empty string
+  // and silently match nothing — leaving the entry inert and putting '' in the allowlist.
+  const bare = await fetch(`${base}/users`, {
+    method: 'POST',
+    headers: {
+      Origin: 'https://alt.example:8443',
+      'sec-fetch-site': 'cross-site',
+      'x-rsc-action': 'whatever',
+      'content-type': 'text/plain',
+    },
+    body: '[]',
+  });
+  assert.notEqual(bare.status, 403, "a bare 'host:port' allowlist entry must match");
+
+  const mixedCase = await fetch(`${base}/users`, {
+    method: 'POST',
+    headers: {
+      Origin: 'HTTPS://ADMIN.EXAMPLE',
+      'sec-fetch-site': 'cross-site',
+      'x-rsc-action': 'whatever',
+      'content-type': 'text/plain',
+    },
+    body: '[]',
+  });
+  assert.notEqual(mixedCase.status, 403, 'the Origin host comparison must be case-insensitive');
+});
+
+test('an empty-host Origin is never trusted', async () => {
+  // `URL.parse('file://').host` is '', which used to be a real allowlist member whenever a bare-host
+  // entry had been mis-normalized — making `Origin: file://` trusted.
+  const res = await fetch(`${base}/users`, {
+    method: 'POST',
+    headers: { Origin: 'file://', 'sec-fetch-site': 'cross-site', 'x-rsc-action': 'whatever', 'content-type': 'text/plain' },
+    body: '[]',
+  });
+  assert.equal(res.status, 403);
+});
+
+test('renderTimeout covers the server action, not just the render', async () => {
+  // The deadline used to start *after* the action had run, so an action that never settled held the
+  // socket open indefinitely. /hang posts to an action that never resolves.
+  const html = await (await fetch(`${base}/hang`)).text();
+  // A form rendered straight from a server component carries one hidden `$ACTION_ID_<id>` field,
+  // rather than the $ACTION_REF/$ACTION_KEY set that useActionState emits.
+  const actionField = html.match(/name="(\$ACTION_ID_[0-9a-f]+)"/)?.[1];
+  assert.ok(actionField, '/hang is missing its $ACTION_ID field');
+
+  const form = new FormData();
+  form.set(actionField, '');
+
+  const startedAt = Date.now();
+  const res = await fetch(`${base}/hang`, {
+    method: 'POST',
+    headers: { Accept: 'text/html', Origin: base },
+    body: form,
+    redirect: 'manual',
+  });
+  const elapsed = Date.now() - startedAt;
+  assert.equal(res.status, 500, 'a hung action should be cut off by the deadline, not left pending');
+  assert.ok(elapsed < 8000, `the deadline (1500ms) should have fired long before this — took ${elapsed}ms`);
+  await res.text();
+});
+
+test('trustProxy: true honours X-Forwarded-* without dragging the internal port along', async () => {
+  const flight = await (
+    await fetch(`${base}/whoami`, {
+      headers: { Accept: 'text/x-component', 'x-forwarded-host': 'proxied.example', 'x-forwarded-proto': 'https' },
+    })
+  ).text();
+  assert.match(flight, /https:\/\/proxied\.example\/whoami/, 'trustProxy should rebuild the URL from the forwarded headers');
+  assert.doesNotMatch(flight, /proxied\.example:\d/, "the internal port must not survive onto a forwarded host that carries none");
 });
 
 test('bodySizeLimit rejects an oversized action POST body with 413 (memory-exhaustion guard)', async () => {
@@ -81,7 +166,7 @@ test('bodySizeLimit rejects an oversized action POST body with 413 (memory-exhau
   });
   assert.equal(chunked.status, 413, 'a chunked body over the cap (no Content-Length) should still be rejected with 413');
 
-  // A body under the cap is processed normally (here it fails to resolve the bogus action → 500, not 413).
+  // A body under the cap is processed normally (here it fails to resolve the bogus action → 400, not 413).
   const under = await fetch(`${base}/users`, {
     method: 'POST',
     headers: { Origin: base, 'x-rsc-action': 'whatever', Accept: 'text/html', 'content-type': 'text/plain' },

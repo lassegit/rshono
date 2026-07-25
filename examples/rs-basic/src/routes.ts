@@ -15,6 +15,10 @@ export const routes = defineRoutes({
       component: () => import('./components/crash'),
     },
     {
+      path: '/hang',
+      component: () => import('./components/hang'),
+    },
+    {
       path: '/login',
       component: () => import('./components/login'),
     },
@@ -51,6 +55,11 @@ export const routes = defineRoutes({
       type: 'endpoint',
       path: '/api/quick-health',
       server: () => import('./health'),
+    },
+    {
+      type: 'endpoint',
+      path: '/api/boom',
+      server: () => import('./boom'),
     },
   ],
   notFound: {

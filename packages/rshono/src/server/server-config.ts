@@ -9,15 +9,19 @@ import type { RSHonoConfig } from '../config.js';
  * `builder/rspack-config.ts`) — there is no runtime env-var interface for these.
  */
 export interface ServerConfig {
-  /** Deadline in ms for a single page render (flight + SSR). */
+  /** Deadline in ms for a single request (server action + flight + SSR). */
   renderTimeoutMs: number;
+  /** Honour `X-Forwarded-Host` / `-Proto` when resolving the browser-facing URL. Forced on in dev. */
+  trustProxy: boolean;
   /** Send a strict per-request-nonce Content-Security-Policy with every HTML document. */
   cspEnabled: boolean;
+  /** The resolved CSP directives (built-in defaults with the user's merged over them), minus the nonce. */
+  cspDirectives: Record<string, string>;
   /** CSRF origin check on server-action POSTs. */
   checkOrigin: boolean;
-  /** Extra origins allowed to post server actions, normalized to `URL.host` values. */
+  /** Extra origins allowed to post server actions, normalized to lowercase `URL.host` values. */
   allowedOrigins: string[];
-  /** Max action-POST body in bytes before a 413; `0` disables the cap. */
+  /** Max request body in bytes before a 413; `0` disables the cap. */
   maxBodyBytes: number;
   /** Default listen port for `start` (overridden by `PORT`). */
   port?: number;
@@ -33,6 +37,27 @@ export const SERVER_DEFAULTS = {
   host: '0.0.0.0',
 } as const;
 
+/**
+ * The built-in {@link RSHonoConfig.csp} policy, keyed by directive so
+ * {@link RSHonoConfig.cspDirectives} can override entries individually.
+ *
+ * `script-src` carries the per-request nonce, appended at request time (see `entry.rsc.tsx`).
+ * `style-src` needs `'unsafe-inline'` because React writes inline styles.
+ */
+export const CSP_DEFAULTS: Record<string, string> = {
+  'default-src': "'self'",
+  'script-src': "'self'",
+  'style-src': "'self' 'unsafe-inline'",
+  'img-src': "'self' data:",
+  'connect-src': "'self'",
+  // Not covered by default-src, and each closes an injection route of its own: a stray <base>
+  // retargeting every relative URL, plugin content, framing (clickjacking), off-site form posts.
+  'base-uri': "'self'",
+  'object-src': "'none'",
+  'frame-ancestors': "'none'",
+  'form-action': "'self'",
+};
+
 const UNITS: Record<string, number> = { b: 1, kb: 1024, mb: 1024 ** 2, gb: 1024 ** 3 };
 
 /** Parse a {@link RSHonoConfig.bodySizeLimit} value into a byte count (`false`/`0` → `0`, disabling the cap). */
@@ -47,16 +72,43 @@ export function parseByteSize(value: string | number | false | undefined): numbe
   return Math.floor(Number(match[1]) * UNITS[(match[2] ?? 'b').toLowerCase()]);
 }
 
-/** Normalize a config `allowedOrigins` entry (full origin or bare host) to a `URL.host`. */
+/**
+ * Normalize a config `allowedOrigins` entry (full origin or bare host) to a lowercase `URL.host`,
+ * ready for a direct comparison against a parsed `Origin` header's host.
+ *
+ * A bare `host:port` has to be retried against a base, because on its own `'localhost:4000'`
+ * parses as the *scheme* `localhost:` with path `4000` — leaving an empty host that would
+ * silently never match anything. Throws rather than passing a junk entry through, so a typo
+ * fails the build instead of quietly disabling the allowlist entry it was meant to add.
+ */
 function normalizeOrigin(entry: string): string {
-  return URL.parse(entry)?.host ?? entry;
+  const host = URL.parse(entry)?.host || URL.parse(`http://${entry}`)?.host;
+  if (!host) {
+    throw new Error(
+      `[rshono] invalid allowedOrigins entry ${JSON.stringify(entry)} — use a full origin ('https://admin.example.com') or a bare host ('localhost:4000').`,
+    );
+  }
+  return host.toLowerCase();
 }
 
-/** Resolve the user's {@link RSHonoConfig} into the frozen {@link ServerConfig} baked into the bundle. */
-export function resolveServerConfig(config: RSHonoConfig): ServerConfig {
+/** Drop directives the user blanked out, so `cspDirectives: { 'frame-ancestors': '' }` removes one. */
+function resolveCspDirectives(overrides: Record<string, string> | undefined): Record<string, string> {
+  return Object.fromEntries(Object.entries({ ...CSP_DEFAULTS, ...overrides }).filter(([, value]) => value.trim() !== ''));
+}
+
+/**
+ * Resolve the user's {@link RSHonoConfig} into the {@link ServerConfig} baked into the bundle.
+ *
+ * `isDev` is a build-time input rather than a config field because it decides one thing the user
+ * shouldn't have to: `trustProxy` is forced on under `rshono dev`, where the framework's own proxy
+ * is the only way in (it sets the forwarded headers itself and binds to localhost).
+ */
+export function resolveServerConfig(config: RSHonoConfig, { isDev }: { isDev: boolean }): ServerConfig {
   return {
     renderTimeoutMs: config.renderTimeout ?? SERVER_DEFAULTS.renderTimeoutMs,
+    trustProxy: isDev || (config.trustProxy ?? false),
     cspEnabled: config.csp ?? false,
+    cspDirectives: resolveCspDirectives(config.cspDirectives),
     checkOrigin: config.checkOrigin ?? true,
     allowedOrigins: (config.allowedOrigins ?? [])
       .map((entry) => entry.trim())

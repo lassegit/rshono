@@ -69,7 +69,8 @@ Call them directly from client code (typed args and result), or wire them to `<f
 ## Full Hono underneath
 
 - `{ type: 'endpoint' }` routes export a Hono `handler` from a server module (it only ever runs on the server).
-- `src/server.ts` may default-export a whole Hono sub-app, mounted at `/` (behind pages): any method, streaming, cookies, middleware. `export type AppType = typeof server` gives end-to-end type safety with `hono/client`.
+- `src/server.ts` may default-export a whole Hono sub-app: any method, streaming, cookies, middleware. `export type AppType = typeof server` gives end-to-end type safety with `hono/client`.
+- The sub-app is mounted at `/` **ahead of the page routes**, so its middleware (auth, logging, trailing-slash) wraps page requests too. The flip side: a _terminal_ handler in `src/server.ts` at the same path as a page route shadows the page.
 
 ## Static files
 
@@ -81,8 +82,8 @@ Call them directly from client code (typed args and result), or wire them to `<f
 
 The client/server boundary is the RSC directives — `'use client'` and `'use server'` — not filenames, and `process.env` access follows it. There is no `*.server` naming convention.
 
-- **Client bundle**: `process.env` is _replaced at build time_ with a literal containing only `NODE_ENV` and `PUBLIC_`-prefixed variables. A stray `process.env.DATABASE_URL` in client code compiles to `undefined` — the value cannot ship. This is a hard guarantee, not tree-shaking.
-- **`'use client'` modules are also SSR'd on the server**, and there they see the same `PUBLIC_`-only view. A `process.env.SECRET` in a client component renders empty instead of leaking into the HTML stream, and SSR output always agrees with hydration.
+- **Client bundle**: `process.env` is _replaced at build time_ with a literal containing only `NODE_ENV` and `PUBLIC_`-prefixed variables. A stray `process.env.DATABASE_URL` in client code compiles to `undefined` — the value cannot ship. This is a hard guarantee, not tree-shaking, and it covers your `node_modules` too.
+- **`'use client'` modules are also SSR'd on the server**, and there they see the same `PUBLIC_`-only view. A `process.env.SECRET` in a client component renders empty instead of leaking into the HTML stream, and SSR output always agrees with hydration. This SSR-side shadowing is scoped to your own `src/` — a _third-party_ client component that reads `process.env` during SSR sees the real environment, so treat a dependency that does that as you would any other dependency handling secrets.
 - **Server components and `'use server'` actions read the real `process.env`.** They run only on the server — server components stay in the server graph, actions compile to server references — so a secret read there never reaches the browser. Read secrets in server code and pass derived data down.
 - `.env.local` and `.env` are loaded automatically (real environment wins).
 - Anything a server component _renders_ is public by definition — whatever you put in the tree ships in the flight payload.
@@ -98,26 +99,31 @@ import { defineConfig } from 'rshono';
 export default defineConfig({
   port: 3000,             // default port for dev/start (--port or PORT env override)
   host: '0.0.0.0',        // bind address for start (HOST env overrides)
+  trustProxy: false,      // honour X-Forwarded-Host/-Proto — only behind a proxy you control
   checkOrigin: true,      // CSRF origin check on server-action POSTs
   allowedOrigins: [],     // extra origins allowed to post actions, e.g. ['https://admin.example.com']
   csp: false,             // strict per-request-nonce Content-Security-Policy
-  bodySizeLimit: '1mb',   // action body cap: '512kb' | 4_000_000 | false to disable
-  renderTimeout: 10_000,  // ms deadline for a page render (flight + SSR)
+  cspDirectives: {},      // widen the built-in CSP, e.g. { 'img-src': "'self' https://cdn.example.com" }
+  bodySizeLimit: '1mb',   // request body cap: '512kb' | 4_000_000 | false to disable
+  renderTimeout: 10_000,  // ms deadline for a request (action + flight + SSR)
   rspack(config, { isServer, isDev }) {
     return config;        // escape hatch: mutate the generated Rspack config
   },
 });
 ```
 
-`defineConfig` is an identity helper for editor autocomplete; `export default { … } satisfies RSHonoConfig` works too. `port`/`host`/`rspack` are consumed by the CLI; the framework settings (`checkOrigin`, `allowedOrigins`, `csp`, `bodySizeLimit`, `renderTimeout`) are resolved from this file at build time and **compiled into the server bundle** — there is no parallel `RSC_HONO_*` env-var interface (environment variables are for secrets). Changing one of these settings means a rebuild. The two deployment-conventional exceptions stay env-overridable: `--port`/`PORT` and `HOST` win over the file, which wins over the built-in default. Point `rshono build` at a different config with `--config <path>`.
+`defineConfig` is an identity helper for editor autocomplete; `export default { … } satisfies RSHonoConfig` works too. `port`/`host`/`rspack` are consumed by the CLI; the framework settings (`trustProxy`, `checkOrigin`, `allowedOrigins`, `csp`, `cspDirectives`, `bodySizeLimit`, `renderTimeout`) are resolved from this file at build time and **compiled into the server bundle** — there is no parallel `RSC_HONO_*` env-var interface (environment variables are for secrets). Changing one of these settings means a rebuild. The two deployment-conventional exceptions stay env-overridable: `--port`/`PORT` and `HOST` win over the file, which wins over the built-in default. Point `rshono build` at a different config with `--config <path>`.
 
 ## Security & hardening
 
-- **CSRF**: server-action POSTs are origin-checked automatically — a cross-origin `Origin` header (against `Host`/`x-forwarded-host`) is rejected with 403. Applies to both client-initiated calls and no-JS form posts. Turn it off with `checkOrigin: false` behind a gateway that already enforces it, or list trusted cross-origins in `allowedOrigins`.
-- **Render deadline**: every page render (flight + SSR) races a timeout (`renderTimeout`, default 10000) and the client-disconnect signal, so hung data fetches can't pin sockets open.
-- **Request-body limit**: server-action POST bodies are capped (`bodySizeLimit`, default 1048576 = 1 MiB) before they're buffered into memory — oversized bodies are rejected with `413 Payload Too Large`. An over-cap `Content-Length` is refused up front; bodies that omit it (chunked) or under-report it are still cut off mid-stream. Set to `false`/`0` to disable (e.g. behind a proxy that already enforces a limit). Raise it for large multipart uploads.
-- **CSP (opt-in)**: set `csp: true` to send a strict per-request-nonce `Content-Security-Policy` with every HTML document (nonce stamped on bootstrap scripts, inlined flight payload, and dynamically loaded chunks). While enabled, `render: 'static'` routes render per request — prerendered files can't carry a per-request nonce.
-- **Error responses**: thrown server-action errors are redacted in production payloads (React digest behavior) — return values, not throws, for user-facing errors. Custom 404/500 pages are real server components declared in routes.ts (`notFound` / `error`); the error page's `error` prop is message-only in production, message + stack in dev.
+- **Every `'use server'` export is a public HTTP endpoint.** That's the RSC model, not an rshono choice: the client is handed an id for each action and can call it with whatever arguments it likes. The CSRF check below proves a request came from your own site — it says nothing about _who_ sent it. Authenticate and authorize inside the action (and validate its arguments) exactly as you would in a route handler.
+- **CSRF**: server-action POSTs are origin-checked automatically — a cross-origin `Origin` (compared against your own host) is rejected with 403, as is anything the browser labels `Sec-Fetch-Site: cross-site`/`same-site`. A browser-asserted `Sec-Fetch-Site: same-origin` is accepted directly, which is what keeps the check from misfiring behind a proxy that rewrites `Host`. Applies to both client-initiated calls and no-JS form posts. Turn it off with `checkOrigin: false` behind a gateway that already enforces it, or list trusted cross-origins in `allowedOrigins` (full origins or bare hosts; a malformed entry fails the build).
+- **Proxy headers are not trusted by default.** `X-Forwarded-Host` / `-Proto` are client-supplied, so honouring them blindly lets anyone who can reach the server dictate the origin of every absolute URL the app builds (`getContext().url`, a page's `url` prop) — poisoning canonical tags, emails and redirects, and any shared cache in front. Set `trustProxy: true` only when a proxy you control sets those headers; `rshono dev` forces it on for its own localhost-bound proxy.
+- **Request deadline**: every request races a timeout (`renderTimeout`, default 10000) and the client-disconnect signal — covering the server action as well as flight + SSR — so neither a hung data fetch nor a hung mutation can pin sockets open.
+- **Request-body limit**: request bodies are capped (`bodySizeLimit`, default 1048576 = 1 MiB) before they're buffered into memory — oversized bodies are rejected with `413 Payload Too Large`. This covers **every** route, not just server actions: `{ type: 'endpoint' }` routes and the `src/server.ts` sub-app are equally exposed the moment they call `.json()` or `.formData()`. An over-cap `Content-Length` is refused up front; bodies that omit it (chunked) are cut off mid-stream. Set to `false`/`0` to disable (e.g. behind a proxy that already enforces a limit, or to stream a large upload yourself). Raise it for large multipart uploads.
+- **Baseline response headers**: `X-Content-Type-Options: nosniff` and `Referrer-Policy: strict-origin-when-cross-origin` on every response, unconditionally. Set either one in your own middleware to override it.
+- **CSP (opt-in)**: set `csp: true` to send a strict per-request-nonce `Content-Security-Policy` with every HTML document (nonce stamped on bootstrap scripts, inlined flight payload, and dynamically loaded chunks). Beyond `default-src 'self'` it also closes the gaps `default-src` doesn't cover — `base-uri`, `object-src`, `frame-ancestors`, `form-action` — so it blocks framing and third-party assets until you widen it with `cspDirectives` (the nonce is always re-appended to `script-src`, and `''` drops a directive). While enabled, `render: 'static'` routes render per request — prerendered files can't carry a per-request nonce.
+- **Error responses**: thrown server-action errors are logged server-side and redacted in the production payload (React sends no message or digest for them) — so return values, not throws, for anything the user should see. Custom 404/500 pages are real server components declared in routes.ts (`notFound` / `error`); the error page's `error` prop is message-only in production, message + stack in dev.
 
 ## Testing
 

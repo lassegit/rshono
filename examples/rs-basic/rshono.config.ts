@@ -6,11 +6,13 @@ export default defineConfig({
   port: 3000, // a --port flag or PORT env var still wins
 
   // Security & limits
+  trustProxy: false, // honour X-Forwarded-Host/-Proto — only behind a proxy you control
   checkOrigin: true, // reject cross-origin server-action POSTs
   allowedOrigins: [], // extra origins allowed to post actions, e.g. 'https://admin.example.com'
   csp: false, // set true for a strict per-request-nonce Content-Security-Policy
-  bodySizeLimit: '1mb', // '512kb' | 4_000_000 | false to disable
-  renderTimeout: 10_000, // ms deadline for a page render (flight + SSR)
+  cspDirectives: {}, // widen it, e.g. { 'img-src': "'self' https://cdn.example.com" }
+  bodySizeLimit: '1mb', // '512kb' | 4_000_000 | false to disable; applies to every route
+  renderTimeout: 10_000, // ms deadline for a request (server action + flight + SSR)
 
   // Build — mutate the generated Rspack config just before it compiles
   rspack(config) {

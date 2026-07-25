@@ -77,25 +77,42 @@ export function readParams(c: Context): Record<string, string> {
   }
 }
 
+/** A proxy chain appends to these headers, so the client-facing value is the first entry. */
+function firstForwardedValue(header: string | undefined): string | undefined {
+  const first = header?.split(',')[0]?.trim();
+  return first || undefined;
+}
+
 /**
- * Resolves the browser-facing {@link URL} for a request, honouring reverse-proxy
- * headers.
+ * Resolves the browser-facing {@link URL} for a request.
  *
- * `c.req.url` reflects the internal address the server was reached on, which is
- * wrong behind a proxy or load balancer. When present, `X-Forwarded-Host` and
- * `X-Forwarded-Proto` override the host and protocol so the URL matches what the
- * client actually requested.
+ * `c.req.url` reflects the internal address the server was reached on, which is wrong behind a
+ * proxy or load balancer. `X-Forwarded-Host` / `X-Forwarded-Proto` fix that up — **but only when
+ * `trustProxy` is enabled in `rshono.config.ts`** (always the case under `rshono dev`). Those
+ * headers are client-supplied: honouring them unconditionally lets anyone who can reach the server
+ * dictate the origin of every absolute URL the app builds — canonical tags, emails, redirects — and
+ * poison a shared cache with them. So the default is to ignore them entirely.
  *
  * Prefer {@link Ctx.url}, which caches the result per request.
  */
 export function publicUrl(c: Context): URL {
   const url = new URL(c.req.url);
-  const forwardedHost = c.req.header('x-forwarded-host');
-  if (forwardedHost) {
-    url.host = forwardedHost;
-    const forwardedProto = c.req.header('x-forwarded-proto');
-    if (forwardedProto) url.protocol = forwardedProto;
+  if (!__RSHONO_CONFIG__.trustProxy) return url;
+
+  const forwardedHost = firstForwardedValue(c.req.header('x-forwarded-host'));
+  // Parsed rather than assigned to `url.host`, because that setter *keeps the existing port* when
+  // the new value has none — leaving the internal port on the public URL (`example.com:3000`).
+  const forwarded = forwardedHost ? URL.parse(`http://${forwardedHost}`) : null;
+  if (forwarded) {
+    url.hostname = forwarded.hostname;
+    url.port = forwarded.port; // '' when the forwarded host carries no port, which clears it
   }
+
+  // Restricted to the two schemes a browser can actually have requested; anything else (a proxy
+  // sending junk, or a client trying its luck) leaves the scheme alone.
+  const forwardedProto = firstForwardedValue(c.req.header('x-forwarded-proto'));
+  if (forwardedProto === 'http' || forwardedProto === 'https') url.protocol = forwardedProto;
+
   return url;
 }
 

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
+import { Agent, request } from 'node:http';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 import { buildExample, EXAMPLE_DIST, parseActionForm, startServer, stopServer } from './helpers.mjs';
@@ -9,6 +10,30 @@ const READY = /serving on http:\/\/localhost:(\d+)/;
 function readClientChunks() {
   const staticDir = join(EXAMPLE_DIST, 'static', 'chunks');
   return readdirSync(staticDir).map((f) => readFileSync(join(staticDir, f), 'utf8'));
+}
+
+/**
+ * POSTs on a throwaway connection and resolves with the status code. For requests the server is
+ * expected to reject mid-upload, where a connection reset is the correct outcome but must not be
+ * left behind in a shared keep-alive pool.
+ */
+function postWithoutKeepAlive(path, body) {
+  return new Promise((resolve, reject) => {
+    const req = request(
+      `${base}${path}`,
+      { method: 'POST', agent: new Agent({ keepAlive: false }), headers: { 'content-type': 'application/json' } },
+      // Resolve on headers: the status is all we assert, and the connection may well be reset
+      // before the body finishes streaming either way.
+      (res) => {
+        res.resume();
+        resolve(res.statusCode);
+      },
+    );
+    // Only reaches the caller if the request failed *before* any response — a write-side reset after
+    // the 413 has landed is expected here, and the promise has already settled by then.
+    req.on('error', reject);
+    req.end(body);
+  });
 }
 
 let server;
@@ -199,29 +224,21 @@ test('non-HTML clients get plain-text 404s', async () => {
 });
 
 test('error page from routes.ts renders with redacted error info in prod', async () => {
-  const res = await fetch(`${base}/users`, {
-    method: 'POST',
-    headers: { Accept: 'text/html', Origin: base, 'x-rsc-action': 'deadbeef', 'content-type': 'text/plain' },
-    body: '[]',
-  });
+  const res = await fetch(`${base}/api/boom`, { headers: { Accept: 'text/html' } });
   assert.equal(res.status, 500);
   const html = await res.text();
   assert.match(html, /Something went wrong/);
   assert.match(html, /Internal Server Error/, 'prod error page shows the generic message');
-  assert.doesNotMatch(html, /Failed to find Server Action/, 'real error detail must be redacted in prod');
+  assert.doesNotMatch(html, /Intentional endpoint failure/, 'real error detail must be redacted in prod');
 });
 
 test('flight (soft-navigation) errors render the error page as an RSC payload, not plain text', async () => {
-  const res = await fetch(`${base}/users`, {
-    method: 'POST',
-    headers: { Accept: 'text/x-component', Origin: base, 'x-rsc-action': 'deadbeef', 'content-type': 'text/plain' },
-    body: '[]',
-  });
+  const res = await fetch(`${base}/api/boom`, { headers: { Accept: 'text/x-component' } });
   assert.equal(res.status, 500);
   assert.match(res.headers.get('content-type'), /text\/x-component/, 'the client must get flight it can swap in, not plain text');
   const payload = await res.text();
   assert.match(payload, /Something went wrong/, 'error page component rendered into the flight payload');
-  assert.doesNotMatch(payload, /Failed to find Server Action/, 'real error detail must be redacted in prod');
+  assert.doesNotMatch(payload, /Intentional endpoint failure/, 'real error detail must be redacted in prod');
 });
 
 test('<Boundary> renders its children on the happy path', async () => {
@@ -243,6 +260,12 @@ test('a soft-navigation into a boundary error stays a 200 flight (no hard reload
   assert.equal(res.status, 200);
   assert.match(res.headers.get('content-type'), /text\/x-component/, 'the client gets flight it can swap in, not a redirect/reload');
   assert.match(await res.text(), /This section failed to load/);
+});
+
+test('a prerendered static page is served with a public cache header', async () => {
+  const res = await fetch(`${base}/docs/getting-started`);
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('cache-control') ?? '', /public/, 'a request-independent prerendered page should be publicly cacheable');
 });
 
 test('static route is prerendered at build time and served in prod', async () => {
@@ -354,6 +377,106 @@ test('action POSTs with no Origin but a cross-site Sec-Fetch-Site are rejected (
     body: form,
   });
   assert.equal(res.status, 403);
+});
+
+test('X-Forwarded-Host cannot be used to defeat the CSRF origin check', async () => {
+  // The forwarded host used to be one of the values Origin was compared against, so sending both
+  // made a cross-site POST look same-origin. Without `trustProxy` the header is now ignored outright.
+  const form = new FormData();
+  form.set('name', 'evil');
+  form.set('email', 'evil@evil.example');
+  const res = await fetch(`${base}/signup`, {
+    method: 'POST',
+    headers: {
+      Origin: 'https://evil.example',
+      'x-forwarded-host': 'evil.example',
+      'sec-fetch-site': 'cross-site',
+    },
+    body: form,
+  });
+  assert.equal(res.status, 403);
+});
+
+test('X-Forwarded-Host cannot poison the public request URL without trustProxy', async () => {
+  const flight = await (
+    await fetch(`${base}/whoami`, {
+      headers: { Accept: 'text/x-component', 'x-forwarded-host': 'evil.example', 'x-forwarded-proto': 'https' },
+    })
+  ).text();
+  assert.doesNotMatch(flight, /evil\.example/, 'a client-supplied forwarded host reached the URL the app builds');
+  assert.match(flight, new RegExp(`localhost:${server.port}`), 'the real request host should be used instead');
+});
+
+test('a browser-asserted same-origin Sec-Fetch-Site is trusted without a host comparison', async () => {
+  // Sec-Fetch-Site is set by the browser and unforgeable by page script, so it settles the question
+  // on its own. That short-circuit is what stops the check 403ing legitimate actions behind a proxy
+  // that rewrites Host — modelled here by an Origin that deliberately doesn't match.
+  const res = await fetch(`${base}/users`, {
+    method: 'POST',
+    headers: {
+      Origin: 'https://rewritten-by-proxy.example',
+      'sec-fetch-site': 'same-origin',
+      'x-rsc-action': 'not-a-real-action-id',
+      'content-type': 'text/plain',
+    },
+    body: '[]',
+  });
+  assert.equal(res.status, 400, 'should clear the CSRF gate and fail on the unknown action id instead');
+});
+
+test('an unknown server-action id is a 400, not an unhandled 500', async () => {
+  const logsBefore = server.getOutput().length;
+  const res = await fetch(`${base}/users`, {
+    method: 'POST',
+    headers: { Origin: base, 'x-rsc-action': 'not-a-real-action-id', 'content-type': 'text/plain' },
+    body: '[]',
+  });
+  assert.equal(res.status, 400);
+  assert.doesNotMatch(
+    server.getOutput().slice(logsBefore),
+    /TypeError/,
+    'an unknown action id must be rejected as a bad request, not fault into a stack trace',
+  );
+});
+
+test('__proto__ as an action id is rejected instead of resolving through the prototype', async () => {
+  const res = await fetch(`${base}/users`, {
+    method: 'POST',
+    headers: { Origin: base, 'x-rsc-action': '__proto__', 'content-type': 'text/plain' },
+    body: '[]',
+  });
+  assert.equal(res.status, 400);
+});
+
+test('baseline security headers are set on every response', async () => {
+  for (const path of ['/', '/api/health', '/favicon.ico']) {
+    const res = await fetch(`${base}${path}`);
+    assert.equal(res.headers.get('x-content-type-options'), 'nosniff', `${path} is missing nosniff`);
+    assert.equal(res.headers.get('referrer-policy'), 'strict-origin-when-cross-origin', `${path} is missing referrer-policy`);
+  }
+});
+
+test('the body-size cap covers endpoint routes and the server sub-app, not just actions', async () => {
+  // Deliberately not `fetch`: the cap is enforced before the body is read, so the server answers
+  // while the 2MB upload is still in flight and resets the connection. That's correct — but it
+  // would leave a poisoned socket in undici's shared keep-alive pool for a later test to trip over.
+  const status = await postWithoutKeepAlive('/api/users', JSON.stringify({ name: 'x'.repeat(2 * 1024 * 1024), email: 'big@example.com' }));
+  assert.equal(status, 413, 'a 2MB body to a sub-app route should be refused by the 1MiB default cap');
+});
+
+test('a thrown server action is logged server-side (the client payload is redacted, so logs are the only signal)', async () => {
+  const id = findCreateUserActionId();
+  const logsBefore = server.getOutput().length;
+  const res = await fetch(`${base}/users`, {
+    method: 'POST',
+    headers: { Origin: base, 'x-rsc-action': id, Accept: 'text/x-component', 'content-type': 'text/plain;charset=UTF-8' },
+    body: JSON.stringify([{ name: '', email: 'invalid' }]),
+  });
+  assert.equal(res.status, 500);
+  await new Promise((resolve) => setTimeout(resolve, 200)); // the child's stderr reaches us asynchronously
+  const logged = server.getOutput().slice(logsBefore);
+  assert.match(logged, /server action error/, 'a thrown action must be logged');
+  assert.match(logged, /A name and a valid email are required/, 'the real error message must reach the server log');
 });
 
 test('progressive-enhancement form action works without JavaScript', async () => {

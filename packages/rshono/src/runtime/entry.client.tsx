@@ -19,6 +19,10 @@ import { createRscRenderRequest } from './request.js';
 // clears the entry (a prefetch is used at most once, so re-visits always re-fetch).
 const payloadCache = new Map<string, Promise<RscPayload>>();
 
+// Bounded so a long session over a link-dense app can't grow it without limit. Insertion-ordered,
+// so the first key is the least recently warmed.
+const MAX_WARMED_PAYLOADS = 8;
+
 function cacheKey(href: string): string | null {
   const url = new URL(href, location.href);
   if (url.origin !== location.origin) return null;
@@ -34,6 +38,10 @@ function warmPayload(href: string): void {
   if (!key || key === cacheKey(location.href) || payloadCache.has(key)) return;
   const promise = requestPayload(href);
   payloadCache.set(key, promise);
+  for (const oldest of payloadCache.keys()) {
+    if (payloadCache.size <= MAX_WARMED_PAYLOADS) break;
+    payloadCache.delete(oldest);
+  }
   // Don't cache failures, and swallow the rejection until (or unless) a nav awaits it.
   promise.catch(() => {
     if (payloadCache.get(key) === promise) payloadCache.delete(key);
@@ -56,8 +64,13 @@ async function main() {
   const cspMeta = document.querySelector('meta[property="csp-nonce"]') as HTMLMetaElement | null;
   if (cspMeta?.nonce) __webpack_nonce__ = cspMeta.nonce;
 
-  let setPayload: (v: RscPayload) => void;
-  // Runs work inside the nav transition so useNavigation().pending stays true across the round-trip; BrowserRoot swaps in its instance on mount.
+  // Both are replaced by BrowserRoot's own on mount. The defaults matter: `setServerCallback` is
+  // registered before hydration, so an action or refresh firing in that window would otherwise call
+  // an unassigned binding. Until there's a root to update, a full reload is the honest fallback.
+  let setPayload: (v: RscPayload) => void = () => {
+    window.location.reload();
+  };
+  // Runs work inside the nav transition so useNavigation().pending stays true across the round-trip.
   let startNav: (run: () => void | Promise<void>) => void = (run) => {
     void run();
   };
@@ -94,12 +107,26 @@ async function main() {
       }
     });
 
-  function handleControlDigest(error: unknown): boolean {
+  /**
+   * Turns a control-signal digest — how `redirect()` / `notFound()` reach the browser — into a real
+   * navigation. Returns false for anything else, so callers can fall through to their own handling.
+   *
+   * `hard` forces a full document load, for signals that surfaced *through React* (a nested
+   * component's redirect, reported via the root error handlers). React unmounts the root on an
+   * uncaught error, so there is no live tree left to soft-navigate with. A signal caught earlier —
+   * a top-level payload rejection — still swaps the payload in place.
+   */
+  function handleControlDigest(error: unknown, { hard = false }: { hard?: boolean } = {}): boolean {
     const digest = (error as { digest?: unknown } | null)?.digest;
     if (!isControlDigest(digest)) return false;
     const redirect = parseRedirectDigest(digest);
-    if (redirect) push(redirect.location);
-    else window.location.reload();
+    if (!redirect) {
+      window.location.reload();
+    } else if (hard) {
+      window.location.assign(new URL(redirect.location, window.location.href).href);
+    } else {
+      push(redirect.location);
+    }
     return true;
   }
 
@@ -152,6 +179,9 @@ async function main() {
       id,
       body: await encodeReply(args, { temporaryReferences }),
     });
+    // The action is about to mutate who-knows-what, so anything warmed up to now is pre-mutation
+    // data. Cleared before the round-trip so it happens even if the action throws.
+    payloadCache.clear();
     let payload: RscPayload;
     try {
       payload = await createFromFetch<RscPayload>(fetch(renderRequest), { temporaryReferences });
@@ -170,8 +200,30 @@ async function main() {
     return result.value;
   });
 
+  // A `redirect()` / `notFound()` from a component *below* the page root can only reach us through
+  // React: it rides the flight payload as an error at that component's position, and boundaries
+  // re-throw it (see boundaries.tsx) so it lands here rather than rendering an error fallback.
+  //
+  // Anything that isn't a control signal falls back to what React would have done on its own —
+  // console for a caught error, `reportError` (i.e. window.onerror, so error-reporting tools still
+  // see it) for an uncaught one. Overriding these hooks means opting out of that default, so it has
+  // to be put back by hand.
+  const isHandledAsNavigation = (error: unknown, errorInfo: { componentStack?: string | null }): boolean => {
+    if (!handleControlDigest(error, { hard: true })) {
+      if (errorInfo.componentStack) console.error(errorInfo.componentStack);
+      return false;
+    }
+    return true;
+  };
+
   hydrateRoot(document, <BrowserRoot />, {
     formState: initialPayload.formState,
+    onCaughtError: (error, errorInfo) => {
+      if (!isHandledAsNavigation(error, errorInfo)) console.error(error);
+    },
+    onUncaughtError: (error, errorInfo) => {
+      if (!isHandledAsNavigation(error, errorInfo)) globalThis.reportError(error);
+    },
   });
 
   if (import.meta.webpackHot) {
@@ -184,6 +236,9 @@ async function main() {
 }
 
 type NavigationType = 'push' | 'replace' | 'pop';
+
+/** Hover/focus dwell time before a `data-prefetch` link warms its payload. */
+const PREFETCH_DELAY_MS = 120;
 
 // An `<a>` we intercept for soft navigation: same-origin, same tab, not a download,
 // and not explicitly opted out with `data-native` (which forces a full browser navigation).
@@ -276,16 +331,24 @@ function listenNavigation(onNavigation: (type: NavigationType, restoreScroll: ()
   }
   document.addEventListener('click', onClick);
 
+  // A prefetch is a full server render, so it waits out a short dwell time on one shared timer:
+  // sweeping the cursor across a list of prefetch links costs one request (for the link the pointer
+  // settled on), not one per link.
+  let prefetchTimer: ReturnType<typeof setTimeout> | undefined;
   function onPrefetch(e: Event) {
     const target = e.target;
     if (!(target instanceof Element)) return;
     const link = target.closest('a[data-prefetch]');
-    if (link instanceof HTMLAnchorElement && isRouterLink(link)) prefetch(link.href);
+    if (!(link instanceof HTMLAnchorElement) || !isRouterLink(link)) return;
+    const { href } = link;
+    clearTimeout(prefetchTimer);
+    prefetchTimer = setTimeout(() => prefetch(href), PREFETCH_DELAY_MS);
   }
   document.addEventListener('pointerover', onPrefetch);
   document.addEventListener('focusin', onPrefetch);
 
   return () => {
+    clearTimeout(prefetchTimer);
     document.removeEventListener('click', onClick);
     document.removeEventListener('pointerover', onPrefetch);
     document.removeEventListener('focusin', onPrefetch);

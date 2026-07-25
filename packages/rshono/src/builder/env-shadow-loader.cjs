@@ -1,10 +1,26 @@
 'use strict';
 const DIRECTIVE_PROLOGUE = /^(?:\s|\/\/[^\n]*(?:\n|$)|\/\*[\s\S]*?\*\/)*(?:(['"])use [a-z -]+\1\s*;?)?/;
 
+/**
+ * Shadows `process.env` with the PUBLIC_-only view inside SSR-layer modules, so a secret read from a
+ * `'use client'` component renders empty on the server instead of leaking into the HTML stream (and
+ * SSR output keeps agreeing with hydration, which sees the same view via DefinePlugin).
+ *
+ * This is a security control, so it fails the build rather than passing source through when it can't
+ * confirm which layer a module is in — `_module` is a private Rspack field, and silently no-op'ing
+ * if a future version renames it would drop the guarantee with nothing to notice it.
+ */
 module.exports = function envShadowLoader(source) {
   if (!source.includes('process.env')) return source;
   const { prelude, layer } = this.getOptions();
-  if (this._module?.layer !== layer) return source;
+  if (!this._module) {
+    throw new Error(
+      "[rshono] env-shadow-loader could not read the module's layer (Rspack's `this._module` is unavailable). " +
+        'That check is what keeps server secrets out of SSR-rendered client components, so the build is failed ' +
+        'instead of shipping without it. This is a framework/Rspack incompatibility — please report it.',
+    );
+  }
+  if (this._module.layer !== layer) return source;
   const prologue = source.match(DIRECTIVE_PROLOGUE)[0];
   return prologue + prelude + source.slice(prologue.length);
 };

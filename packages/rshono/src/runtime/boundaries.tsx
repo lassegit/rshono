@@ -1,6 +1,17 @@
 'use client';
 
 import { Component, Suspense, type ReactNode } from 'react';
+import { isControlDigest } from './control.js';
+
+/**
+ * `redirect()` and `notFound()` reach the browser as a thrown error carrying a control digest.
+ * They are navigation, not failure, so no boundary may absorb one — otherwise a `redirect()` from
+ * a component inside a `<Boundary>` would render "something went wrong" instead of navigating.
+ * They're re-thrown to the root, where the runtime turns the digest into a real navigation.
+ */
+function isControlError(error: unknown): boolean {
+  return isControlDigest((error as { digest?: unknown } | null)?.digest);
+}
 
 /**
  * What an {@link ErrorBoundary} / {@link Boundary} renders once a child throws.
@@ -71,6 +82,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 
   componentDidCatch(error: Error): void {
+    if (isControlError(error)) return; // a redirect isn't an error to report
     this.props.onError?.(error);
   }
 
@@ -88,6 +100,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   render(): ReactNode {
     const { error } = this.state;
     if (error !== null) {
+      if (isControlError(error)) throw error; // navigation in flight — never show a fallback for it
       const { fallback } = this.props;
       if (fallback === undefined) throw error; // no local fallback → propagate to an outer boundary
       return typeof fallback === 'function' ? fallback(error, this.reset) : fallback;
