@@ -1,12 +1,21 @@
 const HEADER_ACTION_ID = 'x-rsc-action';
 const RSC_CONTENT_TYPE = 'text/x-component';
 
-export interface RenderRequest {
-  isRsc: boolean;
-  isAction: boolean;
-  actionId?: string;
-  url: URL;
-}
+/**
+ * The four distinct shapes an incoming render request can take, modeled as a
+ * discriminated union so illegal combinations (e.g. an action id on a GET) are
+ * unrepresentable and every consumer dispatches exhaustively on `kind`.
+ *
+ * - `document` — a normal navigation; respond with a full SSR HTML document.
+ * - `rsc` — a soft-navigation flight fetch (`Accept: text/x-component`).
+ * - `form-action` — a progressive-enhancement `<form>` POST (no JavaScript).
+ * - `rsc-action` — a client-initiated server-action call carrying an action id.
+ */
+export type RenderRequest =
+  | { kind: 'document'; url: URL }
+  | { kind: 'rsc'; url: URL }
+  | { kind: 'form-action'; url: URL }
+  | { kind: 'rsc-action'; url: URL; actionId: string };
 
 export function createRscRenderRequest(urlString: string, action?: { id: string; body: BodyInit }): Request {
   const url = new URL(urlString, location.origin);
@@ -24,13 +33,21 @@ const FORM_CONTENT_TYPES = /^(?:multipart\/form-data|application\/x-www-form-url
 export function parseRenderRequest(request: Request): RenderRequest {
   const url = new URL(request.url);
   if (request.method === 'POST') {
-    const actionId = request.headers.get(HEADER_ACTION_ID) ?? undefined;
-    if (actionId) {
-      return { isRsc: true, isAction: true, actionId, url };
-    }
-    const isForm = FORM_CONTENT_TYPES.test(request.headers.get('content-type') ?? '');
-    return { isRsc: false, isAction: isForm, url };
+    const actionId = request.headers.get(HEADER_ACTION_ID);
+    if (actionId) return { kind: 'rsc-action', url, actionId };
+    if (FORM_CONTENT_TYPES.test(request.headers.get('content-type') ?? '')) return { kind: 'form-action', url };
+    return { kind: 'document', url };
   }
-  const isRsc = request.headers.get('accept')?.includes(RSC_CONTENT_TYPE) ?? false;
-  return { isRsc, isAction: false, url };
+  const wantsFlight = request.headers.get('accept')?.includes(RSC_CONTENT_TYPE) ?? false;
+  return { kind: wantsFlight ? 'rsc' : 'document', url };
+}
+
+/** True when the response should be a flight payload rather than an HTML document. */
+export function wantsRsc(request: RenderRequest): boolean {
+  return request.kind === 'rsc' || request.kind === 'rsc-action';
+}
+
+/** True when the request carries a server action to run before rendering. */
+export function isActionRequest(request: RenderRequest): request is Extract<RenderRequest, { kind: 'form-action' | 'rsc-action' }> {
+  return request.kind === 'form-action' || request.kind === 'rsc-action';
 }

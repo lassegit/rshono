@@ -40,7 +40,7 @@ export interface RSHonoConfig {
   allowedOrigins?: string[];
   /**
    * Send a strict per-request-nonce `Content-Security-Policy` with every HTML document.
-   * While enabled, `kind: 'static'` routes render per request (a prerendered file can't carry a
+   * While enabled, `render: 'static'` routes render per request (a prerendered file can't carry a
    * per-request nonce). Default `false`.
    */
   csp?: boolean;

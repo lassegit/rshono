@@ -19,7 +19,7 @@ const store = new AsyncLocalStorage<Context>();
 const wrappers = new WeakMap<Context, Ctx>();
 
 /**
- * True when this process is the SSG build prerendering `kind: 'static'` routes,
+ * True when this process is the SSG build prerendering `render: 'static'` routes,
  * rather than a server handling real requests. `build.ts` sets `RSC_HONO_PRERENDER`
  * before importing the app bundle and starting the prerender pass; the app bundle
  * inlines its own copy of this module, so a shared `process.env` (not a module-level
@@ -56,6 +56,19 @@ export function runWithContext<T>(c: Context, fn: () => T): T {
  *
  * Prefer {@link Ctx.url}, which caches the result per request.
  */
+/**
+ * Reads the matched route params, returning an empty object when there is no
+ * active route match (rather than throwing). Shared by {@link Ctx.params} and the
+ * request renderer so the fallback behaviour stays in one place.
+ */
+export function readParams(c: Context): Record<string, string> {
+  try {
+    return c.req.param();
+  } catch {
+    return {};
+  }
+}
+
 export function publicUrl(c: Context): URL {
   const url = new URL(c.req.url);
   const forwardedHost = c.req.header('x-forwarded-host');
@@ -137,11 +150,7 @@ export class Ctx<E extends Env = Env> {
    * empty object when there is no active route match (rather than throwing).
    */
   get params(): Record<string, string> {
-    try {
-      return this.raw.req.param();
-    } catch {
-      return {};
-    }
+    return readParams(this.raw as Context);
   }
 
   /**
@@ -205,8 +214,8 @@ export class Ctx<E extends Env = Env> {
  *
  * @typeParam E - The app's Hono {@link Env}, to type {@link Ctx.var} and {@link Ctx.env}.
  * @throws If called at module load, where there is no ambient context to resolve.
- * @throws If called while prerendering a `kind: 'static'` route, which has no
- *   per-request context at build time — mark the route `dynamic` instead.
+ * @throws If called while prerendering a `render: 'static'` route, which has no
+ *   per-request context at build time — mark the route `render: 'dynamic'` instead.
  *
  * @example
  * ```ts
@@ -222,9 +231,9 @@ export class Ctx<E extends Env = Env> {
 export function getContext<E extends Env = Env>(): Ctx<E> {
   if (isPrerendering()) {
     throw new Error(
-      "[rshono] getContext() was called while prerendering a `kind: 'static'` route. A static page " +
+      "[rshono] getContext() was called while prerendering a `render: 'static'` route. A static page " +
         'is rendered once at build time, so it has no per-request context to read (URL, cookies, ' +
-        "headers, env). Change this route to `kind: 'dynamic'` so it renders per request, or remove " +
+        "headers, env). Change this route to `render: 'dynamic'` so it renders per request, or remove " +
         'the getContext() call.',
     );
   }

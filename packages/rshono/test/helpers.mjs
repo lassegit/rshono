@@ -8,7 +8,17 @@ export const EXAMPLE_DIST = join(EXAMPLE_DIR, 'dist');
 const CLI = join(ROOT, 'packages', 'rshono', 'bin', 'cli.cjs');
 
 export function buildExample() {
-  const result = spawnSync(process.execPath, [CLI, 'build'], {
+  return buildExampleWith();
+}
+
+/**
+ * Build the example, optionally with an explicit config file (absolute path) via `--config`.
+ * Config now bakes into the bundle at build time, so exercising a non-default setting (CSP,
+ * body limit, CSRF allowlist) means building with a fixture config rather than setting an env var.
+ */
+export function buildExampleWith(configPath) {
+  const args = [CLI, 'build', ...(configPath ? ['--config', configPath] : [])];
+  const result = spawnSync(process.execPath, args, {
     cwd: EXAMPLE_DIR,
     encoding: 'utf8',
     timeout: 180_000,

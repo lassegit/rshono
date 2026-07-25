@@ -32,55 +32,40 @@ import {
   type SpecialPage,
 } from '../router.js';
 import { loadEnvFiles } from '../server/load-env.js';
+import { onShutdown } from '../server/shutdown.js';
 import { readPrerendered } from '../server/ssg.js';
 import { createPublicFallback, createStaticMiddleware } from '../server/static.js';
-import { publicUrl, runWithContext } from './context.js';
+import { publicUrl, readParams, runWithContext } from './context.js';
 import { isControlSignal, RedirectSignal, type ControlSignal } from './control.js';
 import { renderHTML } from './entry.ssr.js';
 import { RouterProvider } from './navigation.js';
-import { parseRenderRequest } from './request.js';
+import { isActionRequest, parseRenderRequest, wantsRsc } from './request.js';
 
 const isDev = process.env.NODE_ENV === 'development';
 const rootDir = join(import.meta.dirname, '..', '..');
 
 const serverApp = ((serverAppModule as { default?: unknown }).default ?? null) as Hono | null;
 
-const RENDER_TIMEOUT_MS = Number(process.env.RSC_HONO_RENDER_TIMEOUT_MS || 10_000);
-
-const cspEnabled = !!process.env.RSC_HONO_CSP;
-
-// CSRF origin check on action POSTs. On by default; RSC_HONO_CHECK_ORIGIN=0 disables it.
-const checkOrigin = process.env.RSC_HONO_CHECK_ORIGIN !== '0';
-
-// Cross-origin hosts explicitly permitted to post server actions, in addition to the app's own
-// origin. Entries may be full origins or bare hosts — both are normalized to a `URL.host`.
-const allowedOrigins = new Set(
-  (process.env.RSC_HONO_ALLOWED_ORIGINS ?? '')
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-    .map((entry) => {
-      try {
-        return new URL(entry).host;
-      } catch {
-        return entry;
-      }
-    }),
-);
-
-// Max bytes we'll buffer from an action POST body before rejecting with 413 — a memory-exhaustion
-// guard. Set RSC_HONO_MAX_BODY_BYTES=0 (or a negative value) to disable the cap. Default 1 MiB,
-// matching Next.js's server-action body-size limit.
-const MAX_BODY_BYTES = Number(process.env.RSC_HONO_MAX_BODY_BYTES ?? 1024 * 1024);
+// Framework settings resolved from rshono.config.ts and compiled into the bundle at build time
+// (see builder/rspack-config.ts). These have no runtime env-var interface — env is for secrets.
+const CONFIG = __RSHONO_CONFIG__;
+const RENDER_TIMEOUT_MS = CONFIG.renderTimeoutMs;
+const cspEnabled = CONFIG.cspEnabled;
+const checkOrigin = CONFIG.checkOrigin; // CSRF origin check on action POSTs.
+const allowedOrigins = new Set(CONFIG.allowedOrigins); // extra cross-origin hosts permitted to post actions.
+const MAX_BODY_BYTES = CONFIG.maxBodyBytes; // action-POST body cap in bytes; 0 disables it.
 
 loadEnvFiles(rootDir);
 
 const routeConfig = userRoutes as RouteConfig;
 export const routes: readonly Route[] = routeConfig.routes;
 
+/** The result of a server action, as a discriminated union (a `Result<T, E>`) rather than an `ok` flag over one field. */
+export type ActionResult = { ok: true; value: unknown } | { ok: false; error: unknown };
+
 export type RscPayload = {
   root: React.ReactNode;
-  returnValue?: { ok: boolean; data: unknown };
+  returnValue?: ActionResult;
   formState?: ReactFormState;
   redirect?: string;
   notFound?: boolean;
@@ -90,14 +75,8 @@ function isSameOriginAction(request: Request): boolean {
   if (!checkOrigin) return true;
 
   const origin = request.headers.get('origin');
-  let originHost: string | null = null;
-  if (origin) {
-    try {
-      originHost = new URL(origin).host;
-    } catch {
-      return false;
-    }
-  }
+  const originHost = origin ? (URL.parse(origin)?.host ?? null) : null;
+  if (origin !== null && originHost === null) return false; // an Origin header we can't parse is untrusted.
 
   // The Origin is trusted when it matches our own host or was explicitly allowlisted.
   const trusted =
@@ -174,7 +153,8 @@ function loadPage(route: PageRoute): Promise<ServerEntry<PageComponent>> {
   return loadPageModule(route.component, `"${route.path}"`);
 }
 
-function memoizeModuleLoad<T>(load: () => Promise<T>): () => Promise<T> {
+/** A lazy once-cell: runs `load` at most once and caches the promise, but clears a rejection so a later call can retry. */
+function once<T>(load: () => Promise<T>): () => Promise<T> {
   let promise: Promise<T> | undefined;
   return () => {
     if (!promise) {
@@ -198,34 +178,44 @@ interface ComponentRenderOptions {
   payloadExtras?: Pick<RscPayload, 'redirect' | 'notFound'>;
 }
 
+interface RenderDeadline {
+  /** The request signal combined with the timeout — pass to the RSC/SSR renderers. */
+  readonly signal: AbortSignal;
+  /** Releases the timer now — call on an error path where nothing will stream. */
+  clear(): void;
+  /** Wraps a response stream so the timer is released once its last byte flushes. */
+  guard(stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array>;
+}
+
 /**
- * Passes a render's output stream through unchanged, but clears the render-timeout
- * timer the moment the stream finishes — so a fast response doesn't leave a pending
- * timer to fire (and pile up under load). The deadline still guards the whole render:
- * it stays armed until the last byte streams, not just until `renderComponent` returns.
+ * Owns the render-deadline lifecycle in one place (the RAII / `defer` pattern — a
+ * `using` declaration doesn't fit because the timer must outlive this call to keep
+ * guarding the *stream*, not just the function scope). The timer is released on
+ * exactly one of: the stream finishing ({@link RenderDeadline.guard}), an explicit
+ * {@link RenderDeadline.clear} on an error path, or the signal aborting (client
+ * disconnect, or the deadline firing itself). A manually-cleared timer instead of
+ * `AbortSignal.timeout()` so a fast response doesn't leave one pending to fire later.
  */
-function clearTimeoutOnStreamEnd(stream: ReadableStream<Uint8Array>, clear: () => void): ReadableStream<Uint8Array> {
-  return stream.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({ flush: clear }));
+function createRenderDeadline(requestSignal: AbortSignal, ms: number): RenderDeadline {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error(`[rshono] render exceeded ${ms}ms`)), ms);
+  timer.unref?.();
+  const signal = AbortSignal.any([requestSignal, controller.signal]);
+  const clear = () => clearTimeout(timer);
+  signal.addEventListener('abort', clear, { once: true });
+  return {
+    signal,
+    clear,
+    guard: (stream) => stream.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({ flush: clear })),
+  };
 }
 
 async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opts: ComponentRenderOptions): Promise<Response> {
-  // A manually-cleared timer instead of AbortSignal.timeout(): we cancel it as soon as
-  // the render settles, rather than leaving one pending per request to fire later.
-  const timeoutController = new AbortController();
-  const timeoutTimer = setTimeout(() => {
-    timeoutController.abort(new Error(`[rshono] render exceeded ${RENDER_TIMEOUT_MS}ms`));
-  }, RENDER_TIMEOUT_MS);
-  timeoutTimer.unref?.();
-  const signal = AbortSignal.any([c.req.raw.signal, timeoutController.signal]);
-  const clearRenderTimeout = () => clearTimeout(timeoutTimer);
-  // Release the timer promptly on client disconnect (and, harmlessly, when it fires itself).
-  signal.addEventListener('abort', clearRenderTimeout, { once: true });
+  const deadline = createRenderDeadline(c.req.raw.signal, RENDER_TIMEOUT_MS);
+  const signal = deadline.signal;
 
   const nonce = cspEnabled && !opts.isRsc ? crypto.randomUUID() : undefined;
-  let params: Record<string, string> = {};
-  try {
-    params = c.req.param();
-  } catch {}
+  const params = readParams(c);
   const props = { params, url: publicUrl(c).toString(), ...opts.extraProps };
   const root = (
     <>
@@ -256,7 +246,7 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
   });
 
   if (opts.isRsc) {
-    return c.body(clearTimeoutOnStreamEnd(rscStream, clearRenderTimeout), (opts.status ?? 200) as ContentfulStatusCode, {
+    return c.body(deadline.guard(rscStream), (opts.status ?? 200) as ContentfulStatusCode, {
       'content-type': 'text/x-component;charset=utf-8',
     });
   }
@@ -270,12 +260,12 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
       nonce,
     });
   } catch (error) {
-    clearRenderTimeout();
+    deadline.clear();
     if (controlSignal) throw controlSignal;
     throw error;
   }
   if (controlSignal) {
-    clearRenderTimeout();
+    deadline.clear();
     throw controlSignal;
   }
   const headers: Record<string, string> = { 'content-type': 'text/html;charset=utf-8' };
@@ -288,38 +278,34 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
       `connect-src 'self'`,
     ].join('; ');
   }
-  return c.body(
-    clearTimeoutOnStreamEnd(ssrResult.stream, clearRenderTimeout),
-    (ssrResult.status ?? opts.status ?? 200) as ContentfulStatusCode,
-    headers,
-  );
+  return c.body(deadline.guard(ssrResult.stream), (ssrResult.status ?? opts.status ?? 200) as ContentfulStatusCode, headers);
 }
 
 async function renderPage(c: Context, route: PageRoute): Promise<Response> {
   const request = c.req.raw;
   const renderRequest = parseRenderRequest(request);
 
-  let returnValue: RscPayload['returnValue'];
+  let returnValue: ActionResult | undefined;
   let formState: ReactFormState | undefined;
   let temporaryReferences: TemporaryReferenceSet | undefined;
   let actionStatus: number | undefined;
-  if (renderRequest.isAction) {
+  if (isActionRequest(renderRequest)) {
     if (!isSameOriginAction(request)) {
       return c.text('Forbidden: cross-origin server action rejected', 403);
     }
     try {
       const limited = enforceBodyLimit(request);
-      if (renderRequest.actionId) {
+      if (renderRequest.kind === 'rsc-action') {
         const contentType = request.headers.get('content-type');
         const body = contentType?.startsWith('multipart/form-data') ? await limited.formData() : await limited.text();
         temporaryReferences = createTemporaryReferenceSet();
         const args = await decodeReply<unknown[]>(body, { temporaryReferences });
         const action = loadServerAction(renderRequest.actionId);
         try {
-          returnValue = { ok: true, data: await action.apply(null, args) };
+          returnValue = { ok: true, value: await action.apply(null, args) };
         } catch (error) {
           if (isControlSignal(error)) throw error;
-          returnValue = { ok: false, data: error };
+          returnValue = { ok: false, error };
           actionStatus = 500;
         }
       } else {
@@ -339,7 +325,7 @@ async function renderPage(c: Context, route: PageRoute): Promise<Response> {
   const Page = await loadPage(route);
   return renderComponent(c, Page, {
     status: actionStatus,
-    isRsc: renderRequest.isRsc,
+    isRsc: wantsRsc(renderRequest),
     formState,
     returnValue,
     temporaryReferences,
@@ -363,11 +349,11 @@ function buildApp(): Hono {
 
   const ssgDir = join(rootDir, 'dist', 'ssg');
 
-  const memoizePage = (page: SpecialPage, label: string) => memoizeModuleLoad(() => loadPageModule(page.component, label));
+  const memoizePage = (page: SpecialPage, label: string) => once(() => loadPageModule(page.component, label));
   const loadNotFoundPage = routeConfig.notFound ? memoizePage(routeConfig.notFound, 'the notFound page') : null;
 
   const resolveControl = async (c: Context, signal: ControlSignal): Promise<Response> => {
-    const { isRsc } = parseRenderRequest(c.req.raw);
+    const isRsc = wantsRsc(parseRenderRequest(c.req.raw));
     if (signal instanceof RedirectSignal) {
       if (isRsc) {
         c.header('x-rshono-redirect', signal.location);
@@ -388,7 +374,7 @@ function buildApp(): Hono {
       const handler: Handler = (c) =>
         runWithContext(c, async () => {
           try {
-            if (!isDev && !cspEnabled && route.kind === 'static' && c.req.method === 'GET' && !parseRenderRequest(c.req.raw).isRsc) {
+            if (!isDev && !cspEnabled && route.render === 'static' && c.req.method === 'GET' && !wantsRsc(parseRenderRequest(c.req.raw))) {
               const html = await readPrerendered(ssgDir, c.req.path);
               if (html !== null) return c.html(html);
             }
@@ -402,7 +388,7 @@ function buildApp(): Hono {
       app.post(route.path, handler);
     } else {
       const endpoint = route as EndpointRoute;
-      const loadEndpoint = memoizeModuleLoad(() => endpoint.server());
+      const loadEndpoint = once(() => endpoint.server());
       const handler: Handler = async (c, next) => {
         const { handler: endpointHandler } = await loadEndpoint();
         return endpointHandler(c, next);
@@ -420,7 +406,7 @@ function buildApp(): Hono {
 
   app.notFound(async (c) => {
     const wantsHtml = c.req.header('accept')?.includes('text/html') ?? false;
-    const { isRsc } = parseRenderRequest(c.req.raw);
+    const isRsc = wantsRsc(parseRenderRequest(c.req.raw));
     if (loadNotFoundPage && (wantsHtml || isRsc)) {
       return runWithContext(c, async () => renderComponent(c, await loadNotFoundPage(), { status: 404, isRsc }));
     }
@@ -432,7 +418,7 @@ function buildApp(): Hono {
     if (isControlSignal(error)) return runWithContext(c, () => resolveControl(c, error));
     console.error('[rshono] request error:', error);
     const wantsHtml = c.req.header('accept')?.includes('text/html') ?? false;
-    const { isRsc } = parseRenderRequest(c.req.raw);
+    const isRsc = wantsRsc(parseRenderRequest(c.req.raw));
     if (loadErrorPage && (wantsHtml || isRsc)) {
       const errorInfo: ErrorInfo = isDev
         ? {
@@ -463,8 +449,11 @@ export const app = buildApp();
 
 if (!process.env.RSC_HONO_PRERENDER) {
   const devWorker = workerData as { port?: number; hostname?: string } | null;
-  const port = devWorker?.port ?? Number(process.env.PORT || 3000);
-  const hostname = devWorker?.hostname ?? process.env.HOST ?? '0.0.0.0';
+  // PORT / HOST stay env-overridable (the standard deployment convention); their defaults come
+  // from rshono.config.ts, baked into CONFIG. `?? ` (not `||`) so an explicit PORT=0 is honoured.
+  const envPort = process.env.PORT !== undefined ? Number(process.env.PORT) : undefined;
+  const port = devWorker?.port ?? envPort ?? CONFIG.port ?? 3000;
+  const hostname = devWorker?.hostname ?? process.env.HOST ?? CONFIG.host ?? '0.0.0.0';
 
   const server = serve({ fetch: app.fetch, port, hostname }, (info) => {
     if (parentPort) {
@@ -474,10 +463,8 @@ if (!process.env.RSC_HONO_PRERENDER) {
     }
   });
 
-  for (const signal of ['SIGINT', 'SIGTERM'] as const) {
-    process.on(signal, () => {
-      server.close(() => process.exit(0));
-      setTimeout(() => process.exit(0), 3000).unref();
-    });
-  }
+  onShutdown(() => {
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 3000).unref();
+  });
 }

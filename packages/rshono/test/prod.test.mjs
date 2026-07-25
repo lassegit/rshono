@@ -341,89 +341,8 @@ test('cross-origin action POSTs are rejected (CSRF)', async () => {
   assert.equal(client.status, 403);
 });
 
-test('an oversized action POST body is rejected with 413 (memory-exhaustion guard)', async () => {
-  const srv = await startServer('start', { env: { RSC_HONO_MAX_BODY_BYTES: '1024' }, urlPattern: READY });
-  try {
-    const at = `http://localhost:${srv.port}`;
-    const oversized = JSON.stringify([{ blob: 'x'.repeat(4096) }]);
-
-    // Content-Length present: rejected up front, before the body is buffered.
-    const declared = await fetch(`${at}/users`, {
-      method: 'POST',
-      headers: { Origin: at, 'x-rsc-action': 'whatever', 'content-type': 'text/plain' },
-      body: oversized,
-    });
-    assert.equal(declared.status, 413, 'a body over the cap with a Content-Length should be rejected with 413');
-
-    // No Content-Length (chunked stream): the streaming byte-counter still trips the cap.
-    const chunked = await fetch(`${at}/users`, {
-      method: 'POST',
-      headers: { Origin: at, 'x-rsc-action': 'whatever', 'content-type': 'text/plain' },
-      body: new ReadableStream({
-        start(controller) {
-          controller.enqueue(new TextEncoder().encode(oversized));
-          controller.close();
-        },
-      }),
-      duplex: 'half',
-    });
-    assert.equal(chunked.status, 413, 'a chunked body over the cap (no Content-Length) should still be rejected with 413');
-
-    // A body under the cap is processed normally (here it fails to resolve the bogus action → 500, not 413).
-    const under = await fetch(`${at}/users`, {
-      method: 'POST',
-      headers: { Origin: at, 'x-rsc-action': 'whatever', Accept: 'text/html', 'content-type': 'text/plain' },
-      body: '[]',
-    });
-    assert.notEqual(under.status, 413, 'a body under the cap must not be rejected as too large');
-  } finally {
-    await stopServer(srv.child);
-  }
-});
-
-test('RSC_HONO_ALLOWED_ORIGINS lets a listed cross-origin action through (CSRF allowlist)', async () => {
-  const srv = await startServer('start', { env: { RSC_HONO_ALLOWED_ORIGINS: 'https://admin.example' }, urlPattern: READY });
-  try {
-    const at = `http://localhost:${srv.port}`;
-    // An allowlisted cross-origin clears the CSRF gate (then 500 on the bogus action id — not 403).
-    const allowed = await fetch(`${at}/users`, {
-      method: 'POST',
-      headers: { Origin: 'https://admin.example', 'x-rsc-action': 'whatever', 'content-type': 'text/plain' },
-      body: '[]',
-    });
-    assert.notEqual(allowed.status, 403, 'an allowlisted cross-origin action must not be rejected as CSRF');
-
-    // An origin that is not listed is still rejected.
-    const denied = await fetch(`${at}/users`, {
-      method: 'POST',
-      headers: { Origin: 'https://evil.example', 'x-rsc-action': 'whatever', 'content-type': 'text/plain' },
-      body: '[]',
-    });
-    assert.equal(denied.status, 403, 'a cross-origin action not on the allowlist is still rejected');
-  } finally {
-    await stopServer(srv.child);
-  }
-});
-
-test('RSC_HONO_CHECK_ORIGIN=0 disables the CSRF origin check', async () => {
-  const srv = await startServer('start', { env: { RSC_HONO_CHECK_ORIGIN: '0' }, urlPattern: READY });
-  try {
-    const at = `http://localhost:${srv.port}`;
-    const res = await fetch(`${at}/users`, {
-      method: 'POST',
-      headers: {
-        Origin: 'https://evil.example',
-        'sec-fetch-site': 'cross-site',
-        'x-rsc-action': 'whatever',
-        'content-type': 'text/plain',
-      },
-      body: '[]',
-    });
-    assert.notEqual(res.status, 403, 'with the origin check disabled, a cross-origin action must not be rejected');
-  } finally {
-    await stopServer(srv.child);
-  }
-});
+// CSRF allowlist, origin-check-off, body-size cap and CSP are configured via rshono.config.ts and
+// baked into the build, so they're exercised against dedicated config builds in prod-config.test.mjs.
 
 test('action POSTs with no Origin but a cross-site Sec-Fetch-Site are rejected (CSRF)', async () => {
   const form = new FormData();
@@ -531,21 +450,3 @@ test('thrown action errors are redacted in production payloads', async () => {
   assert.doesNotMatch(payload, /A name and a valid email are required/);
 });
 
-test('RSC_HONO_CSP=1 sends a nonce-based CSP and skips the SSG shortcut', async () => {
-  const csp = await startServer('start', { env: { RSC_HONO_CSP: '1' }, urlPattern: READY });
-  try {
-    const res = await fetch(`http://localhost:${csp.port}/`);
-    const header = res.headers.get('content-security-policy');
-    assert.ok(header, 'missing content-security-policy header');
-    const nonce = header.match(/'nonce-([^']+)'/)[1];
-    assert.doesNotMatch(header, /unsafe-eval/, 'prod CSP must not allow eval');
-    const html = await res.text();
-    assert.ok(html.includes(`nonce="${nonce}"`), 'nonce not stamped on scripts');
-
-    const ssg = await fetch(`http://localhost:${csp.port}/docs/getting-started`);
-    assert.ok(ssg.headers.get('content-security-policy'), 'SSG route missing CSP header');
-    assert.match(await ssg.text(), /nonce="/);
-  } finally {
-    await stopServer(csp.child);
-  }
-});

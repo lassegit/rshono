@@ -21,11 +21,11 @@ export const routes = defineRoutes({
     { path: '/profile/:id', component: () => import('./components/profile') },
     {
       path: '/docs/:slug',
-      kind: 'static',
+      render: 'static',
       component: () => import('./components/documentation'),
       staticPaths: async () => [{ slug: 'getting-started' }, { slug: 'deployment' }],
     },
-    { kind: 'endpoint', path: '/api/health', server: () => import('./health') },
+    { type: 'endpoint', path: '/api/health', server: () => import('./health') },
   ],
   notFound: { component: () => import('./components/404') },
   error: { component: () => import('./components/500') },
@@ -68,7 +68,7 @@ Call them directly from client code (typed args and result), or wire them to `<f
 
 ## Full Hono underneath
 
-- `{ kind: 'endpoint' }` routes export a Hono `handler` from a server module (it only ever runs on the server).
+- `{ type: 'endpoint' }` routes export a Hono `handler` from a server module (it only ever runs on the server).
 - `src/server.ts` may default-export a whole Hono sub-app, mounted at `/` (behind pages): any method, streaming, cookies, middleware. `export type AppType = typeof server` gives end-to-end type safety with `hono/client`.
 
 ## Static files
@@ -109,19 +109,19 @@ export default defineConfig({
 });
 ```
 
-`defineConfig` is an identity helper for editor autocomplete; `export default { … } satisfies RSHonoConfig` works too. **Precedence** for the settings that also read the environment: a CLI flag (`--port`) beats an env var (`PORT`, `RSC_HONO_*`) beats the config file beats the built-in default — so a deploy can always override the config without editing it. `port`/`host`/`rspack` are consumed by the CLI; the rest are delivered to the server bundle.
+`defineConfig` is an identity helper for editor autocomplete; `export default { … } satisfies RSHonoConfig` works too. `port`/`host`/`rspack` are consumed by the CLI; the framework settings (`checkOrigin`, `allowedOrigins`, `csp`, `bodySizeLimit`, `renderTimeout`) are resolved from this file at build time and **compiled into the server bundle** — there is no parallel `RSC_HONO_*` env-var interface (environment variables are for secrets). Changing one of these settings means a rebuild. The two deployment-conventional exceptions stay env-overridable: `--port`/`PORT` and `HOST` win over the file, which wins over the built-in default. Point `rshono build` at a different config with `--config <path>`.
 
 ## Security & hardening
 
-- **CSRF**: server-action POSTs are origin-checked automatically — a cross-origin `Origin` header (against `Host`/`x-forwarded-host`) is rejected with 403. Applies to both client-initiated calls and no-JS form posts. Turn it off with `checkOrigin: false` (or `RSC_HONO_CHECK_ORIGIN=0`) behind a gateway that already enforces it, or list trusted cross-origins in `allowedOrigins` (`RSC_HONO_ALLOWED_ORIGINS`, comma-separated).
-- **Render deadline**: every page render (flight + SSR) races a timeout (`renderTimeout`, `RSC_HONO_RENDER_TIMEOUT_MS`, default 10000) and the client-disconnect signal, so hung data fetches can't pin sockets open.
-- **Request-body limit**: server-action POST bodies are capped (`bodySizeLimit`, `RSC_HONO_MAX_BODY_BYTES`, default 1048576 = 1 MiB) before they're buffered into memory — oversized bodies are rejected with `413 Payload Too Large`. An over-cap `Content-Length` is refused up front; bodies that omit it (chunked) or under-report it are still cut off mid-stream. Set to `false`/`0` to disable (e.g. behind a proxy that already enforces a limit). Raise it for large multipart uploads.
-- **CSP (opt-in)**: set `csp: true` (or `RSC_HONO_CSP=1`) to send a strict per-request-nonce `Content-Security-Policy` with every HTML document (nonce stamped on bootstrap scripts, inlined flight payload, and dynamically loaded chunks). While enabled, `kind: 'static'` routes render per request — prerendered files can't carry a per-request nonce.
+- **CSRF**: server-action POSTs are origin-checked automatically — a cross-origin `Origin` header (against `Host`/`x-forwarded-host`) is rejected with 403. Applies to both client-initiated calls and no-JS form posts. Turn it off with `checkOrigin: false` behind a gateway that already enforces it, or list trusted cross-origins in `allowedOrigins`.
+- **Render deadline**: every page render (flight + SSR) races a timeout (`renderTimeout`, default 10000) and the client-disconnect signal, so hung data fetches can't pin sockets open.
+- **Request-body limit**: server-action POST bodies are capped (`bodySizeLimit`, default 1048576 = 1 MiB) before they're buffered into memory — oversized bodies are rejected with `413 Payload Too Large`. An over-cap `Content-Length` is refused up front; bodies that omit it (chunked) or under-report it are still cut off mid-stream. Set to `false`/`0` to disable (e.g. behind a proxy that already enforces a limit). Raise it for large multipart uploads.
+- **CSP (opt-in)**: set `csp: true` to send a strict per-request-nonce `Content-Security-Policy` with every HTML document (nonce stamped on bootstrap scripts, inlined flight payload, and dynamically loaded chunks). While enabled, `render: 'static'` routes render per request — prerendered files can't carry a per-request nonce.
 - **Error responses**: thrown server-action errors are redacted in production payloads (React digest behavior) — return values, not throws, for user-facing errors. Custom 404/500 pages are real server components declared in routes.ts (`notFound` / `error`); the error page's `error` prop is message-only in production, message + stack in dev.
 
 ## Testing
 
-`pnpm --filter rshono test` — a node:test e2e suite that builds `examples/rs-basic`, boots the real production server (and a second instance with CSP on) plus a dev-server smoke, and asserts pages, flight protocol, actions (client + progressive enhancement), CSRF rejection, secret stripping in bundles _and_ rendered HTML, SSG output, and cache headers.
+`pnpm --filter rshono test` — a node:test e2e suite that builds `examples/rs-basic`, boots the real production server plus a dev-server smoke, and asserts pages, flight protocol, actions (client + progressive enhancement), CSRF rejection, secret stripping in bundles _and_ rendered HTML, SSG output, and cache headers. Security settings (CSP, CSRF allowlist/origin-check, body-size cap) are baked into the bundle, so each is exercised against its own build from a fixture config (`test/fixtures/`, via `rshono build --config`).
 
 ## How it works
 
@@ -136,6 +136,6 @@ In production, `dist/server/main.mjs` is self-contained (React, Hono and the fra
 
 ## Requirements & limitations
 
-- Node ≥ 20.19 (worker threads, `process.loadEnvFile`), React ≥ 19.1.
+- Node ≥ 22 (worker threads, `process.loadEnvFile`, `Promise.withResolvers`, `URL.parse`), React ≥ 19.1.
 - Dev-mode proxy doesn't forward WebSocket upgrades to a custom sub-app (prod is unaffected — the bundle owns the socket there).
 - Dev source maps embed the original source of `'use server'` action modules (dev binds to 127.0.0.1 only; production ships no client source maps).

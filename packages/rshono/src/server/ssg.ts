@@ -61,7 +61,7 @@ export interface PrerenderResult {
 
 export async function prerenderStaticRoutes(options: PrerenderOptions): Promise<PrerenderResult> {
   const { routes, fetch, ssgDir } = options;
-  const staticRoutes = routes.filter((r): r is PageRoute => isPageRoute(r) && r.kind === 'static');
+  const staticRoutes = routes.filter((r): r is PageRoute => isPageRoute(r) && r.render === 'static');
 
   const written: string[] = [];
   const skipped: string[] = [];

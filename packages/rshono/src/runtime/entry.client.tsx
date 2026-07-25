@@ -9,6 +9,7 @@ import {
 } from 'react-server-dom-rspack/client.browser';
 import { rscStream } from 'rsc-html-stream/client';
 import { isControlDigest, parseRedirectDigest } from './control.js';
+import type { DevMessage } from './dev-protocol.js';
 import type { RscPayload } from './entry.rsc.js';
 import { NavRuntimeContext, type Router } from './navigation.js';
 import { createRscRenderRequest } from './request.js';
@@ -164,9 +165,9 @@ async function main() {
     }
     React.startTransition(() => setPayload(payload));
     if (payload.notFound) return undefined;
-    const { ok, data } = payload.returnValue!;
-    if (!ok) throw data;
-    return data;
+    const result = payload.returnValue!;
+    if (!result.ok) throw result.error;
+    return result.value;
   });
 
   hydrateRoot(document, <BrowserRoot />, {
@@ -330,7 +331,7 @@ function initDevRefresh(fetchRscPayload: () => Promise<void>) {
 
   const source = new EventSource('/_rshono/hmr');
   source.onmessage = async (event) => {
-    const message = JSON.parse(event.data) as { type: string; hash?: string };
+    const message = JSON.parse(event.data) as DevMessage;
     switch (message.type) {
       case 'hello':
         if (connectedOnce) {

@@ -11,15 +11,15 @@ import { prerenderStaticRoutes } from '../server/ssg.js';
 
 interface BuildOptions {
   rootDir: string;
-  rspack?: RSHonoConfig['rspack'];
+  config: RSHonoConfig;
 }
 
 export async function buildCommand(options: BuildOptions): Promise<void> {
-  const { rootDir } = options;
+  const { rootDir, config } = options;
   const distDir = join(rootDir, 'dist');
 
   console.log('  • building client + server bundles…');
-  const configs = createConfigs({ rootDir, isDev: false, rspack: options.rspack });
+  const configs = createConfigs({ rootDir, isDev: false, config });
   const compiler = rspack(configs);
 
   const stats = await new Promise<MultiStats>((resolve, reject) => {

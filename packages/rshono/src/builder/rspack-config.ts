@@ -1,12 +1,13 @@
 import { rspack, type Compiler, type RspackOptions, type RuleSetRule } from '@rspack/core';
 import { ReactRefreshRspackPlugin } from '@rspack/plugin-react-refresh';
 import { existsSync } from 'node:fs';
-import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
+import type { RSHonoConfig } from '../config.js';
+import { resolveServerConfig } from '../server/server-config.js';
 import { scanPageFiles } from './page-files.js';
 import { publicEnv } from './public-env.js';
 
-const FRAMEWORK_SRC = join(dirname(fileURLToPath(import.meta.url)), '..');
+const FRAMEWORK_SRC = join(import.meta.dirname, '..');
 const FRAMEWORK_ROOT = join(FRAMEWORK_SRC, '..');
 
 const BUNDLED_PACKAGES = /^(rshono|react|react-dom|react-server-dom-rspack|rsc-html-stream|hono|@hono\/node-server)(\/|$)/;
@@ -17,13 +18,13 @@ const NODE_TARGETS = ['node >= 20.19'];
 export interface ConfigOptions {
   rootDir: string;
   isDev: boolean;
+  /** The project's resolved config — supplies the {@link RSHonoConfig.rspack} hook and the runtime settings baked into the server bundle. */
+  config: RSHonoConfig;
   onServerComponentChanges?: () => void;
-  /** {@link RSHonoConfig.rspack} — mutates each generated config just before it's returned. */
-  rspack?: (config: RspackOptions, ctx: { isServer: boolean; isDev: boolean }) => RspackOptions | void;
 }
 
 export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOptions] {
-  const { rootDir, isDev, onServerComponentChanges } = options;
+  const { rootDir, isDev, config, onServerComponentChanges } = options;
   const srcDir = join(rootDir, 'src');
   const mode = isDev ? 'development' : 'production';
 
@@ -199,11 +200,17 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
         },
       ],
     },
-    plugins: [pageScanPlugin, new ServerPlugin({ onServerComponentChanges })],
+    plugins: [
+      pageScanPlugin,
+      new ServerPlugin({ onServerComponentChanges }),
+      // Bake the framework settings from rshono.config.ts into the bundle (read as __RSHONO_CONFIG__
+      // in entry.rsc.tsx) — the server-side counterpart to the client's publicEnv injection.
+      new rspack.DefinePlugin({ __RSHONO_CONFIG__: JSON.stringify(resolveServerConfig(config)) }),
+    ],
     performance: false,
   };
 
-  const { rspack: rspackHook } = options;
+  const rspackHook = config.rspack;
   if (rspackHook) {
     return [
       rspackHook(clientConfig, { isServer: false, isDev }) ?? clientConfig,

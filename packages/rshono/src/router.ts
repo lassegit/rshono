@@ -20,14 +20,17 @@ export interface EndpointServerModule {
 }
 
 export interface PageRoute {
+  /** Discriminates a page from an endpoint; optional because `'page'` is the default. */
+  type?: 'page';
   path: string;
   component: () => Promise<{ default: PageComponent }>;
-  kind?: 'static' | 'dynamic';
+  /** `'static'` prerenders the route at build time; `'dynamic'` (the default) renders per request. */
+  render?: 'static' | 'dynamic';
   staticPaths?: () => Array<Record<string, string>> | Promise<Array<Record<string, string>>>;
 }
 
 export interface EndpointRoute {
-  kind: 'endpoint';
+  type: 'endpoint';
   path: string;
   method?: HTTPMethod;
   server: () => Promise<EndpointServerModule>;
@@ -38,7 +41,7 @@ export type HTTPMethod = 'get' | 'post' | 'put' | 'patch' | 'delete' | 'head' | 
 export type Route = PageRoute | EndpointRoute;
 
 export function isPageRoute(route: Route): route is PageRoute {
-  return route.kind !== 'endpoint';
+  return route.type !== 'endpoint';
 }
 
 export interface SpecialPage {

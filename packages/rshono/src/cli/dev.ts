@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { createConfigs } from '../builder/rspack-config.js';
 import type { RSHonoConfig } from '../config.js';
+import type { DevMessage } from '../runtime/dev-protocol.js';
 import { createStaticMiddleware } from '../server/static.js';
 
 const WORKER_READY_TIMEOUT_MS = 15_000;
@@ -13,12 +14,12 @@ const WORKER_READY_TIMEOUT_MS = 15_000;
 interface DevOptions {
   rootDir: string;
   port?: number;
-  rspack?: RSHonoConfig['rspack'];
+  config: RSHonoConfig;
 }
 
 export async function devCommand(options: DevOptions): Promise<void> {
-  const { rootDir } = options;
-  const port = options.port ?? Number(process.env.PORT || 3000);
+  const { rootDir, config } = options;
+  const port = options.port ?? 3000;
   const distDir = join(rootDir, 'dist');
 
   await rm(distDir, { recursive: true, force: true });
@@ -29,7 +30,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
   let clientHash: string | undefined;
 
   const sseChunk = (data: unknown) => encoder.encode(`data: ${JSON.stringify(data)}\n\n`);
-  function broadcast(message: unknown): void {
+  function broadcast(message: DevMessage): void {
     const chunk = sseChunk(message);
     for (const controller of sseClients) {
       try {
@@ -44,7 +45,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
   const [clientConfig, serverConfig] = createConfigs({
     rootDir,
     isDev: true,
-    rspack: options.rspack,
+    config,
     onServerComponentChanges: () => {
       serverComponentsChanged = true;
     },
@@ -58,11 +59,8 @@ export async function devCommand(options: DevOptions): Promise<void> {
   let restartChain: Promise<void> = Promise.resolve();
 
   function createGate() {
-    let open!: (result: { error?: string }) => void;
-    const promise = new Promise<{ error?: string }>((resolve) => {
-      open = resolve;
-    });
-    return { promise, open };
+    const { promise, resolve } = Promise.withResolvers<{ error?: string }>();
+    return { promise, open: resolve };
   }
 
   function spawnWorker(): Promise<{ worker: Worker; port: number }> {
@@ -137,7 +135,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
       return;
     }
     clientHash = stats.hash ?? undefined;
-    broadcast({ type: 'client-built', hash: clientHash });
+    if (clientHash) broadcast({ type: 'client-built', hash: clientHash });
   });
 
   let firstBuild = true;
@@ -170,7 +168,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
         ctrl = controller;
         sseClients.add(controller);
         controller.enqueue(encoder.encode('retry: 500\n\n'));
-        controller.enqueue(sseChunk({ type: 'hello', hash: clientHash }));
+        controller.enqueue(sseChunk({ type: 'hello', hash: clientHash } satisfies DevMessage));
       },
       cancel() {
         sseClients.delete(ctrl);
@@ -223,13 +221,9 @@ export async function devCommand(options: DevOptions): Promise<void> {
     responseHeaders.delete('content-encoding');
     responseHeaders.delete('content-length');
     const location = responseHeaders.get('location');
-    if (location) {
-      try {
-        const loc = new URL(location, target);
-        if (loc.host === `127.0.0.1:${workerPort}`) {
-          responseHeaders.set('location', `${loc.pathname}${loc.search}${loc.hash}`);
-        }
-      } catch {}
+    const loc = location ? URL.parse(location, target) : null;
+    if (loc && loc.host === `127.0.0.1:${workerPort}`) {
+      responseHeaders.set('location', `${loc.pathname}${loc.search}${loc.hash}`);
     }
     return new Response(response.body, {
       status: response.status,

@@ -37,7 +37,7 @@
     "bin"
   ],
   "engines": {
-    "node": ">=20.19"
+    "node": ">=22"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
