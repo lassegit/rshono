@@ -241,6 +241,39 @@ test('flight (soft-navigation) errors render the error page as an RSC payload, n
   assert.doesNotMatch(payload, /Intentional endpoint failure/, 'real error detail must be redacted in prod');
 });
 
+test('a render failure answers with a visible error document, not a blank page', async () => {
+  // SSR fails before any of the shell is sent, so the app's `error` page can't be reached — this is
+  // the framework's own last-resort 500. It used to put its message inside <noscript>, which meant a
+  // normal browser showed nothing at all.
+  const res = await fetch(`${base}/crash?render=1`);
+  assert.equal(res.status, 500);
+  const html = await res.text();
+  assert.match(html, /500 — Internal Server Error/, 'the failure document must carry a visible message');
+  assert.doesNotMatch(html, /<noscript>/, 'the message must be visible without disabling JavaScript');
+  assert.doesNotMatch(
+    html,
+    /<script[^>]+src=/,
+    'the failed render must not attach the client runtime: hydrating a payload from the same failed render would tear the document down and blank the message',
+  );
+  assert.doesNotMatch(html, /Intentional render failure/, 'prod must not leak the real error into the page');
+});
+
+test('the fatal-error overlay ships to the browser, without its dev-only detail', () => {
+  const sources = readClientChunks();
+  assert.ok(
+    sources.some((s) => s.includes('data-rshono-fatal')),
+    'the overlay must ship so an uncaught error shows something instead of a white screen',
+  );
+  assert.ok(
+    sources.some((s) => s.includes('the client runtime failed to start')),
+    'a bootstrap failure must be reported rather than becoming a silent unhandled rejection',
+  );
+  assert.ok(
+    sources.every((s) => !s.includes('Component stack:')),
+    'the dev-only stack rendering must be compiled out of the production bundle',
+  );
+});
+
 test('<Boundary> renders its children on the happy path', async () => {
   const res = await fetch(`${base}/boundary`);
   assert.equal(res.status, 200);

@@ -14,6 +14,73 @@ import type { RscPayload } from './entry.rsc.js';
 import { NavRuntimeContext, type Router } from './navigation.js';
 import { createRscRenderRequest } from './request.js';
 
+const isDev = process.env.NODE_ENV === 'development';
+
+/**
+ * Guarantees somewhere to attach the fatal overlay. React's root container is the whole `document`,
+ * so by the time an uncaught error has torn the tree down, `<body>` — or even `<html>` — may be gone.
+ */
+function overlayHost(): HTMLElement {
+  if (!document.documentElement) document.appendChild(document.createElement('html'));
+  if (!document.body) document.documentElement.appendChild(document.createElement('body'));
+  return document.body;
+}
+
+/**
+ * Replaces the white screen of death with something readable.
+ *
+ * Because the root container is `document`, an uncaught render error leaves a genuinely blank page
+ * with the reason only in the console — so this paints the reason over it instead. In development
+ * that's the full stack; in production it's a generic notice plus a reload button, since the tree is
+ * unrecoverable and reloading is the only way forward.
+ *
+ * Written with DOM calls rather than React (the renderer is what just failed) and `textContent`
+ * rather than `innerHTML` (an error message is untrusted input).
+ */
+function showFatal(error: unknown, componentStack?: string | null): void {
+  // Queued rather than run inline: React's teardown happens after this callback returns, and would
+  // remove a node appended synchronously along with the rest of the tree.
+  setTimeout(() => {
+    const host = overlayHost();
+    host.querySelector('[data-rshono-fatal]')?.remove();
+
+    const box = document.createElement('div');
+    box.setAttribute('data-rshono-fatal', '');
+    box.setAttribute('role', 'alert'); // the page is gone; announce it rather than leaving silence
+    box.style.cssText =
+      'position:fixed;inset:0;z-index:2147483647;overflow:auto;padding:1.5rem;background:#18181b;color:#f4f4f5;' +
+      'font:14px/1.6 ui-monospace,SFMono-Regular,Menlo,monospace;text-align:left';
+
+    const title = document.createElement('div');
+    title.textContent = isDev ? 'Unhandled error' : 'Something went wrong';
+    title.style.cssText = 'font-size:1.0625rem;font-weight:700;color:#f87171;margin:0 0 0.75rem';
+    box.appendChild(title);
+
+    if (isDev) {
+      const detail = document.createElement('pre');
+      detail.style.cssText = 'margin:0;white-space:pre-wrap;word-break:break-word';
+      detail.textContent =
+        (error instanceof Error ? (error.stack ?? `${error.name}: ${error.message}`) : String(error)) +
+        (componentStack ? `\n\nComponent stack:${componentStack}` : '');
+      box.appendChild(detail);
+    } else {
+      const message = document.createElement('p');
+      message.textContent = 'This page hit an unexpected error and can’t continue.';
+      message.style.cssText = 'margin:0 0 1rem;color:#d4d4d8';
+      box.appendChild(message);
+    }
+
+    const reload = document.createElement('button');
+    reload.textContent = 'Reload page';
+    reload.style.cssText =
+      'margin-top:1.25rem;padding:0.5rem 1rem;font:inherit;color:#18181b;background:#f4f4f5;border:0;border-radius:4px;cursor:pointer';
+    reload.addEventListener('click', () => window.location.reload());
+    box.appendChild(reload);
+
+    host.appendChild(box);
+  }, 0);
+}
+
 // In-memory flight-payload cache keyed by same-origin path+search. `data-prefetch`
 // links warm it on hover/focus; a navigation to a warmed URL resolves instantly and
 // clears the entry (a prefetch is used at most once, so re-visits always re-fetch).
@@ -208,21 +275,20 @@ async function main() {
   // console for a caught error, `reportError` (i.e. window.onerror, so error-reporting tools still
   // see it) for an uncaught one. Overriding these hooks means opting out of that default, so it has
   // to be put back by hand.
-  const isHandledAsNavigation = (error: unknown, errorInfo: { componentStack?: string | null }): boolean => {
-    if (!handleControlDigest(error, { hard: true })) {
-      if (errorInfo.componentStack) console.error(errorInfo.componentStack);
-      return false;
-    }
-    return true;
-  };
-
   hydrateRoot(document, <BrowserRoot />, {
     formState: initialPayload.formState,
     onCaughtError: (error, errorInfo) => {
-      if (!isHandledAsNavigation(error, errorInfo)) console.error(error);
+      if (handleControlDigest(error, { hard: true })) return;
+      // A boundary handled this and the tree is intact, so no overlay: whatever fallback the app
+      // chose is the right thing to have on screen.
+      console.error(error, errorInfo.componentStack ?? '');
     },
     onUncaughtError: (error, errorInfo) => {
-      if (!isHandledAsNavigation(error, errorInfo)) globalThis.reportError(error);
+      if (handleControlDigest(error, { hard: true })) return;
+      // Nothing caught it, so React tears the root down — and the root is `document`. This is the
+      // white screen; paint the reason over it.
+      globalThis.reportError(error);
+      showFatal(error, errorInfo.componentStack);
     },
   });
 
@@ -414,4 +480,9 @@ function initDevRefresh(fetchRscPayload: () => Promise<void>) {
   };
 }
 
-main();
+// Bootstrap failures (a truncated or malformed initial flight payload, most likely) would otherwise
+// be an unhandled rejection: nothing hydrates, nothing is reported, and the page just sits there.
+main().catch((error) => {
+  console.error('[rshono] the client runtime failed to start:', error);
+  showFatal(error);
+});
