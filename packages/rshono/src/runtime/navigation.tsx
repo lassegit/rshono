@@ -2,20 +2,39 @@
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
+/**
+ * Imperative navigation actions, reached as `useNavigation().router`.
+ *
+ * `push` / `replace` / `refresh` are **soft** navigations: the new page's flight
+ * payload is fetched and applied in place, so client component state outside the
+ * changed subtree survives. Off-site or non-HTTP hrefs fall back to a full load.
+ */
 export interface Router {
+  /** Navigates to `href` and pushes a new history entry. */
   push(href: string): void;
+  /** Navigates to `href`, replacing the current history entry instead of adding one. */
   replace(href: string): void;
+  /** Goes back one history entry — `history.back()`. */
   back(): void;
+  /** Goes forward one history entry — `history.forward()`. */
   forward(): void;
+  /** Re-fetches the current route from the server, re-running its server components. */
   refresh(): void;
+  /** `true` while a soft navigation is in flight — use it to disable controls or show a spinner. */
   pending: boolean;
 }
 
+/** The current location plus the {@link Router}, as returned by {@link useNavigation}. */
 export interface Navigation {
+  /** The full current {@link URL}. */
   url: URL;
+  /** Shorthand for `url.pathname`, e.g. `/docs/deployment`. */
   pathname: string;
+  /** Shorthand for `url.searchParams`. */
   searchParams: URLSearchParams;
+  /** Matched route params for the current page, e.g. `{ id: '42' }` for `/profile/:id`. */
   params: Record<string, string>;
+  /** Imperative navigation actions and the `pending` flag. */
   router: Router;
 }
 
@@ -23,10 +42,23 @@ const noop = () => {};
 
 const defaultRouter: Router = { push: noop, replace: noop, back: noop, forward: noop, refresh: noop, pending: false };
 
+/**
+ * Carries the live {@link Router} implementation from the hydration runtime down
+ * to {@link RouterProvider}. Framework internal — read the router through
+ * {@link useNavigation} instead.
+ *
+ * @internal
+ */
 export const NavRuntimeContext = createContext<Router>(defaultRouter);
 
 const NavigationContext = createContext<Navigation | null>(null);
 
+/**
+ * Publishes the per-render location and params so {@link useNavigation} can read
+ * them. Framework internal — the RSC entry wraps every page in one.
+ *
+ * @internal
+ */
 export function RouterProvider({ href, params, children }: { href: string; params: Record<string, string>; children: ReactNode }) {
   const router = useContext(NavRuntimeContext);
   const value = useMemo<Navigation>(() => {
@@ -69,7 +101,8 @@ export function RouterProvider({ href, params, children }: { href: string; param
  * @returns The current {@link Navigation}: `url` / `pathname` / `searchParams` /
  * `params`, plus `router` ({@link Router}) with `push` / `replace` / `back` /
  * `forward` / `refresh` / `pending`.
- *  (@keep)
+ * @throws If called outside a page's React tree, where there is no navigation
+ *   context to read.
  */
 export function useNavigation(): Navigation {
   const value = useContext(NavigationContext);

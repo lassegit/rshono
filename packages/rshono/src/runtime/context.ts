@@ -1,3 +1,17 @@
+/**
+ * `rshono/server` — the request-scoped surface, for use inside server components
+ * and `'use server'` action modules: {@link getContext} for the URL, cookies,
+ * params, env and middleware variables, plus the {@link redirect} and
+ * {@link notFound} control-flow helpers.
+ *
+ * Server-only. Importing this from a `'use client'` module is a mistake — those
+ * run in the browser (and are SSR'd without a bound context). Read what you need
+ * on the server and pass it down as props, or use `useNavigation()` from
+ * `rshono/client` for URL data.
+ *
+ * @packageDocumentation
+ */
+
 import type { Context, Env, HonoRequest } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { CookieOptions } from 'hono/utils/cookie';
@@ -46,6 +60,24 @@ export function runWithContext<T>(c: Context, fn: () => T): T {
 }
 
 /**
+ * Reads the matched route params, returning an empty object when there is no
+ * active route match (rather than throwing). Shared by {@link Ctx.params} and the
+ * request renderer so the fallback behaviour stays in one place.
+ *
+ * Framework internal — read params from {@link Ctx.params} or a page's
+ * `PageProps` instead.
+ *
+ * @internal
+ */
+export function readParams(c: Context): Record<string, string> {
+  try {
+    return c.req.param();
+  } catch {
+    return {};
+  }
+}
+
+/**
  * Resolves the browser-facing {@link URL} for a request, honouring reverse-proxy
  * headers.
  *
@@ -56,19 +88,6 @@ export function runWithContext<T>(c: Context, fn: () => T): T {
  *
  * Prefer {@link Ctx.url}, which caches the result per request.
  */
-/**
- * Reads the matched route params, returning an empty object when there is no
- * active route match (rather than throwing). Shared by {@link Ctx.params} and the
- * request renderer so the fallback behaviour stays in one place.
- */
-export function readParams(c: Context): Record<string, string> {
-  try {
-    return c.req.param();
-  } catch {
-    return {};
-  }
-}
-
 export function publicUrl(c: Context): URL {
   const url = new URL(c.req.url);
   const forwardedHost = c.req.header('x-forwarded-host');
