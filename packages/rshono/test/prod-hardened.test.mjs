@@ -25,7 +25,7 @@ after(async () => {
   if (server) await stopServer(server.child);
 });
 
-test('csp: true sends a nonce-based CSP and skips the SSG shortcut', async () => {
+test('csp: true sends a nonce-based CSP and renders static documents per request', async () => {
   const res = await fetch(`${base}/`);
   const header = res.headers.get('content-security-policy');
   assert.ok(header, 'missing content-security-policy header');
@@ -37,6 +37,16 @@ test('csp: true sends a nonce-based CSP and skips the SSG shortcut', async () =>
   const ssg = await fetch(`${base}/docs/getting-started`);
   assert.ok(ssg.headers.get('content-security-policy'), 'SSG route missing CSP header');
   assert.match(await ssg.text(), /nonce="/);
+});
+
+test('csp: true still serves the prerendered flight payload — only the document needs a nonce', async () => {
+  // A flight payload never carries a nonce (that only goes on the HTML bootstrap), so there is
+  // nothing per-request about it and no reason for CSP to cost soft navigations their prerender.
+  const res = await fetch(`${base}/docs/getting-started`, { headers: { Accept: 'text/x-component' } });
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('cache-control') ?? '', /public/, 'still served from disk under CSP');
+  assert.ok(res.headers.get('etag'));
+  assert.doesNotMatch(await res.text(), /nonce/, 'and it carries no nonce to go stale');
 });
 
 test('the CSP closes the gaps default-src does not cover, and cspDirectives merge over it', async () => {
@@ -138,7 +148,7 @@ test('trustProxy: true honours X-Forwarded-* without dragging the internal port 
     })
   ).text();
   assert.match(flight, /https:\/\/proxied\.example\/whoami/, 'trustProxy should rebuild the URL from the forwarded headers');
-  assert.doesNotMatch(flight, /proxied\.example:\d/, "the internal port must not survive onto a forwarded host that carries none");
+  assert.doesNotMatch(flight, /proxied\.example:\d/, 'the internal port must not survive onto a forwarded host that carries none');
 });
 
 test('bodySizeLimit rejects an oversized action POST body with 413 (memory-exhaustion guard)', async () => {

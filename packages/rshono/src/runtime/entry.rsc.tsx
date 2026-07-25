@@ -436,15 +436,27 @@ function buildApp(): Hono {
       const handler: Handler = (c) =>
         runWithContext(c, async () => {
           try {
-            if (!isDev && !cspEnabled && route.render === 'static' && c.req.method === 'GET' && !wantsRsc(parseRenderRequest(c.req.raw))) {
-              const page = await readPrerendered(ssgDir, c.req.path);
-              // A prerendered page is request-independent by construction, so it is safe to cache
-              // publicly; the short max-age matches what `public/` files get. The ETag turns the
-              // revalidation that follows into a 304 rather than the page all over again.
-              if (page !== null) {
-                const headers = { 'cache-control': SSG_CACHE_CONTROL, etag: page.etag, vary: 'Accept' };
-                if (etagMatches(c.req.header('if-none-match'), page.etag)) return c.body(null, 304, headers);
-                return c.html(page.html, 200, headers);
+            if (!isDev && route.render === 'static' && c.req.method === 'GET') {
+              const isRsc = wantsRsc(parseRenderRequest(c.req.raw));
+              // Both representations are prerendered, so a soft navigation is served from disk too
+              // rather than re-rendering a page that was already built. The exception is the HTML
+              // under `csp`, which has to be rendered per request to carry its nonce — the flight
+              // payload never carries one, so it stays servable either way.
+              if (!(cspEnabled && !isRsc)) {
+                const page = await readPrerendered(ssgDir, c.req.path, isRsc ? 'flight' : 'html');
+                // A prerendered page is request-independent by construction, so it is safe to cache
+                // publicly; the short max-age matches what `public/` files get. The ETag turns the
+                // revalidation that follows into a 304 rather than the page all over again.
+                if (page !== null) {
+                  const headers = {
+                    'cache-control': SSG_CACHE_CONTROL,
+                    etag: page.etag,
+                    vary: 'Accept',
+                    'content-type': isRsc ? 'text/x-component;charset=utf-8' : 'text/html;charset=utf-8',
+                  };
+                  if (etagMatches(c.req.header('if-none-match'), page.etag)) return c.body(null, 304, headers);
+                  return c.body(page.body, 200, headers);
+                }
               }
             }
             return await renderPage(c, route);

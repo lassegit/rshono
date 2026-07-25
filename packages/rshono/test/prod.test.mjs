@@ -342,6 +342,51 @@ test('compressible responses are gzipped, and say so in Vary', async () => {
   assert.equal(identity.headers.get('content-encoding'), null, 'a client that asks for no encoding gets none');
 });
 
+test('a soft navigation to a static route is served from the prerender, not re-rendered', async () => {
+  // Prerendering used to pay off only for cold loads and crawlers: a flight request skipped the
+  // built file and re-rendered the page the build had already produced.
+  const res = await fetch(`${base}/docs/getting-started`, { headers: { Accept: 'text/x-component' } });
+  assert.equal(res.status, 200);
+  assert.match(res.headers.get('content-type'), /text\/x-component/);
+  assert.match(res.headers.get('cache-control') ?? '', /public/, 'the payload is as request-independent as the document is');
+  const etag = res.headers.get('etag');
+  assert.ok(etag, 'served from disk, so it can carry a validator');
+  assert.match(await res.text(), /Getting Started/);
+
+  const revalidated = await fetch(`${base}/docs/getting-started`, {
+    headers: { Accept: 'text/x-component', 'if-none-match': etag },
+  });
+  assert.equal(revalidated.status, 304);
+});
+
+test('the document and the flight payload are both written, with distinct validators', async () => {
+  assert.match(readFileSync(join(EXAMPLE_DIST, 'ssg', 'docs', 'getting-started', 'index.rsc'), 'utf8'), /Getting Started/);
+
+  const [html, flight] = await Promise.all([
+    fetch(`${base}/docs/getting-started`),
+    fetch(`${base}/docs/getting-started`, { headers: { Accept: 'text/x-component' } }),
+  ]);
+  assert.notEqual(html.headers.get('etag'), flight.headers.get('etag'), 'two representations must not share one validator');
+});
+
+test('prerendered pages build absolute URLs from siteUrl, not from the build machine', async () => {
+  // A prerendered file is handed to everyone, so its absolute URLs are decided at build time.
+  // Without siteUrl they would say http://localhost — in the canonical tag, in og:url, everywhere.
+  const html = await (await fetch(`${base}/docs/getting-started`)).text();
+  assert.match(html, /<link rel="canonical" href="https:\/\/rshono\.example\/docs\/getting-started"\/?>/);
+  assert.doesNotMatch(html, /http:\/\/localhost/, 'the build-time origin must not survive into a shipped page');
+
+  const flight = await (await fetch(`${base}/docs/getting-started`, { headers: { Accept: 'text/x-component' } })).text();
+  assert.match(flight, /https:\/\/rshono\.example\/docs\/getting-started/, 'useNavigation() reads the URL from this payload');
+  assert.doesNotMatch(flight, /http:\/\/localhost/);
+});
+
+test('a dynamic route still resolves its URL per request, siteUrl notwithstanding', async () => {
+  const html = await (await fetch(`${base}/whoami`)).text();
+  assert.doesNotMatch(html, /rshono\.example/, 'siteUrl is a build-time concern only');
+  assert.match(html, /localhost/, 'a dynamic page reflects the request it actually received');
+});
+
 test('static route is prerendered at build time and served in prod', async () => {
   const file = join(EXAMPLE_DIST, 'ssg', 'docs', 'getting-started', 'index.html');
   assert.match(readFileSync(file, 'utf8'), /Getting Started/);

@@ -83,6 +83,14 @@ Call them directly from client code (typed args and result), or wire them to `<f
 - It's a **fallback**: your routes always win, and unmatched paths still fall through to the `notFound` page — so a `public/` file never shadows a real route. `build` copies `public/` into `dist/` so a deployed build is self-contained.
 - Hashed bundle output is served separately under `/_static/` with long-lived immutable caching; `public/` files get a short `max-age` (and `no-cache` in dev).
 
+## Prerendering (`render: 'static'`)
+
+A static route is built once and served from disk in **both** representations — `index.html` for a hard load, `index.rsc` for the flight payload a soft navigation asks for. Serving only the document would mean every in-app click re-rendered a page the build had already produced, so the prerender would pay off for crawlers and nobody else. Both carry a weak `ETag`, so a revalidation costs a 304.
+
+Set **`siteUrl`** if your static pages build absolute URLs — a canonical tag, an `og:url`, an absolute link. A prerendered file is one set of bytes handed to everyone, so there is no request to read a `Host` from and the origin has to be decided at build time; without `siteUrl` it is `http://localhost`, and the build warns. Dynamic routes are unaffected — they resolve the URL per request, `siteUrl` or not.
+
+If a page can't be prerendered (its `staticPaths` is missing, or it didn't render cleanly at build time) the build says so and that route falls back to rendering per request.
+
 ## Env & secret safety
 
 The client/server boundary is the RSC directives — `'use client'` and `'use server'` — not filenames, and `process.env` access follows it. There is no `*.server` naming convention.
@@ -102,6 +110,7 @@ An optional `rshono.config.ts` (`.js` / `.mjs` also work) at the project root tu
 import { defineConfig } from 'rshono';
 
 export default defineConfig({
+  siteUrl: 'https://example.com', // public origin, baked into prerendered pages' absolute URLs
   port: 3000, // default port for dev/start (--port or PORT env override)
   host: '0.0.0.0', // bind address for start (HOST env overrides)
   trustProxy: false, // honour X-Forwarded-Host/-Proto — only behind a proxy you control
@@ -130,7 +139,7 @@ export default defineConfig({
 - **Baseline response headers**: `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin` and `X-Frame-Options: SAMEORIGIN` on every response, unconditionally. The framing header is the floor for everyone who hasn't opted into `csp` — that policy's `frame-ancestors 'none'` is stricter and takes precedence where both apply. Set any of them in your own middleware to override.
 - **Caching defaults**: a dynamic page is answered with `Cache-Control: private, no-cache` — a page is request-specific by default (cookies, session, headers), and with no directives at all a shared cache is free to store one user's page and serve it to the next. `private` forbids exactly that, and `no-cache` makes the browser revalidate rather than re-show a stale personalised page; neither disables bfcache the way `no-store` would. Set your own value (from middleware, or `getContext().header(…)`) and it is left alone. Prerendered pages keep `public, max-age=300` and carry a weak `ETag`, so a revalidation costs a 304 instead of the page.
 - **`Vary: Accept` on page responses.** One URL answers with an HTML document or a flight payload depending on `Accept`. Without `Vary` a cache keyed on the URL alone will eventually hand a document to a soft navigation that asked for flight — a hard reload at best. Compression appends `Accept-Encoding` to the same header rather than replacing it.
-- **CSP (opt-in)**: set `csp: true` to send a strict per-request-nonce `Content-Security-Policy` with every HTML document (nonce stamped on bootstrap scripts, inlined flight payload, and dynamically loaded chunks). Beyond `default-src 'self'` it also closes the gaps `default-src` doesn't cover — `base-uri`, `object-src`, `frame-ancestors`, `form-action` — so it blocks framing and third-party assets until you widen it with `cspDirectives` (the nonce is always re-appended to `script-src`, and `''` drops a directive). While enabled, `render: 'static'` routes render per request — prerendered files can't carry a per-request nonce.
+- **CSP (opt-in)**: set `csp: true` to send a strict per-request-nonce `Content-Security-Policy` with every HTML document (nonce stamped on bootstrap scripts, inlined flight payload, and dynamically loaded chunks). Beyond `default-src 'self'` it also closes the gaps `default-src` doesn't cover — `base-uri`, `object-src`, `frame-ancestors`, `form-action` — so it blocks framing and third-party assets until you widen it with `cspDirectives` (the nonce is always re-appended to `script-src`, and `''` drops a directive). While enabled, the **document** for a `render: 'static'` route is rendered per request — a prerendered file can't carry a per-request nonce. Its flight payload never carries one, so soft navigations are still served from the prerender.
 - **Error reporting**: every error the framework catches — a thrown action, a failed render, SSR falling over, anything reaching the top-level handler — goes through one funnel. Register a handler at the top level of `src/server.ts` to send them somewhere real; they keep going to `stderr` either way, and a handler that throws is caught rather than failing the request.
 
   ```ts

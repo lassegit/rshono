@@ -67,7 +67,9 @@ test.describe('soft navigation', () => {
 
   test('an off-site link is left to the browser', async ({ page }) => {
     await page.goto('/');
-    const link = page.getByRole('link', { name: 'Hono' }).first();
+    // `exact` matters here: accessible-name matching is substring-based by default, so a loose
+    // 'Hono' also matches the "rshono" logo — whose href is "/" — and picks it up first.
+    const link = page.getByRole('link', { name: 'Hono', exact: true });
     await expect(link).toHaveAttribute('href', /^https:\/\/hono\.dev/);
   });
 });

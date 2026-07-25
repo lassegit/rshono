@@ -10,7 +10,7 @@ import { after, describe, test } from 'node:test';
 import { scanPageFiles } from '../dist/builder/page-files.js';
 import { appendVary, etagMatches } from '../dist/server/headers.js';
 import { parseByteSize, resolveServerConfig } from '../dist/server/server-config.js';
-import { prerenderStaticRoutes, readPrerendered, ssgFilePath } from '../dist/server/ssg.js';
+import { prerenderStaticRoutes, readPrerendered, resolveSiteOrigin, ssgFilePath } from '../dist/server/ssg.js';
 import { isControlDigest, parseRedirectDigest, RedirectSignal } from '../dist/runtime/control.js';
 
 const tempDirs = [];
@@ -125,9 +125,38 @@ describe('ssgFilePath', () => {
     assert.equal(ssgFilePath('/docs/getting-started/'), join('docs', 'getting-started', 'index.html'));
   });
 
+  test('maps the flight variant alongside the document', () => {
+    assert.equal(ssgFilePath('/', 'flight'), 'index.rsc');
+    assert.equal(ssgFilePath('/docs', 'flight'), join('docs', 'index.rsc'));
+  });
+
   test('refuses patterns that are not a single concrete path', () => {
     assert.equal(ssgFilePath('/docs/:slug'), null);
     assert.equal(ssgFilePath('/files/*'), null);
+  });
+});
+
+describe('resolveSiteOrigin', () => {
+  test('falls back to a localhost placeholder when unset', () => {
+    assert.equal(resolveSiteOrigin(undefined), 'http://localhost');
+    assert.equal(resolveSiteOrigin(''), 'http://localhost');
+  });
+
+  test('reduces a configured site URL to its origin', () => {
+    assert.equal(resolveSiteOrigin('https://example.com'), 'https://example.com');
+    assert.equal(resolveSiteOrigin('https://example.com/'), 'https://example.com');
+    assert.equal(resolveSiteOrigin('http://localhost:4000'), 'http://localhost:4000');
+  });
+
+  test('rejects a base path rather than silently dropping it', () => {
+    assert.throws(() => resolveSiteOrigin('https://example.com/docs'), /must be a bare origin/);
+    assert.throws(() => resolveSiteOrigin('https://example.com/?a=1'), /must be a bare origin/);
+  });
+
+  test('rejects something that is not an http(s) origin', () => {
+    for (const bad of ['example.com', 'ftp://example.com', 'not a url']) {
+      assert.throws(() => resolveSiteOrigin(bad), /invalid siteUrl/, `${bad} should be rejected`);
+    }
   });
 });
 
@@ -138,7 +167,7 @@ describe('readPrerendered', () => {
     writeFileSync(join(dir, 'docs', 'index.html'), '<!DOCTYPE html><p>docs</p>');
 
     const first = await readPrerendered(dir, '/docs');
-    assert.equal(first.html, '<!DOCTYPE html><p>docs</p>');
+    assert.equal(first.body, '<!DOCTYPE html><p>docs</p>');
     assert.match(first.etag, /^W\/"[\w-]{22}"$/, 'weak, so it survives being gzipped on the way out');
 
     const second = await readPrerendered(dir, '/docs');
@@ -170,9 +199,13 @@ describe('readPrerendered', () => {
 });
 
 describe('prerenderStaticRoutes', () => {
-  const okResponse = () => new Response('<!DOCTYPE html><p>ok</p>', { status: 200, headers: { 'Content-Type': 'text/html' } });
+  // The app answers per `Accept`, exactly as the real one does — the point of prerendering both.
+  const okResponse = (request) =>
+    request.headers.get('Accept') === 'text/x-component'
+      ? new Response('0:{"root":"flight"}', { status: 200, headers: { 'Content-Type': 'text/x-component' } })
+      : new Response('<!DOCTYPE html><p>ok</p>', { status: 200, headers: { 'Content-Type': 'text/html' } });
 
-  test('writes a file per static route and per staticPaths entry', async () => {
+  test('writes both representations per static route and per staticPaths entry', async () => {
     const ssgDir = tempDir();
     const requested = [];
     const result = await prerenderStaticRoutes({
@@ -188,14 +221,56 @@ describe('prerenderStaticRoutes', () => {
         { path: '/live', component: async () => ({ default: () => null }) },
       ],
       fetch: (request) => {
-        requested.push(new URL(request.url).pathname);
-        return okResponse();
+        requested.push(`${request.headers.get('Accept')} ${new URL(request.url).pathname}`);
+        return okResponse(request);
       },
     });
 
     assert.deepEqual(result.written, ['/about', '/docs/a', '/docs/b']);
-    assert.deepEqual(requested, ['/about', '/docs/a', '/docs/b'], 'a dynamic route is never prerendered');
-    assert.equal((await readPrerendered(ssgDir, '/docs/a')).html, '<!DOCTYPE html><p>ok</p>');
+    assert.deepEqual(
+      requested,
+      [
+        'text/html /about',
+        'text/x-component /about',
+        'text/html /docs/a',
+        'text/x-component /docs/a',
+        'text/html /docs/b',
+        'text/x-component /docs/b',
+      ],
+      'each path is rendered as a document and as a flight payload; a dynamic route is never prerendered',
+    );
+    assert.equal((await readPrerendered(ssgDir, '/docs/a')).body, '<!DOCTYPE html><p>ok</p>');
+    assert.equal((await readPrerendered(ssgDir, '/docs/a', 'flight')).body, '0:{"root":"flight"}');
+  });
+
+  test('renders against siteUrl, so absolute URLs in the output are the deployed ones', async () => {
+    const seen = [];
+    await prerenderStaticRoutes({
+      ssgDir: tempDir(),
+      siteUrl: 'https://example.com',
+      routes: [{ path: '/about', render: 'static', component: async () => ({ default: () => null }) }],
+      fetch: (request) => {
+        seen.push(request.url);
+        return okResponse(request);
+      },
+    });
+    assert.deepEqual(seen, ['https://example.com/about', 'https://example.com/about']);
+  });
+
+  test('keeps the document when the flight payload cannot be produced', async () => {
+    const ssgDir = tempDir();
+    const result = await prerenderStaticRoutes({
+      ssgDir,
+      routes: [{ path: '/about', render: 'static', component: async () => ({ default: () => null }) }],
+      fetch: (request) =>
+        request.headers.get('Accept') === 'text/x-component'
+          ? new Response('nope', { status: 500 })
+          : new Response('<!DOCTYPE html><p>ok</p>', { status: 200, headers: { 'Content-Type': 'text/html' } }),
+    });
+
+    assert.deepEqual(result.written, ['/about'], 'a missing flight payload must not lose the document');
+    assert.ok(await readPrerendered(ssgDir, '/about'));
+    assert.equal(await readPrerendered(ssgDir, '/about', 'flight'), null, 'serving falls back to rendering it per request');
   });
 
   test('skips a parameterised static route with no staticPaths rather than failing the build', async () => {
@@ -251,10 +326,10 @@ describe('prerenderStaticRoutes', () => {
       ],
       fetch: (request) => {
         requested.push(new URL(request.url).pathname);
-        return okResponse();
+        return okResponse(request);
       },
     });
-    assert.deepEqual(requested, ['/docs/a%20b%2Fc']);
+    assert.deepEqual(requested, ['/docs/a%20b%2Fc', '/docs/a%20b%2Fc'], 'once per representation');
   });
 });
 

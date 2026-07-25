@@ -54,6 +54,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
     routes: bundle.routes,
     fetch: (request) => bundle.app.fetch(request),
     ssgDir,
+    siteUrl: config.siteUrl,
   });
   if (written.length > 0) console.log(`  • prerendered ${written.length} static page(s): ${written.join(', ')}`);
   if (skipped.length > 0) console.log(`  • skipped ${skipped.length} (will SSR per request)`);

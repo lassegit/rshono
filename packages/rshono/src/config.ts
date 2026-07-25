@@ -24,6 +24,18 @@ export interface RspackHookContext {
  * ```
  */
 export interface RSHonoConfig {
+  /**
+   * The public origin the site is served from, e.g. `'https://example.com'`.
+   *
+   * Only used when prerendering `render: 'static'` routes. A prerendered page is one fixed file
+   * handed to everyone, so any absolute URL inside it has to be decided at build time — there is no
+   * request to read a `Host` from. That is what a page's `url` prop is, so without this a static
+   * page bakes in `http://localhost` wherever it builds a canonical tag, an absolute link or an
+   * `og:url`. Dynamic routes are unaffected: they resolve the URL per request.
+   *
+   * The origin is what's used; a path is rejected rather than silently dropped.
+   */
+  siteUrl?: string;
   /** Default port for `dev` / `start`. Overridden by the `--port` flag or the `PORT` env var. Default `3000`. */
   port?: number;
   /** Bind address for `start`. Overridden by the `HOST` env var. Default `'0.0.0.0'`. */
