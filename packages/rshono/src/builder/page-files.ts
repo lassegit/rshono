@@ -1,9 +1,16 @@
 import { readFileSync, statSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 const COMPONENT_THUNK = /component:\s*(?:async\s*)?\(\s*\)\s*=>\s*import\(\s*(['"])([^'"]+)\1\s*\)/g;
 
-const RESOLVE_CANDIDATES = ['.tsx', '.ts', '.jsx', '.js', '/index.tsx', '/index.ts', '/index.jsx', '/index.js', ''];
+const EXTENSIONS = ['.tsx', '.ts', '.jsx', '.js'];
+
+// The index candidates go through `join` rather than `base + '/index…'`: these paths end up in a Set
+// that rspack compares against its own resource paths, and a hardcoded `/` resolves fine on Windows
+// while storing a path no rspack resource will ever equal.
+function resolveCandidates(base: string): string[] {
+  return [...EXTENSIONS.map((ext) => base + ext), ...EXTENSIONS.map((ext) => join(base, `index${ext}`)), base];
+}
 
 function isFile(path: string): boolean {
   try {
@@ -27,8 +34,7 @@ export function scanPageFiles(routesFile: string, srcDir: string, into: Set<stri
     if (spec.startsWith('.')) base = resolve(dirname(routesFile), spec);
     else if (spec.startsWith('@/')) base = resolve(srcDir, spec.slice(2));
     if (!base) continue;
-    for (const suffix of RESOLVE_CANDIDATES) {
-      const candidate = base + suffix;
+    for (const candidate of resolveCandidates(base)) {
       if (isFile(candidate)) {
         into.add(candidate);
         break;
