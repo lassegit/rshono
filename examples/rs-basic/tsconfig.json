@@ -9,6 +9,7 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
+    "types": ["node", "react"],
     "paths": {
       "rshono": ["../../packages/rshono/src"]
     }

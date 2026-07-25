@@ -1,3 +1,4 @@
+/// <reference path="../types/rshono-config.d.ts" />
 /**
  * `rshono/server` — the request-scoped surface, for use inside server components
  * and `'use server'` action modules: {@link getContext} for the URL, cookies,
@@ -83,6 +84,11 @@ function firstForwardedValue(header: string | undefined): string | undefined {
   return first || undefined;
 }
 
+// DefinePlugin inlines the config into the server bundle, but this module is the public
+// `rshono/server` entry and could be loaded by tooling that doesn't (a unit test, a one-off script).
+// Read through `typeof` so that degrades to the safe answer — don't trust — instead of a ReferenceError.
+const trustProxy = typeof __RSHONO_CONFIG__ !== 'undefined' && __RSHONO_CONFIG__.trustProxy;
+
 /**
  * Resolves the browser-facing {@link URL} for a request.
  *
@@ -97,7 +103,7 @@ function firstForwardedValue(header: string | undefined): string | undefined {
  */
 export function publicUrl(c: Context): URL {
   const url = new URL(c.req.url);
-  if (!__RSHONO_CONFIG__.trustProxy) return url;
+  if (!trustProxy) return url;
 
   const forwardedHost = firstForwardedValue(c.req.header('x-forwarded-host'));
   // Parsed rather than assigned to `url.host`, because that setter *keeps the existing port* when
