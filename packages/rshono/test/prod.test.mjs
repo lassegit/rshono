@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { Agent, request } from 'node:http';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
-import { buildExample, EXAMPLE_DIST, parseActionForm, startServer, stopServer } from './helpers.mjs';
+import { APP_ENV, buildExample, EXAMPLE_DIST, parseActionForm, startServer, stopServer } from './helpers.mjs';
 
 const READY = /serving on http:\/\/localhost:(\d+)/;
 
@@ -88,7 +88,7 @@ test('getContext() exposes url/pathname, headers, cookies and env in an async se
   assert.match(html, /pathname:.*\/whoami/s, 'ctx.pathname was wrong');
   assert.match(html, /hello-ctx/, 'x-test header was not visible to the async server component');
   assert.match(html, /ada-cookie/, 'visitor cookie was not visible to the async server component');
-  assert.match(html, /public dummy url/, 'ctx.env did not expose the PUBLIC_ variable');
+  assert.ok(html.includes(APP_ENV.PUBLIC_API_ENDPOINT), 'ctx.env did not expose the PUBLIC_ variable');
 });
 
 test('redirect() in a server component issues an HTTP 3xx on hard navigation', async () => {
@@ -438,7 +438,7 @@ test('secrets never render into SSR HTML — even from a no-directive helper', a
     const at = `http://localhost:${srv.port}`;
     const html = await (await fetch(`${at}/`)).text();
     assert.match(html, /Using leak helper:\s*(?:<!--\s*-->)?\(no secret\)/, 'no-directive helper leaked a real secret into SSR HTML');
-    assert.match(html, /public dummy url/);
+    assert.ok(html.includes(APP_ENV.PUBLIC_API_ENDPOINT), 'the PUBLIC_ variable should still be inlined');
     assert.ok(!html.includes(SECRET), 'DATABASE_URL value must not appear in SSR HTML');
     const flight = await (await fetch(`${at}/`, { headers: { Accept: 'text/x-component' } })).text();
     assert.ok(!flight.includes(SECRET), 'DATABASE_URL value must not appear in the flight payload');
@@ -451,11 +451,11 @@ test('secrets never reach the client bundle; PUBLIC_ vars are inlined', () => {
   const staticDir = join(EXAMPLE_DIST, 'static', 'chunks');
   const sources = readdirSync(staticDir).map((f) => readFileSync(join(staticDir, f), 'utf8'));
   assert.ok(
-    sources.every((s) => !s.includes('my private database url')),
+    sources.every((s) => !s.includes(APP_ENV.DATABASE_URL)),
     'DATABASE_URL value leaked into a client asset',
   );
   assert.ok(
-    sources.some((s) => s.includes('public dummy url')),
+    sources.some((s) => s.includes(APP_ENV.PUBLIC_API_ENDPOINT)),
     'PUBLIC_API_ENDPOINT was not inlined',
   );
   assert.ok(

@@ -1,7 +1,7 @@
 import { rspack, type Compiler, type RspackOptions, type RuleSetRule } from '@rspack/core';
 import { ReactRefreshRspackPlugin } from '@rspack/plugin-react-refresh';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, win32 } from 'node:path';
 import type { RSHonoConfig } from '../config.js';
 import { resolveServerConfig } from '../server/server-config.js';
 import { scanPageFiles } from './page-files.js';
@@ -13,6 +13,20 @@ const FRAMEWORK_DIST = join(import.meta.dirname, '..');
 const FRAMEWORK_ROOT = join(FRAMEWORK_DIST, '..');
 
 const BUNDLED_PACKAGES = /^(rshono|react|react-dom|react-server-dom-rspack|rsc-html-stream|hono|@hono\/node-server)(\/|$)/;
+
+/**
+ * Whether a request names a file rather than a package, and so belongs in the bundle.
+ *
+ * Rspack's RSC plugins ask for their client and server-entry proxies by *absolute path*, which on
+ * Windows means a drive letter (`D:\app\src\home.tsx`) instead of a leading slash. Externalizing one
+ * of those emits `import("D:\\app\\src\\home.tsx")`, and Node rejects that with
+ * `ERR_UNSUPPORTED_ESM_URL_SCHEME` ("Received protocol 'd:'") — a build that works everywhere else
+ * fails on Windows only. `win32.isAbsolute` also accepts the POSIX form, so it is used on every
+ * platform: one code path, and the Windows shapes stay testable off Windows.
+ */
+function isPathRequest(request: string): boolean {
+  return request.startsWith('.') || win32.isAbsolute(request);
+}
 
 const BROWSER_TARGETS = ['last 2 versions', '> 0.2%', 'not dead', 'Firefox ESR'];
 const NODE_TARGETS = ['node >= 22'];
@@ -144,7 +158,7 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
       ({ request }, callback) => {
         if (
           !request ||
-          /^[./]/.test(request) ||
+          isPathRequest(request) ||
           request.startsWith('@/') ||
           request.startsWith('@rshono/') ||
           request.startsWith('builtin:') ||

@@ -12,6 +12,19 @@ const CLI = join(ROOT, 'packages', 'rshono', 'bin', 'rshono.mjs');
 /** The pattern `rshono start` prints once it is listening; the capture group is the port. */
 export const START_READY = /serving on http:\/\/localhost:(\d+)/;
 
+/**
+ * The environment the example is built and served with. It lives here rather than in the example's
+ * `.env`, because `.env*` is gitignored: a suite that asserts on these values has to carry them
+ * itself or it passes locally and fails on a fresh checkout. The real environment wins over a
+ * `.env` file, so this also pins the values against whatever a contributor happens to have there.
+ */
+export const APP_ENV = {
+  /** Secret — asserted never to reach the browser, in the HTML, the flight payload or a chunk. */
+  DATABASE_URL: 'my private database url',
+  /** `PUBLIC_`-prefixed — asserted to be inlined into the client bundle and visible via `ctx.env`. */
+  PUBLIC_API_ENDPOINT: 'public dummy url',
+};
+
 export function buildExample() {
   return buildExampleWith();
 }
@@ -31,6 +44,7 @@ export function buildApp(dir, configPath) {
   const result = spawnSync(process.execPath, args, {
     cwd: dir,
     encoding: 'utf8',
+    env: { ...process.env, ...APP_ENV },
     timeout: 180_000,
   });
   if (result.status !== 0) {
@@ -46,7 +60,7 @@ export function startServer(command, options) {
 export function startApp(dir, command, { env = {}, urlPattern, timeoutMs = 60_000 }) {
   const child = spawn(process.execPath, [CLI, command], {
     cwd: dir,
-    env: { ...process.env, PORT: '0', ...env },
+    env: { ...process.env, PORT: '0', ...APP_ENV, ...env },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   let output = '';

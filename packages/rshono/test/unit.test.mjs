@@ -8,10 +8,12 @@ import { join } from 'node:path';
 import { after, describe, test } from 'node:test';
 
 import { scanPageFiles } from '../dist/builder/page-files.js';
+import { createConfigs } from '../dist/builder/rspack-config.js';
 import { appendVary, etagMatches } from '../dist/server/headers.js';
 import { parseByteSize, resolveServerConfig } from '../dist/server/server-config.js';
 import { prerenderStaticRoutes, readPrerendered, resolveSiteOrigin, ssgFilePath } from '../dist/server/ssg.js';
 import { isControlDigest, parseRedirectDigest, RedirectSignal } from '../dist/runtime/control.js';
+import { MINIMAL_APP_DIR } from './helpers.mjs';
 
 const tempDirs = [];
 function tempDir() {
@@ -398,5 +400,45 @@ describe('scanPageFiles', () => {
     const found = new Set();
     scanPageFiles(join(tempDir(), 'does-not-exist.ts'), tempDir(), found);
     assert.deepEqual([...found], []);
+  });
+});
+
+describe('server bundle externals', () => {
+  const [, serverConfig] = createConfigs({ rootDir: MINIMAL_APP_DIR, isDev: false, config: {} });
+
+  /** The hook's verdict for one request: `undefined` means "bundle it", a string means "leave it external". */
+  const verdict = (request) => {
+    let result;
+    serverConfig.externals[0]({ request }, (error, value) => {
+      if (error) throw error;
+      result = value;
+    });
+    return result;
+  };
+
+  test('leaves third-party packages and node builtins to the runtime', () => {
+    assert.equal(verdict('some-npm-package'), 'module-import some-npm-package');
+    assert.equal(verdict('@scope/pkg/sub'), 'module-import @scope/pkg/sub');
+    assert.equal(verdict('node:fs'), 'module-import node:fs');
+  });
+
+  test('bundles the framework, React and Hono, which the server cannot resolve at runtime', () => {
+    for (const request of ['rshono', 'react', 'react-dom/server.edge', 'hono/cookie', '@rshono/routes', '@/components/home', './entry.ssr.js']) {
+      assert.equal(verdict(request), undefined, `${request} must be bundled`);
+    }
+  });
+
+  test('bundles path requests on every platform, Windows drive letters included', () => {
+    // Rspack asks for the RSC client and server-entry proxies by absolute path. Externalizing one
+    // emits an `import()` of a raw filesystem path — harmless-looking on POSIX, where that parses as
+    // a URL path, and fatal on Windows, where `D:\…` is read as an unsupported `d:` URL scheme.
+    assert.equal(verdict('/app/src/components/home.tsx?rsc-server-entry-proxy=true'), undefined);
+    assert.equal(
+      verdict('D:\\app\\src\\components\\home.tsx?rsc-server-entry-proxy=true'),
+      undefined,
+      'a Windows path must never become import("D:\\…")',
+    );
+    assert.equal(verdict('D:/app/src/components/home.tsx'), undefined, 'forward-slash drive paths too');
+    assert.equal(verdict('\\\\server\\share\\home.tsx'), undefined, 'and UNC paths');
   });
 });
