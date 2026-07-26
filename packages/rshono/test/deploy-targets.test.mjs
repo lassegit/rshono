@@ -157,38 +157,15 @@ describe('aws-lambda', () => {
     assert.equal(buildMarker().deploy, 'aws-lambda');
     assert.equal(typeof bundle.default, 'function', 'streamifyResponse-wrapped, so SSR still streams');
   });
-});
 
-describe('lambda-edge', () => {
-  let bundle;
-  before(async () => ({ bundle } = await buildFor('lambda-edge')));
-
-  /** A CloudFront origin-request event — the only event type with room for a page-sized response. */
-  const originRequest = (uri) => ({
-    Records: [
-      {
-        cf: {
-          config: { distributionDomainName: 'd.cloudfront.net', distributionId: 'E1', eventType: 'origin-request', requestId: 'r1' },
-          request: { clientIp: '203.0.113.1', headers: { host: [{ key: 'host', value: 'rshono.example' }] }, method: 'GET', querystring: '', uri },
-        },
-      },
-    ],
-  });
-
-  test('answers a CloudFront event with a buffered document', async () => {
-    assert.equal(buildMarker().deploy, 'lambda-edge');
-    const result = await bundle.default(originRequest('/'));
-    assert.equal(result.status, '200', 'CloudFront reports status as a string');
-    assert.ok(result.body.startsWith('<!DOCTYPE html>'), 'the whole document, in the event result — no streaming here');
-  });
-
-  // Runs here because the build left behind is for a platform: a bundle whose entry hands a handler to
-  // its host has no listener, so starting it would exit silently the moment the module finished.
-  test('`rshono start` refuses this build instead of starting nothing', () => {
+  // Asserted against whichever target built last, which is the point: the build on disk belongs to a
+  // platform, and a bundle whose entry hands a handler to its host has no listener — so starting it
+  // would exit silently the moment the module finished evaluating.
+  test('`rshono start` refuses a build made for a platform instead of starting nothing', () => {
     const cli = fileURLToPath(new URL('../bin/rshono.mjs', import.meta.url));
     const result = spawnSync(process.execPath, [cli, 'start'], { cwd: EXAMPLE_DIR, encoding: 'utf8', timeout: 30_000 });
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /targets lambda-edge/);
+    assert.match(result.stderr, /targets aws-lambda/);
     assert.match(result.stderr, /--deploy node/, 'says how to get a build it can run');
   });
 });
