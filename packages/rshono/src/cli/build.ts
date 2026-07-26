@@ -6,20 +6,23 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createConfigs } from '../builder/rspack-config.js';
 import type { RSHonoConfig } from '../config.js';
+import type { DeployPreset } from '../deploy/presets.js';
 import type { Route } from '../router.js';
 import { prerenderStaticRoutes } from '../server/ssg.js';
 
 interface BuildOptions {
   rootDir: string;
   config: RSHonoConfig;
+  /** The platform to build for, already resolved from the flag, the environment and the config. */
+  preset: DeployPreset;
 }
 
 export async function buildCommand(options: BuildOptions): Promise<void> {
-  const { rootDir, config } = options;
+  const { rootDir, config, preset } = options;
   const distDir = join(rootDir, 'dist');
 
   console.log('  • building client + server bundles…');
-  const configs = createConfigs({ rootDir, isDev: false, config });
+  const configs = createConfigs({ rootDir, isDev: false, config, preset });
   const compiler = rspack(configs);
 
   const stats = await new Promise<MultiStats>((resolve, reject) => {

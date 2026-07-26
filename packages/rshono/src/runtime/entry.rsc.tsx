@@ -1,13 +1,12 @@
-import { serve } from '@hono/node-server';
 import type { Context, Handler } from 'hono';
 import { Hono } from 'hono';
 import { bodyLimit } from 'hono/body-limit';
 import type { ContentfulStatusCode, RedirectStatusCode } from 'hono/utils/http-status';
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { parentPort, workerData } from 'node:worker_threads';
 import type React from 'react';
 import type { ReactFormState } from 'react-dom/client';
+// The bare specifier, not `/server.node`: the package ships a build per runtime behind export
+// conditions (`node`, `workerd`, `deno`, `edge-light`), and the RSC layer's `conditionNames` is what
+// picks one — so a non-Node deploy target gets its own build instead of Node's by hard-coded path.
 import {
   createTemporaryReferenceSet,
   decodeAction,
@@ -17,40 +16,30 @@ import {
   renderToReadableStream,
   type ServerEntry,
   type TemporaryReferenceSet,
-} from 'react-server-dom-rspack/server.node';
+} from 'react-server-dom-rspack/server';
+// Resolved by the '@rshono/deploy' alias to the selected preset's runtime module — the one place
+// this file knows anything about where it is running. See `deploy/contract.ts`.
+import { runtime } from '@rshono/deploy';
 // @ts-expect-error — resolved by the '@rshono/routes' alias to the app's routes.ts
 import { routes as userRoutes } from '@rshono/routes';
 // @ts-expect-error — resolved by the '@rshono/server-app' alias (src/server.ts or the empty fallback)
 import * as serverAppModule from '@rshono/server-app';
-import {
-  isPageRoute,
-  type EndpointRoute,
-  type ErrorInfo,
-  type PageComponent,
-  type Route,
-  type RouteConfig,
-  type SpecialPage,
-} from '../router.js';
-import { compress } from '../server/compress.js';
+import { isPageRoute, type EndpointRoute, type ErrorInfo, type PageComponent, type Route, type RouteConfig, type SpecialPage } from '../router.js';
 import { appendVary, etagMatches } from '../server/headers.js';
-import { loadEnvFiles } from '../server/load-env.js';
-import { onShutdown } from '../server/shutdown.js';
-import { readPrerendered } from '../server/ssg.js';
-import { createPublicFallback, createStaticMiddleware } from '../server/static.js';
 import { publicUrl, readParams, reportServerError, runWithContext } from './context.js';
 import { isControlSignal, RedirectSignal, type ControlSignal } from './control.js';
 import { renderHTML } from './entry.ssr.js';
 import { RouterProvider } from './navigation.js';
 import { acceptsFlight, isActionRequest, parseRenderRequest, wantsRsc } from './request.js';
 
-const isDev = process.env.NODE_ENV === 'development';
-const rootDir = join(import.meta.dirname, '..', '..');
-
 const serverApp = ((serverAppModule as { default?: unknown }).default ?? null) as Hono | null;
 
 // Framework settings resolved from rshono.config.ts and compiled into the bundle at build time
 // (see builder/rspack-config.ts). These have no runtime env-var interface — env is for secrets.
 const CONFIG = __RSHONO_CONFIG__;
+// The build mode, read from the baked config rather than `process.env.NODE_ENV`: it is decided by
+// which command produced the bundle, and not every runtime this can be deployed to has a `process`.
+const isDev = CONFIG.isDev;
 const RENDER_TIMEOUT_MS = CONFIG.renderTimeoutMs;
 const cspEnabled = CONFIG.cspEnabled;
 const checkOrigin = CONFIG.checkOrigin; // CSRF origin check on action POSTs.
@@ -74,7 +63,9 @@ const CSP_STATIC = Object.entries(CONFIG.cspDirectives)
   .join('; ');
 const CSP_SCRIPT_SRC = CONFIG.cspDirectives['script-src'] ?? "'self'";
 
-loadEnvFiles(rootDir);
+// Called here rather than at the top of the deploy runtime's own module so the timing is unchanged:
+// `.env` is loaded once every import above has been evaluated, exactly as before.
+runtime.loadEnv();
 
 const routeConfig = userRoutes as RouteConfig;
 export const routes: readonly Route[] = routeConfig.routes;
@@ -358,8 +349,9 @@ async function renderPage(c: Context, loadPage: () => Promise<ServerEntry<PageCo
 function buildApp(): Hono {
   const app = new Hono();
 
-  // Outermost, so it wraps the finished response — headers and all — on the way out.
-  if (compressEnabled) app.use(compress());
+  // Outermost, so it wraps the finished response — headers and all — on the way out. A platform that
+  // compresses for us (or cannot stream a compressor) offers none, and the setting has nothing to do.
+  if (compressEnabled && runtime.compress) app.use(runtime.compress);
 
   // Cheap, unconditional headers that only matter when something else has gone wrong: stop
   // content-type sniffing, keep the full URL (paths, query) out of cross-origin referrers, and
@@ -394,7 +386,7 @@ function buildApp(): Hono {
     app.use(bodyLimit({ maxSize: MAX_BODY_BYTES, onError: (c) => c.text('Payload Too Large', 413) }));
   }
 
-  app.route('/_static', createStaticMiddleware({ root: join(rootDir, 'dist', 'static'), isDev }));
+  runtime.mountStaticAssets(app);
 
   // Mounted ahead of the page routes so the sub-app's middleware (auth, logging, trailing-slash)
   // wraps page requests too. The flip side: a *terminal* handler in src/server.ts at the same path
@@ -402,8 +394,6 @@ function buildApp(): Hono {
   if (serverApp) {
     app.route('/', serverApp);
   }
-
-  const ssgDir = join(rootDir, 'dist', 'ssg');
 
   const memoizePage = (page: SpecialPage, label: string) => once(() => loadPageModule(page.component, label));
   const loadNotFoundPage = routeConfig.notFound ? memoizePage(routeConfig.notFound, 'the notFound page') : null;
@@ -435,12 +425,12 @@ function buildApp(): Hono {
         try {
           if (servesPrerendered && c.req.method === 'GET') {
             const isRsc = acceptsFlight(c.req.raw);
-            // Both representations are prerendered, so a soft navigation is served from disk too
+            // Both representations are prerendered, so a soft navigation is served from the build too
             // rather than re-rendering a page that was already built. The exception is the HTML
             // under `csp`, which has to be rendered per request to carry its nonce — the flight
             // payload never carries one, so it stays servable either way.
             if (!(cspEnabled && !isRsc)) {
-              const page = await readPrerendered(ssgDir, c.req.path, isRsc ? 'flight' : 'html');
+              const page = await runtime.readPrerendered(c.req.path, isRsc ? 'flight' : 'html');
               // A prerendered page is request-independent by construction, so it is safe to cache
               // publicly; the short max-age matches what `public/` files get. The ETag turns the
               // revalidation that follows into a 304 rather than the page all over again.
@@ -479,10 +469,7 @@ function buildApp(): Hono {
     }
   }
 
-  const publicDir = isDev ? join(rootDir, 'public') : join(rootDir, 'dist', 'public');
-  if (existsSync(publicDir)) {
-    app.on(['GET', 'HEAD'], '/*', createPublicFallback(publicDir, isDev));
-  }
+  runtime.mountPublicFallback(app);
 
   app.notFound(async (c) => {
     const isRsc = wantsRsc(parseRenderRequest(c.req.raw));
@@ -525,24 +512,12 @@ function buildApp(): Hono {
 
 export const app = buildApp();
 
-if (!process.env.RSC_HONO_PRERENDER) {
-  const devWorker = workerData as { port?: number; hostname?: string } | null;
-  // PORT / HOST stay env-overridable (the standard deployment convention); their defaults come
-  // from rshono.config.ts, baked into CONFIG. `?? ` (not `||`) so an explicit PORT=0 is honoured.
-  const envPort = process.env.PORT !== undefined ? Number(process.env.PORT) : undefined;
-  const port = devWorker?.port ?? envPort ?? CONFIG.port ?? 3000;
-  const hostname = devWorker?.hostname ?? process.env.HOST ?? CONFIG.host ?? '0.0.0.0';
-
-  const server = serve({ fetch: app.fetch, port, hostname }, (info) => {
-    if (parentPort) {
-      parentPort.postMessage({ type: 'ready', port: info.port });
-    } else {
-      console.log(`  ➜ rshono serving on http://${hostname === '0.0.0.0' ? 'localhost' : hostname}:${info.port}`);
-    }
-  });
-
-  onShutdown(() => {
-    server.close(() => process.exit(0));
-    setTimeout(() => process.exit(0), 3000).unref();
-  });
-}
+/**
+ * The app, handed to whatever is hosting it.
+ *
+ * On a platform where rshono owns the process this binds a port and the default export is nothing;
+ * where the host owns it, this *is* the export the platform looks for — so the same entry serves
+ * both without a per-platform entry file. `app` and `routes` stay named exports either way, because
+ * `rshono build` imports them to prerender `render: 'static'` routes.
+ */
+export default runtime.serveApp(app);

@@ -31,6 +31,8 @@ export {
 
 export { defineConfig, type RSHonoConfig, type RspackHookContext } from './config.js';
 
+export type { DeployTarget } from './deploy/contract.js';
+
 /**
  * Re-exported from Hono for convenience, so an endpoint module can type its
  * `handler` without depending on `hono` directly.

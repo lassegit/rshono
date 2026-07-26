@@ -1,5 +1,6 @@
 import { createRequire } from 'node:module';
 import { parseArgs } from 'node:util';
+import { DEPLOY_TARGETS, resolveDeployPreset } from '../deploy/presets.js';
 import { loadConfig } from '../server/load-config.js';
 import { loadEnvFiles } from '../server/load-env.js';
 import { buildCommand } from './build.js';
@@ -16,6 +17,7 @@ Usage:
 Options:
   -p, --port <n>      port to listen on (default: PORT env or rshono.config.ts or 3000)
   -c, --config <path> path to a config file (default: rshono.config.{ts,js,mjs})
+  -d, --deploy <name> platform to build for: ${DEPLOY_TARGETS.join(' | ')} (default: node)
   -h, --help          show this help
   -v, --version       print the version
 `;
@@ -25,6 +27,7 @@ async function main(): Promise<void> {
     options: {
       port: { type: 'string', short: 'p' },
       config: { type: 'string', short: 'c' },
+      deploy: { type: 'string', short: 'd' },
       help: { type: 'boolean', short: 'h' },
       version: { type: 'boolean', short: 'v' },
     },
@@ -61,7 +64,11 @@ async function main(): Promise<void> {
     case 'dev':
       return devCommand({ rootDir, port, config });
     case 'build':
-      return buildCommand({ rootDir, config });
+      return buildCommand({
+        rootDir,
+        config,
+        preset: resolveDeployPreset({ flag: values.deploy, env: process.env.RSHONO_DEPLOY, config: config.deploy }),
+      });
     case 'start':
       return startCommand({ rootDir, port, host });
     default:

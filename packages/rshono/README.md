@@ -110,6 +110,7 @@ An optional `rshono.config.ts` (`.js` / `.mjs` also work) at the project root tu
 import { defineConfig } from 'rshono';
 
 export default defineConfig({
+  deploy: 'node', // hosting platform to build for (--deploy or RSHONO_DEPLOY override)
   siteUrl: 'https://example.com', // public origin, baked into prerendered pages' absolute URLs
   port: 3000, // default port for dev/start (--port or PORT env override)
   host: '0.0.0.0', // bind address for start (HOST env overrides)
@@ -127,7 +128,7 @@ export default defineConfig({
 });
 ```
 
-`defineConfig` is an identity helper for editor autocomplete; `export default { … } satisfies RSHonoConfig` works too. `port`/`host`/`rspack` are consumed by the CLI; the framework settings (`trustProxy`, `checkOrigin`, `allowedOrigins`, `csp`, `cspDirectives`, `bodySizeLimit`, `renderTimeout`, `compress`) are resolved from this file at build time and **compiled into the server bundle** — there is no parallel `RSC_HONO_*` env-var interface (environment variables are for secrets). Changing one of these settings means a rebuild. The two deployment-conventional exceptions stay env-overridable: `--port`/`PORT` and `HOST` win over the file, which wins over the built-in default. Point `rshono build` at a different config with `--config <path>`.
+`defineConfig` is an identity helper for editor autocomplete; `export default { … } satisfies RSHonoConfig` works too. `deploy`/`port`/`host`/`rspack` are consumed by the CLI; the framework settings (`trustProxy`, `checkOrigin`, `allowedOrigins`, `csp`, `cspDirectives`, `bodySizeLimit`, `renderTimeout`, `compress`) are resolved from this file at build time and **compiled into the server bundle** — there is no parallel `RSC_HONO_*` env-var interface (environment variables are for secrets). Changing one of these settings means a rebuild. The two deployment-conventional exceptions stay env-overridable: `--port`/`PORT` and `HOST` win over the file, which wins over the built-in default. Point `rshono build` at a different config with `--config <path>`.
 
 ## Security & hardening
 
@@ -179,6 +180,8 @@ Two coordinated Rspack compilers (native RSC support, `rspack.experiments.rsc`):
 In dev, the CLI watches both bundles, runs the server bundle in a worker thread (restarted per rebuild; requests gate on readiness — no dropped connections), and fronts everything on one port with static serving and an SSE channel: client edits hot-apply via react-refresh, server component edits re-fetch the payload in place — browser state survives both.
 
 In production, `dist/server/main.mjs` is self-contained (React, Hono and the framework are bundled in; your other npm dependencies resolve from `node_modules`): `rshono start` or any process manager running `node dist/server/main.mjs`.
+
+Everything in that bundle that depends on _where_ it runs — binding a port, serving `/_static` and `public/`, reading a prerendered page, gzipping, loading `.env` — sits behind a single interface the build resolves per `deploy` target, so the request-handling code has no platform in it. `deploy: 'node'` is the only target today; the entry's default export is already whatever the platform expects (nothing where rshono owns the process, a handler where the host does).
 
 ## Requirements & limitations
 

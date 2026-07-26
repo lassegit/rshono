@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { createConfigs } from '../builder/rspack-config.js';
 import type { RSHonoConfig } from '../config.js';
+import { NODE_PRESET } from '../deploy/presets.js';
 import type { DevMessage } from '../runtime/dev-protocol.js';
 import { createStaticMiddleware } from '../server/static.js';
 
@@ -46,6 +47,9 @@ export async function devCommand(options: DevOptions): Promise<void> {
     rootDir,
     isDev: true,
     config,
+    // Always Node, whatever `deploy` says: the dev server runs the bundle in a worker thread of this
+    // process and fronts it on one port. `deploy` is a property of `build` output, not of developing.
+    preset: NODE_PRESET,
     onServerComponentChanges: () => {
       serverComponentsChanged = true;
     },

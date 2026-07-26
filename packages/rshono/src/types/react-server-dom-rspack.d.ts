@@ -5,7 +5,12 @@ declare const __rspack_rsc_manifest__: {
   entryJsFiles: string[];
 };
 
-declare module 'react-server-dom-rspack/server.node' {
+/**
+ * The runtime-agnostic server entry. The package resolves it to a per-runtime build through export
+ * conditions (`node`, `workerd`, `deno`, `edge-light`), all of which expose this same surface, so the
+ * deploy target decides which one lands in the bundle rather than the specifier.
+ */
+declare module 'react-server-dom-rspack/server' {
   import type { ReactFormState } from 'react-dom/client';
 
   export type TemporaryReferenceSet = WeakMap<any, string>;

@@ -19,7 +19,9 @@ export interface RenderHTMLOptions {
   onShellError?: (error: unknown) => void;
 }
 
-const isDev = process.env.NODE_ENV === 'development';
+// From the baked config, not `process.env.NODE_ENV`: this is a property of the build, and a deploy
+// target need not have a `process` at all.
+const isDev = __RSHONO_CONFIG__.isDev;
 
 /**
  * The last-resort 500 document, for when SSR fails before a single byte of the real shell was sent.

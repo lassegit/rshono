@@ -3,6 +3,7 @@ import { ReactRefreshRspackPlugin } from '@rspack/plugin-react-refresh';
 import { existsSync } from 'node:fs';
 import { join, win32 } from 'node:path';
 import type { RSHonoConfig } from '../config.js';
+import type { DeployPreset } from '../deploy/presets.js';
 import { resolveServerConfig } from '../server/server-config.js';
 import { scanPageFiles } from './page-files.js';
 import { publicEnv } from './public-env.js';
@@ -36,11 +37,13 @@ export interface ConfigOptions {
   isDev: boolean;
   /** The project's resolved config — supplies the {@link RSHonoConfig.rspack} hook and the runtime settings baked into the server bundle. */
   config: RSHonoConfig;
+  /** The platform being built for: decides the `@rshono/deploy` runtime and any server-compiler overrides. */
+  preset: DeployPreset;
   onServerComponentChanges?: () => void;
 }
 
 export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOptions] {
-  const { rootDir, isDev, config, onServerComponentChanges } = options;
+  const { rootDir, isDev, config, preset, onServerComponentChanges } = options;
   const srcDir = join(rootDir, 'src');
   const mode = isDev ? 'development' : 'production';
 
@@ -175,6 +178,9 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
       alias: {
         '@rshono/routes$': routesFile,
         '@rshono/server-app$': serverAppAlias,
+        // The one import that decides which platform the server bundle is for. Split on '/' so the
+        // preset can declare a POSIX-looking path and still resolve on Windows.
+        '@rshono/deploy$': join(FRAMEWORK_DIST, ...preset.runtimeModule.split('/')),
         '@': srcDir,
       },
     },
@@ -225,6 +231,10 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
     ],
     performance: false,
   };
+
+  // The platform's own overrides, then the user's hook — so an app can still adjust whatever a
+  // preset decided.
+  preset.configureServer?.(serverConfig);
 
   const rspackHook = config.rspack;
   if (rspackHook) {

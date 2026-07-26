@@ -1,4 +1,5 @@
 import type { RspackOptions } from '@rspack/core';
+import type { DeployTarget } from './deploy/contract.js';
 
 /** Which of the two Rspack compilers the {@link RSHonoConfig.rspack} hook is being called for. */
 export interface RspackHookContext {
@@ -24,6 +25,15 @@ export interface RspackHookContext {
  * ```
  */
 export interface RSHonoConfig {
+  /**
+   * The hosting platform `rshono build` targets. Default `'node'` — a long-lived server process, for
+   * a VPS, a container or anywhere else you run `rshono start`.
+   *
+   * Overridden by the `--deploy` flag or the `RSHONO_DEPLOY` env var, so one config can still be
+   * built for more than one place. `rshono dev` ignores it entirely and always runs the Node dev
+   * server.
+   */
+  deploy?: DeployTarget;
   /**
    * The public origin the site is served from, e.g. `'https://example.com'`.
    *

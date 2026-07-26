@@ -9,6 +9,7 @@ import { after, describe, test } from 'node:test';
 
 import { scanPageFiles } from '../dist/builder/page-files.js';
 import { createConfigs } from '../dist/builder/rspack-config.js';
+import { DEPLOY_TARGETS, NODE_PRESET, resolveDeployPreset } from '../dist/deploy/presets.js';
 import { appendVary, etagMatches } from '../dist/server/headers.js';
 import { parseByteSize, resolveServerConfig } from '../dist/server/server-config.js';
 import { prerenderStaticRoutes, readPrerendered, resolveSiteOrigin, ssgFilePath } from '../dist/server/ssg.js';
@@ -54,10 +55,13 @@ describe('resolveServerConfig', () => {
     assert.equal(config.cspEnabled, false);
     assert.equal(config.compress, true);
     assert.deepEqual(config.allowedOrigins, []);
+    assert.equal(config.isDev, false, 'the build mode is baked in rather than read from NODE_ENV at runtime');
   });
 
   test('forces trustProxy on in dev, where the framework owns the proxy', () => {
-    assert.equal(resolveServerConfig({ trustProxy: false }, { isDev: true }).trustProxy, true);
+    const config = resolveServerConfig({ trustProxy: false }, { isDev: true });
+    assert.equal(config.trustProxy, true);
+    assert.equal(config.isDev, true);
   });
 
   test('normalizes allowedOrigins to bare hosts and rejects junk', () => {
@@ -403,8 +407,61 @@ describe('scanPageFiles', () => {
   });
 });
 
+describe('deploy target resolution', () => {
+  test('defaults to node, and a blank source is no source at all', () => {
+    assert.equal(resolveDeployPreset().name, 'node');
+    assert.equal(resolveDeployPreset({}).name, 'node');
+    // An `RSHONO_DEPLOY=` that a CI environment sets but never fills in has to fall through to the
+    // config file rather than fail the build on the empty string.
+    assert.equal(resolveDeployPreset({ env: '' }).name, 'node');
+    assert.equal(resolveDeployPreset({ env: '   ' }).name, 'node');
+  });
+
+  test('the flag wins over the environment, which wins over the config file', () => {
+    // Only one target exists so far, so precedence is asserted through *which* value gets looked up:
+    // a loser never reaches the lookup, so only the winner can be the one reported as unknown.
+    assert.equal(resolveDeployPreset({ flag: 'node', env: 'ignored', config: 'ignored' }).name, 'node');
+    assert.throws(() => resolveDeployPreset({ flag: 'from-flag', env: 'node', config: 'node' }), /from-flag/);
+    assert.throws(() => resolveDeployPreset({ env: 'from-env', config: 'node' }), /from-env/);
+  });
+
+  test('an unknown target fails the build, naming the ones that exist', () => {
+    assert.throws(() => resolveDeployPreset({ config: 'cloudflare' }), /unknown deploy target "cloudflare"/);
+    assert.throws(() => resolveDeployPreset({ config: 'cloudflare' }), new RegExp(DEPLOY_TARGETS.join(', ')));
+  });
+});
+
+describe('the deploy seam', () => {
+  test('the server bundle resolves @rshono/deploy to the selected platform, and nothing else', () => {
+    const [clientConfig, serverConfig] = createConfigs({ rootDir: MINIMAL_APP_DIR, isDev: false, config: {}, preset: NODE_PRESET });
+    assert.match(serverConfig.resolve.alias['@rshono/deploy$'], /dist[\\/]deploy[\\/]node[\\/]runtime\.js$/);
+    assert.equal('@rshono/deploy$' in clientConfig.resolve.alias, false, 'the browser bundle has no platform to speak of');
+  });
+
+  test('a preset can adjust the server compiler, and the user hook still gets the last word', () => {
+    const preset = {
+      ...NODE_PRESET,
+      configureServer(config) {
+        config.target = 'webworker';
+      },
+    };
+    const [, serverConfig] = createConfigs({
+      rootDir: MINIMAL_APP_DIR,
+      isDev: false,
+      preset,
+      config: {
+        rspack(config, { isServer }) {
+          if (isServer) config.devtool = 'source-map';
+        },
+      },
+    });
+    assert.equal(serverConfig.target, 'webworker', 'the preset reached the generated config');
+    assert.equal(serverConfig.devtool, 'source-map', "the app's own hook ran after it");
+  });
+});
+
 describe('server bundle externals', () => {
-  const [, serverConfig] = createConfigs({ rootDir: MINIMAL_APP_DIR, isDev: false, config: {} });
+  const [, serverConfig] = createConfigs({ rootDir: MINIMAL_APP_DIR, isDev: false, config: {}, preset: NODE_PRESET });
 
   /** The hook's verdict for one request: `undefined` means "bundle it", a string means "leave it external". */
   const verdict = (request) => {

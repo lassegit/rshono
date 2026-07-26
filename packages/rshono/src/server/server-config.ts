@@ -9,6 +9,13 @@ import type { RSHonoConfig } from '../config.js';
  * `builder/rspack-config.ts`) — there is no runtime env-var interface for these.
  */
 export interface ServerConfig {
+  /**
+   * `true` when the bundle came from `rshono dev`.
+   *
+   * Baked in rather than read from `process.env.NODE_ENV` at runtime: it is decided by which command
+   * produced the bundle, and a deploy target need not have a `process` to read it from.
+   */
+  isDev: boolean;
   /** Deadline in ms for a single request (server action + flight + SSR). */
   renderTimeoutMs: number;
   /** Honour `X-Forwarded-Host` / `-Proto` when resolving the browser-facing URL. Forced on in dev. */
@@ -107,6 +114,7 @@ function resolveCspDirectives(overrides: Record<string, string> | undefined): Re
  */
 export function resolveServerConfig(config: RSHonoConfig, { isDev }: { isDev: boolean }): ServerConfig {
   return {
+    isDev,
     renderTimeoutMs: config.renderTimeout ?? SERVER_DEFAULTS.renderTimeoutMs,
     trustProxy: isDev || (config.trustProxy ?? false),
     cspEnabled: config.csp ?? false,
