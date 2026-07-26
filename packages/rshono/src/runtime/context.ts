@@ -34,6 +34,21 @@ const store = new AsyncLocalStorage<Context>();
 const wrappers = new WeakMap<Context, Ctx>();
 
 /**
+ * `process.env`, snapshotted on first read.
+ *
+ * It is not a plain object — every enumeration crosses into the host environment, which made
+ * spreading it (~20µs) by far the most expensive thing {@link Ctx.env} did, once per request that
+ * touched it. Snapshotted lazily rather than at module load because `loadEnvFiles()` runs *after*
+ * this module is imported, so an eager copy would miss everything from `.env`. The trade-off: a
+ * `process.env` mutation after the first `ctx.env` read is not picked up.
+ */
+let envSnapshot: Record<string, string | undefined> | undefined;
+
+function processEnv(): Record<string, string | undefined> {
+  return (envSnapshot ??= typeof process !== 'undefined' && process.env ? { ...process.env } : {});
+}
+
+/**
  * True when this process is the SSG build prerendering `render: 'static'` routes,
  * rather than a server handling real requests. `build.ts` sets `RSC_HONO_PRERENDER`
  * before importing the app bundle and starting the prerender pass; the app bundle
@@ -43,9 +58,7 @@ const wrappers = new WeakMap<Context, Ctx>();
  * silently baking synthetic build-time values (a `localhost` URL, no cookies, build
  * env) into the snapshot.
  */
-function isPrerendering(): boolean {
-  return typeof process !== 'undefined' && !!process.env?.RSC_HONO_PRERENDER;
-}
+const prerendering = typeof process !== 'undefined' && !!process.env?.RSC_HONO_PRERENDER;
 
 /**
  * Runs `fn` with the given Hono {@link Context} bound as the ambient request
@@ -211,9 +224,9 @@ export class Ctx<E extends Env = Env> {
    */
   get env(): EnvVars<E> {
     if (this.#env) return this.#env;
-    const nodeEnv = typeof process !== 'undefined' && process.env ? process.env : {};
-    const bindings = (this.raw.env as Record<string, unknown> | undefined) ?? {};
-    return (this.#env = { ...nodeEnv, ...bindings } as EnvVars<E>);
+    const bindings = this.raw.env as Record<string, unknown> | undefined;
+    // The snapshot is shared, so hand it back as-is when there are no bindings to merge over it.
+    return (this.#env = (bindings ? { ...processEnv(), ...bindings } : processEnv()) as EnvVars<E>);
   }
 
   /** Sets a response header. Thin pass-through to `c.header(name, value)`. */
@@ -271,7 +284,7 @@ export class Ctx<E extends Env = Env> {
  * ```
  */
 export function getContext<E extends Env = Env>(): Ctx<E> {
-  if (isPrerendering()) {
+  if (prerendering) {
     throw new Error(
       "[rshono] getContext() was called while prerendering a `render: 'static'` route. A static page " +
         'is rendered once at build time, so it has no per-request context to read (URL, cookies, ' +

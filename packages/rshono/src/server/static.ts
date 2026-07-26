@@ -16,24 +16,19 @@ function cacheControl(isDev: boolean): MiddlewareHandler {
 }
 
 interface StaticOptions {
-  roots: string[];
+  root: string;
   isDev: boolean;
 }
 
 export function createStaticMiddleware(options: StaticOptions): Hono {
-  const { roots, isDev } = options;
+  const { root, isDev } = options;
   const app = new Hono();
 
   app.on(
     ['GET', 'HEAD'],
     '/*',
     cacheControl(isDev),
-    ...roots.map((root) =>
-      serveStatic({
-        root,
-        rewriteRequestPath: (path) => path.replace(/^\/_static/, ''),
-      }),
-    ),
+    serveStatic({ root, rewriteRequestPath: (path) => path.replace(/^\/_static/, '') }),
     (c) => c.text('Not Found', 404),
   );
 

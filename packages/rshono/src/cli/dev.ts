@@ -153,13 +153,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
   const front = new Hono();
 
-  front.route(
-    '/_static',
-    createStaticMiddleware({
-      roots: [join(distDir, 'static')],
-      isDev: true,
-    }),
-  );
+  front.route('/_static', createStaticMiddleware({ root: join(distDir, 'static'), isDev: true }));
 
   front.get('/_rshono/hmr', (c) => {
     let ctrl: ReadableStreamDefaultController<Uint8Array>;

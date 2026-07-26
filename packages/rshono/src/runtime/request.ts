@@ -11,11 +11,7 @@ const RSC_CONTENT_TYPE = 'text/x-component';
  * - `form-action` — a progressive-enhancement `<form>` POST (no JavaScript).
  * - `rsc-action` — a client-initiated server-action call carrying an action id.
  */
-export type RenderRequest =
-  | { kind: 'document'; url: URL }
-  | { kind: 'rsc'; url: URL }
-  | { kind: 'form-action'; url: URL }
-  | { kind: 'rsc-action'; url: URL; actionId: string };
+export type RenderRequest = { kind: 'document' } | { kind: 'rsc' } | { kind: 'form-action' } | { kind: 'rsc-action'; actionId: string };
 
 export function createRscRenderRequest(urlString: string, action?: { id: string; body: BodyInit }): Request {
   const url = new URL(urlString, location.origin);
@@ -31,15 +27,18 @@ export function createRscRenderRequest(urlString: string, action?: { id: string;
 const FORM_CONTENT_TYPES = /^(?:multipart\/form-data|application\/x-www-form-urlencoded)/i;
 
 export function parseRenderRequest(request: Request): RenderRequest {
-  const url = new URL(request.url);
   if (request.method === 'POST') {
     const actionId = request.headers.get(HEADER_ACTION_ID);
-    if (actionId) return { kind: 'rsc-action', url, actionId };
-    if (FORM_CONTENT_TYPES.test(request.headers.get('content-type') ?? '')) return { kind: 'form-action', url };
-    return { kind: 'document', url };
+    if (actionId) return { kind: 'rsc-action', actionId };
+    if (FORM_CONTENT_TYPES.test(request.headers.get('content-type') ?? '')) return { kind: 'form-action' };
+    return { kind: 'document' };
   }
-  const wantsFlight = request.headers.get('accept')?.includes(RSC_CONTENT_TYPE) ?? false;
-  return { kind: wantsFlight ? 'rsc' : 'document', url };
+  return { kind: acceptsFlight(request) ? 'rsc' : 'document' };
+}
+
+/** Whether the client asked for a flight payload. For GET paths that only need the boolean. */
+export function acceptsFlight(request: Request): boolean {
+  return request.headers.get('accept')?.includes(RSC_CONTENT_TYPE) ?? false;
 }
 
 /** True when the response should be a flight payload rather than an HTML document. */

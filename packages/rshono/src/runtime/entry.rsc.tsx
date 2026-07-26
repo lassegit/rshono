@@ -27,7 +27,6 @@ import {
   type EndpointRoute,
   type ErrorInfo,
   type PageComponent,
-  type PageRoute,
   type Route,
   type RouteConfig,
   type SpecialPage,
@@ -42,7 +41,7 @@ import { publicUrl, readParams, reportServerError, runWithContext } from './cont
 import { isControlSignal, RedirectSignal, type ControlSignal } from './control.js';
 import { renderHTML } from './entry.ssr.js';
 import { RouterProvider } from './navigation.js';
-import { isActionRequest, parseRenderRequest, wantsRsc } from './request.js';
+import { acceptsFlight, isActionRequest, parseRenderRequest, wantsRsc } from './request.js';
 
 const isDev = process.env.NODE_ENV === 'development';
 const rootDir = join(import.meta.dirname, '..', '..');
@@ -144,8 +143,9 @@ async function loadPageModule(load: () => Promise<{ default: PageComponent }>, l
   return Page;
 }
 
-function loadPage(route: PageRoute): Promise<ServerEntry<PageComponent>> {
-  return loadPageModule(route.component, `"${route.path}"`);
+/** A browser navigation or a crawler, as opposed to a fetch that would rather have plain text. */
+function acceptsHtml(c: Context): boolean {
+  return c.req.header('accept')?.includes('text/html') ?? false;
 }
 
 /** A lazy once-cell: runs `load` at most once and caches the promise, but clears a rejection so a later call can retry. */
@@ -295,7 +295,7 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
   return c.body(deadline.guard(ssrResult.stream), (ssrResult.status ?? opts.status ?? 200) as ContentfulStatusCode, headers);
 }
 
-async function renderPage(c: Context, route: PageRoute): Promise<Response> {
+async function renderPage(c: Context, loadPage: () => Promise<ServerEntry<PageComponent>>): Promise<Response> {
   const request = c.req.raw;
   const renderRequest = parseRenderRequest(request);
   // Created before the action runs so the deadline covers the whole request, then handed to
@@ -344,7 +344,7 @@ async function renderPage(c: Context, route: PageRoute): Promise<Response> {
     }
   }
 
-  const Page = await loadPage(route);
+  const Page = await loadPage();
   return renderComponent(c, Page, {
     status: actionStatus,
     isRsc: wantsRsc(renderRequest),
@@ -394,13 +394,7 @@ function buildApp(): Hono {
     app.use(bodyLimit({ maxSize: MAX_BODY_BYTES, onError: (c) => c.text('Payload Too Large', 413) }));
   }
 
-  app.route(
-    '/_static',
-    createStaticMiddleware({
-      roots: [join(rootDir, 'dist', 'static')],
-      isDev,
-    }),
-  );
+  app.route('/_static', createStaticMiddleware({ root: join(rootDir, 'dist', 'static'), isDev }));
 
   // Mounted ahead of the page routes so the sub-app's middleware (auth, logging, trailing-slash)
   // wraps page requests too. The flip side: a *terminal* handler in src/server.ts at the same path
@@ -433,40 +427,45 @@ function buildApp(): Hono {
 
   for (const route of routes) {
     if (isPageRoute(route)) {
-      const handler: Handler = (c) =>
-        runWithContext(c, async () => {
-          try {
-            if (!isDev && route.render === 'static' && c.req.method === 'GET') {
-              const isRsc = wantsRsc(parseRenderRequest(c.req.raw));
-              // Both representations are prerendered, so a soft navigation is served from disk too
-              // rather than re-rendering a page that was already built. The exception is the HTML
-              // under `csp`, which has to be rendered per request to carry its nonce — the flight
-              // payload never carries one, so it stays servable either way.
-              if (!(cspEnabled && !isRsc)) {
-                const page = await readPrerendered(ssgDir, c.req.path, isRsc ? 'flight' : 'html');
-                // A prerendered page is request-independent by construction, so it is safe to cache
-                // publicly; the short max-age matches what `public/` files get. The ETag turns the
-                // revalidation that follows into a 304 rather than the page all over again.
-                if (page !== null) {
-                  const headers = {
-                    'cache-control': SSG_CACHE_CONTROL,
-                    etag: page.etag,
-                    vary: 'Accept',
-                    'content-type': isRsc ? 'text/x-component;charset=utf-8' : 'text/html;charset=utf-8',
-                  };
-                  if (etagMatches(c.req.header('if-none-match'), page.etag)) return c.body(null, 304, headers);
-                  return c.body(page.body, 200, headers);
-                }
+      // Both are fixed for the life of the process, so resolve them once here instead of per request.
+      const servesPrerendered = !isDev && route.render === 'static';
+      const loadPage = once(() => loadPageModule(route.component, `"${route.path}"`));
+
+      const handler: Handler = async (c) => {
+        try {
+          if (servesPrerendered && c.req.method === 'GET') {
+            const isRsc = acceptsFlight(c.req.raw);
+            // Both representations are prerendered, so a soft navigation is served from disk too
+            // rather than re-rendering a page that was already built. The exception is the HTML
+            // under `csp`, which has to be rendered per request to carry its nonce — the flight
+            // payload never carries one, so it stays servable either way.
+            if (!(cspEnabled && !isRsc)) {
+              const page = await readPrerendered(ssgDir, c.req.path, isRsc ? 'flight' : 'html');
+              // A prerendered page is request-independent by construction, so it is safe to cache
+              // publicly; the short max-age matches what `public/` files get. The ETag turns the
+              // revalidation that follows into a 304 rather than the page all over again.
+              //
+              // Answered outside `runWithContext`: no app code runs on this path, so there is no
+              // `getContext()` to serve and no reason to pay for the AsyncLocalStorage scope.
+              if (page !== null) {
+                const headers = {
+                  'cache-control': SSG_CACHE_CONTROL,
+                  etag: page.etag,
+                  vary: 'Accept',
+                  'content-type': isRsc ? 'text/x-component;charset=utf-8' : 'text/html;charset=utf-8',
+                };
+                if (etagMatches(c.req.header('if-none-match'), page.etag)) return c.body(null, 304, headers);
+                return c.body(page.body, 200, { ...headers, 'content-length': page.contentLength });
               }
             }
-            return await renderPage(c, route);
-          } catch (error) {
-            if (isControlSignal(error)) return resolveControl(c, error);
-            throw error;
           }
-        });
-      app.get(route.path, handler);
-      app.post(route.path, handler);
+          return await runWithContext(c, () => renderPage(c, loadPage));
+        } catch (error) {
+          if (isControlSignal(error)) return runWithContext(c, () => resolveControl(c, error));
+          throw error;
+        }
+      };
+      app.on(['GET', 'POST'], route.path, handler);
     } else {
       const endpoint = route as EndpointRoute;
       const loadEndpoint = once(() => endpoint.server());
@@ -486,9 +485,8 @@ function buildApp(): Hono {
   }
 
   app.notFound(async (c) => {
-    const wantsHtml = c.req.header('accept')?.includes('text/html') ?? false;
     const isRsc = wantsRsc(parseRenderRequest(c.req.raw));
-    if (loadNotFoundPage && (wantsHtml || isRsc)) {
+    if (loadNotFoundPage && (isRsc || acceptsHtml(c))) {
       return runWithContext(c, async () => renderComponent(c, await loadNotFoundPage(), { status: 404, isRsc }));
     }
     return c.text('Not Found', 404, { vary: 'Accept' });
@@ -498,9 +496,8 @@ function buildApp(): Hono {
   app.onError(async (error, c) => {
     if (isControlSignal(error)) return runWithContext(c, () => resolveControl(c, error));
     reportServerError(error, { source: 'request', request: c.req.raw, message: '[rshono] request error:' });
-    const wantsHtml = c.req.header('accept')?.includes('text/html') ?? false;
     const isRsc = wantsRsc(parseRenderRequest(c.req.raw));
-    if (loadErrorPage && (wantsHtml || isRsc)) {
+    if (loadErrorPage && (isRsc || acceptsHtml(c))) {
       const errorInfo: ErrorInfo = isDev
         ? {
             message: error instanceof Error ? error.message : String(error),

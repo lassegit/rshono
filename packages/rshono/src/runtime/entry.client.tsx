@@ -105,10 +105,8 @@ function warmPayload(href: string): void {
   if (!key || key === cacheKey(location.href) || payloadCache.has(key)) return;
   const promise = requestPayload(href);
   payloadCache.set(key, promise);
-  for (const oldest of payloadCache.keys()) {
-    if (payloadCache.size <= MAX_WARMED_PAYLOADS) break;
-    payloadCache.delete(oldest);
-  }
+  // One entry in means at most one out, and the first key is the oldest.
+  if (payloadCache.size > MAX_WARMED_PAYLOADS) payloadCache.delete(payloadCache.keys().next().value!);
   // Don't cache failures, and swallow the rejection until (or unless) a nav awaits it.
   promise.catch(() => {
     if (payloadCache.get(key) === promise) payloadCache.delete(key);
@@ -221,7 +219,7 @@ async function main() {
     React.useEffect(
       () =>
         listenNavigation(
-          (type, restoreScroll) =>
+          (restoreScroll) =>
             startNav(async () => {
               try {
                 await fetchRscPayload();
@@ -318,7 +316,7 @@ function isRouterLink(link: HTMLAnchorElement): boolean {
   );
 }
 
-function listenNavigation(onNavigation: (type: NavigationType, restoreScroll: () => void) => void, prefetch: (href: string) => void): () => void {
+function listenNavigation(onNavigation: (restoreScroll: () => void) => void, prefetch: (href: string) => void): () => void {
   // Scroll restoration. We tag each history entry with a stable numeric key in its
   // `history.state` and remember scrollY per key, so back/forward restores the exact
   // position while push scrolls to the top. `manual` hands restoration to us.
@@ -358,7 +356,7 @@ function listenNavigation(onNavigation: (type: NavigationType, restoreScroll: ()
       window.scrollTo(0, y);
     });
   };
-  const notify = (type: NavigationType) => onNavigation(type, restoreScrollFor(type));
+  const notify = (type: NavigationType) => onNavigation(restoreScrollFor(type));
 
   const onPopState = () => notify('pop');
   window.addEventListener('popstate', onPopState);

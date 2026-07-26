@@ -79,6 +79,14 @@ export interface PrerenderedPage {
   /** The document or the flight payload, depending on which {@link PrerenderVariant} was read. */
   body: string;
   /**
+   * `Content-Length` for {@link body}, in bytes rather than characters.
+   *
+   * Served with the response because Hono sets no length for an in-memory body, and without one the
+   * compressor cannot tell a 300-byte page from a 300 KB one — so it gzips both, including the ones
+   * where the framing costs more than it saves.
+   */
+  contentLength: string;
+  /**
    * `ETag` for the page, so a revalidating client can be answered with a 304 instead of the body.
    *
    * Deliberately **weak**. The bytes on the wire depend on whether the client took gzip, and a
@@ -90,7 +98,7 @@ export interface PrerenderedPage {
 }
 
 /**
- * Prerendered pages, keyed by resolved file path.
+ * Prerendered pages, keyed by the request that produced them (see {@link readPrerendered}).
  *
  * Bounded so a site with thousands of prerendered pages keeps a working set rather than the whole
  * build in memory. Only *hits* are cached: caching misses would let anyone mint entries by
@@ -101,15 +109,19 @@ const pageCache = new Map<string, PrerenderedPage>();
 const MAX_CACHED_PAGES = 128;
 
 export async function readPrerendered(ssgDir: string, requestPath: string, variant: PrerenderVariant = 'html'): Promise<PrerenderedPage | null> {
+  // Keyed by what the request carried, not by the resolved filename, so a hit costs one Map lookup
+  // instead of re-deriving the path every time. Safe because only *hits* are cached: an entry
+  // exists only if this exact key already passed the checks below.
+  const key = `${ssgDir}\0${variant}\0${requestPath}`;
+  const cached = pageCache.get(key);
+  if (cached) return cached;
+
   if (/(^|\/)\.\.?(\/|$)/.test(requestPath)) return null;
   const relPath = ssgFilePath(requestPath, variant);
   if (relPath === null) return null;
   const root = resolve(ssgDir);
   const file = resolve(root, relPath);
   if (!file.startsWith(root + sep)) return null;
-
-  const cached = pageCache.get(file);
-  if (cached) return cached;
 
   let body: string;
   try {
@@ -118,12 +130,14 @@ export async function readPrerendered(ssgDir: string, requestPath: string, varia
     return null;
   }
 
-  const page: PrerenderedPage = { body, etag: `W/"${createHash('sha256').update(body).digest('base64url').slice(0, 22)}"` };
-  pageCache.set(file, page);
-  for (const oldest of pageCache.keys()) {
-    if (pageCache.size <= MAX_CACHED_PAGES) break;
-    pageCache.delete(oldest);
-  }
+  const page: PrerenderedPage = {
+    body,
+    contentLength: String(Buffer.byteLength(body)),
+    etag: `W/"${createHash('sha256').update(body).digest('base64url').slice(0, 22)}"`,
+  };
+  pageCache.set(key, page);
+  // Insertion-ordered, so the first key is the oldest. One entry in means at most one out.
+  if (pageCache.size > MAX_CACHED_PAGES) pageCache.delete(pageCache.keys().next().value!);
   return page;
 }
 

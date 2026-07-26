@@ -13,6 +13,8 @@ const NO_TRANSFORM = /(?:^|,)\s*no-transform\s*(?:,|$)/i;
 /** Every browser that sends `Accept-Encoding` at all accepts gzip, so one encoding covers the field. */
 function acceptsGzip(acceptEncoding: string | undefined): boolean {
   if (!acceptEncoding) return false;
+  // No `q=` anywhere (what every real browser sends) means there is no refusal to look for.
+  if (!acceptEncoding.includes('q=')) return acceptEncoding.includes('gzip') || acceptEncoding.includes('*');
   return acceptEncoding.split(',').some((entry) => {
     const [name, ...params] = entry.trim().split(';');
     if (name.toLowerCase() !== 'gzip' && name.trim() !== '*') return false;
@@ -39,8 +41,7 @@ export function compress(): MiddlewareHandler {
     await next();
 
     const res = c.res;
-    const body = res.body;
-    if (!body || c.req.method === 'HEAD') return;
+    if (c.req.method === 'HEAD') return;
     // 204/304 have no body to speak of; a 206 range is counted in *uncompressed* bytes.
     if (res.status === 204 || res.status === 304 || res.status === 206) return;
     if (res.headers.has('content-encoding')) return;
@@ -50,6 +51,13 @@ export function compress(): MiddlewareHandler {
     const contentLength = res.headers.get('content-length');
     if (contentLength !== null && Number(contentLength) < MIN_COMPRESSED_BYTES) return;
     if (!acceptsGzip(c.req.header('accept-encoding'))) return;
+
+    // Read `.body` only once we know we're compressing: it is what makes @hono/node-server's
+    // lightweight Response materialize a real one, throwing away the [status, body, headers] tuple
+    // it would otherwise write straight to the socket. The guards above touch only `.status` and
+    // `.headers`, which leave that fast path intact for every response we decide to pass through.
+    const body = res.body;
+    if (!body) return;
 
     const gzip = Duplex.toWeb(createGzip({ flush: constants.Z_SYNC_FLUSH })) as unknown as {
       readable: ReadableStream<Uint8Array>;
