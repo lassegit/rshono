@@ -1,1 +1,1 @@
-# Rshono: Minimalist web framework (ALPHA)
+# Rshono: Minimalist web framework
