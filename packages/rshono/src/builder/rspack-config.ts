@@ -82,6 +82,13 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
     modules: ['node_modules', join(FRAMEWORK_ROOT, 'node_modules')],
   };
 
+  // The platform's own resolve conditions, ahead of whatever the Rspack target implies ('...'). This
+  // is what hands the server bundle the right build of React and the RSC runtime, both of which ship
+  // one per runtime. Left unset for Node, where the target already implies the `node` condition.
+  const runtimeConditions = preset.resolveConditions ?? [];
+  const serverResolveBase = runtimeConditions.length > 0 ? { ...resolveBase, conditionNames: [...runtimeConditions, '...'] } : resolveBase;
+  const rscConditionNames = ['react-server', ...runtimeConditions, '...'];
+
   const { ServerPlugin, ClientPlugin } = rspack.experiments.rsc.createPlugins();
   const { Layers } = rspack.experiments.rsc;
 
@@ -174,7 +181,7 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
       },
     ],
     resolve: {
-      ...resolveBase,
+      ...serverResolveBase,
       alias: {
         '@rshono/routes$': routesFile,
         '@rshono/server-app$': serverAppAlias,
@@ -202,7 +209,7 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
             },
           ],
         },
-        swcRule(NODE_TARGETS),
+        swcRule([...(preset.syntaxTargets ?? NODE_TARGETS)]),
         { test: /\.css$/i, type: 'css/auto' },
         {
           test: /\.(png|jpe?g|gif|webp|avif|ico|svg|woff2?|ttf|otf)$/i,
@@ -213,12 +220,12 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
         {
           resource: rscEntry,
           layer: Layers.rsc,
-          resolve: { conditionNames: ['react-server', '...'] },
+          resolve: { conditionNames: rscConditionNames },
         },
         {
           issuerLayer: Layers.rsc,
           exclude: ssrEntry,
-          resolve: { conditionNames: ['react-server', '...'] },
+          resolve: { conditionNames: rscConditionNames },
         },
       ],
     },

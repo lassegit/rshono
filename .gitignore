@@ -1,5 +1,8 @@
 node_modules/
 dist/
+# Deploy-target output: `rshono build --deploy <platform>` assembles these from dist/.
+.vercel/
+.netlify/
 *.tsbuildinfo
 .DS_Store
 .env*

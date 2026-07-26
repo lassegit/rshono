@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createConfigs } from '../builder/rspack-config.js';
 import type { RSHonoConfig } from '../config.js';
+import { writeBuildMarker } from '../deploy/build-marker.js';
 import type { DeployPreset } from '../deploy/presets.js';
 import type { Route } from '../router.js';
 import { prerenderStaticRoutes } from '../server/ssg.js';
@@ -41,8 +42,10 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   console.log(stats.toString({ preset: 'summary', colors: true }));
 
   const publicDir = join(rootDir, 'public');
+  let distPublicDir: string | null = null;
   if (existsSync(publicDir)) {
-    cpSync(publicDir, join(distDir, 'public'), { recursive: true });
+    distPublicDir = join(distDir, 'public');
+    cpSync(publicDir, distPublicDir, { recursive: true });
     console.log('  • copied public/ into dist/public (served at /)');
   }
 
@@ -62,6 +65,19 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   if (written.length > 0) console.log(`  • prerendered ${written.length} static page(s): ${written.join(', ')}`);
   if (skipped.length > 0) console.log(`  • skipped ${skipped.length} (will SSR per request)`);
 
-  console.log('  ✓ build complete — run `rshono start`');
+  // Written before `finalize`, so a preset that copies `dist/` into a platform layout takes it along.
+  writeBuildMarker(distDir, preset.name);
+
+  // Last, so a preset arranging its output finds every piece of the build already written.
+  await preset.finalize?.({
+    rootDir,
+    distDir,
+    serverBundle: join(distDir, 'server', 'main.mjs'),
+    staticDir: join(distDir, 'static'),
+    publicDir: distPublicDir,
+    ssgDir,
+  });
+
+  console.log(`  ✓ build complete — ${preset.deployHint}`);
   process.exit(0);
 }

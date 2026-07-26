@@ -1,6 +1,8 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { readBuildMarker } from '../deploy/build-marker.js';
+import { deployHintFor } from '../deploy/presets.js';
 import { onShutdown } from '../server/shutdown.js';
 
 interface StartOptions {
@@ -11,9 +13,21 @@ interface StartOptions {
 
 export async function startCommand(options: StartOptions): Promise<void> {
   const { rootDir, port, host } = options;
-  const mainPath = join(rootDir, 'dist', 'server', 'main.mjs');
+  const distDir = join(rootDir, 'dist');
+  const mainPath = join(distDir, 'server', 'main.mjs');
   if (!existsSync(mainPath)) {
     console.error('rshono: no production build found — run `rshono build` first.');
+    process.exit(1);
+  }
+
+  // A bundle built for a hosting platform has no listener in it — its entry hands a `fetch` handler to
+  // whatever is running it. Starting one here would exit silently the moment the module finished
+  // evaluating, so say what happened and point at the command that does deploy it.
+  const target = readBuildMarker(distDir);
+  if (target !== null && target !== 'node') {
+    const hint = deployHintFor(target);
+    console.error(`rshono: this build targets ${target}, which \`rshono start\` cannot run${hint ? ` — ${hint}` : '.'}`);
+    console.error('  Rebuild for a server with `rshono build --deploy node` to run it here.');
     process.exit(1);
   }
 

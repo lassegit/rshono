@@ -1,5 +1,5 @@
-import type { Hono, MiddlewareHandler } from 'hono';
-import type { PrerenderVariant, PrerenderedPage } from '../server/ssg.js';
+import type { Context, Hono, MiddlewareHandler } from 'hono';
+import type { PrerenderVariant, PrerenderedPage } from '../server/prerendered.js';
 
 /**
  * A hosting platform rshono can build for. Selected with {@link RSHonoConfig.deploy}, the
@@ -8,7 +8,7 @@ import type { PrerenderVariant, PrerenderedPage } from '../server/ssg.js';
  * `rshono dev` always runs the `node` server whatever this says — the dev server owns the process,
  * watches both compilers and fronts them on one port, none of which a hosting platform provides.
  */
-export type DeployTarget = 'node';
+export type DeployTarget = 'node' | 'cloudflare' | 'bun' | 'deno' | 'vercel' | 'netlify' | 'aws-lambda';
 
 /**
  * Everything the app server needs from the platform it is running on.
@@ -45,13 +45,15 @@ export interface DeployRuntime {
    */
   mountPublicFallback(app: Hono): void;
   /**
-   * Reads a page prerendered by `rshono build`, or `null` when there is none for this path (in
+   * Reads the page prerendered for `c.req.path` by `rshono build`, or `null` when there is none (in
    * which case the route renders per request, which is always a valid answer).
    *
-   * `requestPath` is untrusted — it comes straight off the request — so an implementation has to
-   * treat traversal as a miss rather than a lookup.
+   * Takes the whole {@link Context} rather than just the path because on a platform with no
+   * filesystem the store *is* a request-scoped binding — `c.env.ASSETS` on Workers. The path is
+   * untrusted either way, so an implementation has to treat traversal as a miss, not a lookup
+   * (see `prerenderedRelPath`).
    */
-  readPrerendered(requestPath: string, variant: PrerenderVariant): Promise<PrerenderedPage | null>;
+  readPrerendered(c: Context, variant: PrerenderVariant): Promise<PrerenderedPage | null>;
   /**
    * Response compression, or `null` where the platform already compresses on the way out (and
    * doing it twice would only cost CPU) or cannot stream a compressor at all.

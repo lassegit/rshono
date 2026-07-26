@@ -2,8 +2,8 @@ import { defineConfig } from 'rshono';
 
 // Every option is optional — this file mostly restates the defaults as living documentation.
 export default defineConfig({
-  deploy: 'node',
   // Server
+  deploy: 'node', // where `build` targets: node | bun | deno | cloudflare | vercel | netlify | aws-lambda
   siteUrl: 'https://rshono.example', // public origin, baked into prerendered pages' absolute URLs
   port: 3000, // a --port flag or PORT env var still wins
 

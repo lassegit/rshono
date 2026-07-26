@@ -3,6 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { isPageRoute, type PageRoute, type Route } from '../router.js';
+import { prerenderedRelPath, ssgFilePath, VARIANT, type PrerenderedPage, type PrerenderVariant } from './prerendered.js';
 
 /**
  * Stand-in origin for a build that didn't declare {@link RSHonoConfig.siteUrl}. Deliberately
@@ -10,27 +11,6 @@ import { isPageRoute, type PageRoute, type Route } from '../router.js';
  * to spot, and the build warns when static routes are prerendered without a real origin.
  */
 const DEFAULT_SSG_ORIGIN = 'http://localhost';
-
-/**
- * The two representations of a page, prerendered side by side.
- *
- * A hard load wants the HTML document; a soft navigation asks the same URL for a flight payload.
- * Writing only the HTML meant every in-app click re-rendered a page that was already built, so the
- * prerender only ever paid off for cold loads and crawlers.
- */
-export type PrerenderVariant = 'html' | 'flight';
-
-const VARIANT = {
-  html: { file: 'index.html', accept: 'text/html', contentType: 'text/html' },
-  flight: { file: 'index.rsc', accept: 'text/x-component', contentType: 'text/x-component' },
-} as const satisfies Record<PrerenderVariant, { file: string; accept: string; contentType: string }>;
-
-export function ssgFilePath(routePath: string, variant: PrerenderVariant = 'html'): string | null {
-  if (/[:*]/.test(routePath)) return null;
-  const trimmed = routePath.replace(/^\/+|\/+$/g, '');
-  const file = VARIANT[variant].file;
-  return trimmed === '' ? file : join(trimmed, file);
-}
 
 /**
  * Resolve {@link RSHonoConfig.siteUrl} to the origin prerendering should render against.
@@ -74,29 +54,6 @@ function interpolatePath(pattern: string, params: Record<string, string>): strin
     .join('/');
 }
 
-/** A prerendered page, ready to serve: its body and a validator derived from those exact bytes. */
-export interface PrerenderedPage {
-  /** The document or the flight payload, depending on which {@link PrerenderVariant} was read. */
-  body: string;
-  /**
-   * `Content-Length` for {@link body}, in bytes rather than characters.
-   *
-   * Served with the response because Hono sets no length for an in-memory body, and without one the
-   * compressor cannot tell a 300-byte page from a 300 KB one — so it gzips both, including the ones
-   * where the framing costs more than it saves.
-   */
-  contentLength: string;
-  /**
-   * `ETag` for the page, so a revalidating client can be answered with a 304 instead of the body.
-   *
-   * Deliberately **weak**. The bytes on the wire depend on whether the client took gzip, and a
-   * strong validator would have to differ between those two — so the 200 and the 304 that
-   * revalidates it would disagree, and a cache would treat them as different pages. A weak tag
-   * says "the same representation", which is exactly what is true across content codings.
-   */
-  etag: string;
-}
-
 /**
  * Prerendered pages, keyed by the request that produced them (see {@link readPrerendered}).
  *
@@ -116,9 +73,10 @@ export async function readPrerendered(ssgDir: string, requestPath: string, varia
   const cached = pageCache.get(key);
   if (cached) return cached;
 
-  if (/(^|\/)\.\.?(\/|$)/.test(requestPath)) return null;
-  const relPath = ssgFilePath(requestPath, variant);
+  const relPath = prerenderedRelPath(requestPath, variant);
   if (relPath === null) return null;
+  // Belt and braces: the shared guard already refused a traversal, and this proves the resolved file
+  // is under the root whatever else the path contained.
   const root = resolve(ssgDir);
   const file = resolve(root, relPath);
   if (!file.startsWith(root + sep)) return null;

@@ -110,7 +110,7 @@ An optional `rshono.config.ts` (`.js` / `.mjs` also work) at the project root tu
 import { defineConfig } from 'rshono';
 
 export default defineConfig({
-  deploy: 'node', // hosting platform to build for (--deploy or RSHONO_DEPLOY override)
+  deploy: 'node', // hosting platform to build for — see Deployment (--deploy or RSHONO_DEPLOY override)
   siteUrl: 'https://example.com', // public origin, baked into prerendered pages' absolute URLs
   port: 3000, // default port for dev/start (--port or PORT env override)
   host: '0.0.0.0', // bind address for start (HOST env overrides)
@@ -181,7 +181,30 @@ In dev, the CLI watches both bundles, runs the server bundle in a worker thread 
 
 In production, `dist/server/main.mjs` is self-contained (React, Hono and the framework are bundled in; your other npm dependencies resolve from `node_modules`): `rshono start` or any process manager running `node dist/server/main.mjs`.
 
-Everything in that bundle that depends on _where_ it runs — binding a port, serving `/_static` and `public/`, reading a prerendered page, gzipping, loading `.env` — sits behind a single interface the build resolves per `deploy` target, so the request-handling code has no platform in it. `deploy: 'node'` is the only target today; the entry's default export is already whatever the platform expects (nothing where rshono owns the process, a handler where the host does).
+Everything in that bundle that depends on _where_ it runs — binding a port, serving `/_static` and `public/`, reading a prerendered page, gzipping, loading `.env` — sits behind a single interface (`DeployRuntime`) that the build resolves per `deploy` target, so the request-handling code has no platform in it. The entry's default export is whatever the platform expects: nothing where rshono owns the process, a `fetch` handler where the host does.
+
+## Deployment
+
+`rshono build` targets one platform. Pick it with `deploy` in the config, `--deploy <name>`, or `RSHONO_DEPLOY` (in that precedence order); the default is `node`. `rshono dev` always runs the Node dev server whatever you choose — the target is a property of the build, not of developing.
+
+| `deploy`      | Handoff                           | Assets & prerendered pages                                      | After `build`                                         |
+| ------------- | --------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------- |
+| `node`        | binds a port                      | from `dist/` on disk                                            | `rshono start`                                        |
+| `bun`         | `{ fetch, port }` default export  | from `dist/` on disk                                            | `bun dist/server/main.mjs`                            |
+| `deno`        | `{ fetch }` default export        | from `dist/` on disk                                            | `deno serve -A dist/server/main.mjs`                  |
+| `cloudflare`  | `{ fetch }` default export        | Workers Assets; prerendered pages read via the `ASSETS` binding | `wrangler deploy`                                     |
+| `vercel`      | web handler in a Node function    | CDN for assets; prerendered pages inside the function           | `vercel deploy --prebuilt`                            |
+| `netlify`     | web handler, Functions v2         | CDN for assets; prerendered pages inside the function           | `netlify deploy --build=false --dir=.netlify/publish` |
+| `aws-lambda`  | streaming handler (Function URL)  | from the deployment package                                     | zip `dist/`, handler `dist/server/main.mjs`           |
+| `lambda-edge` | CloudFront origin-request handler | from the deployment package                                     | attach to an origin-request event                     |
+
+Notes worth knowing before choosing one:
+
+- **Cloudflare** bundles all your dependencies (a Worker resolves no `node_modules` at runtime), so a dependency that needs a real `node:` API beyond `nodejs_compat` will not work. The build scaffolds a `wrangler.jsonc` if the project has none — including `nodejs_compat`, which the request context needs for `AsyncLocalStorage` — and never touches it again. Bindings (D1, KV, R2) arrive as `getContext().env`; they are not available under `rshono dev`, which is plain Node.
+- **Prerendered pages are never CDN-served.** One URL answers with an HTML document or a flight payload depending on `Accept`, and a path-keyed CDN cannot choose, so the app always handles page URLs. Assets under `/_static` and `public/` do go straight to the CDN where there is one.
+- **Compression** is left to the platform on `cloudflare`, `vercel`, `netlify` and `lambda-edge`; the framework's streaming gzip is used on `node`, `bun`, `deno` and `aws-lambda`. Your `compress` setting only decides whether an available compressor is used.
+- **`lambda-edge` is the constrained one**: CloudFront returns the response as a value, so there is no streaming and a generated origin-request response is capped near 1 MB, and Lambda@Edge supports no environment variables. Attach it to `origin-request` (viewer events cannot hold an RSC bundle). Prefer `aws-lambda` behind a streaming Function URL unless you specifically need edge placement.
+- `rshono start` refuses a build made for another platform rather than starting a bundle with no listener in it.
 
 ## Requirements & limitations
 

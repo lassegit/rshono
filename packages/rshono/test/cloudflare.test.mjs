@@ -1,0 +1,178 @@
+// The Workers build, driven the way `workerd` would drive it: the bundle's default export called as
+// `fetch(request, env, ctx)`, with an ASSETS binding backed by the assets directory the build
+// assembled. That covers everything the platform differs on — the handoff, asset serving, prerendered
+// reads through a binding, and compression being the edge's job — without needing wrangler installed.
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { after, before, describe, test } from 'node:test';
+import { APP_ENV, buildApp, EXAMPLE_DIR, EXAMPLE_DIST } from './helpers.mjs';
+
+const ASSETS_ROOT = join(EXAMPLE_DIST, 'cloudflare', 'assets');
+const WRANGLER_CONFIG = join(EXAMPLE_DIR, 'wrangler.jsonc');
+const ORIGIN = 'https://rshono.example';
+
+/** Whether the project had a Wrangler config before the build, so the test only removes its own. */
+let hadWranglerConfig = false;
+
+/**
+ * A stand-in for the Workers Assets binding: serves the assembled directory, with a strong `ETag` and
+ * conditional-request handling, which is the part of the real contract the framework leans on.
+ */
+const ASSETS = {
+  async fetch(request) {
+    const path = decodeURIComponent(new URL(request.url).pathname);
+    const file = resolve(ASSETS_ROOT, `.${path}`);
+    if (!file.startsWith(ASSETS_ROOT)) return new Response('not found', { status: 404 });
+    try {
+      if (statSync(file).isDirectory()) return new Response('not found', { status: 404 });
+      const body = readFileSync(file);
+      const etag = `"${createHash('sha256').update(body).digest('hex').slice(0, 32)}"`;
+      if (request.headers.get('if-none-match') === etag) return new Response(null, { status: 304, headers: { etag } });
+      const type = path.endsWith('.html') ? 'text/html' : path.endsWith('.rsc') ? 'text/x-component' : 'application/octet-stream';
+      return new Response(body, { status: 200, headers: { 'content-type': type, etag } });
+    } catch {
+      return new Response('not found', { status: 404 });
+    }
+  },
+};
+
+let worker;
+let bundle;
+
+/** One request through the worker, the way the platform invokes it. */
+function fetchWorker(path, init) {
+  const env = { ASSETS, ...APP_ENV };
+  const ctx = { waitUntil() {}, passThroughOnException() {} };
+  return worker.fetch(new Request(`${ORIGIN}${path}`, init), env, ctx);
+}
+
+before(async () => {
+  hadWranglerConfig = existsSync(WRANGLER_CONFIG);
+  buildApp(EXAMPLE_DIR, undefined, ['--deploy', 'cloudflare']);
+  bundle = await import(`${join(EXAMPLE_DIST, 'server', 'main.mjs')}?cloudflare`);
+  worker = bundle.default;
+});
+
+after(() => {
+  // The build scaffolds this for a project that has none; a test must not leave one behind.
+  if (!hadWranglerConfig) rmSync(WRANGLER_CONFIG, { force: true });
+});
+
+describe('the Workers build output', () => {
+  test('is a single module — Wrangler cannot follow the computed specifier a split bundle imports by', () => {
+    assert.equal(existsSync(join(EXAMPLE_DIST, 'server', 'chunks')), false, 'async chunks must be inlined for this target');
+  });
+
+  test('leaves nothing external that workerd does not provide', () => {
+    const source = readFileSync(join(EXAMPLE_DIST, 'server', 'main.mjs'), 'utf8');
+    const imported = [...source.matchAll(/^import\s[^;]*?from\s*"([^"]+)"/gm)].map((m) => m[1]);
+    const foreign = imported.filter((request) => !/^(?:\.|node:|cloudflare:)/.test(request));
+    assert.deepEqual(foreign, [], 'a Worker resolves no node_modules at runtime, so everything else must be bundled');
+    // node: imports are fine, but only the ones `nodejs_compat` actually covers — and the scaffolded
+    // config enables it precisely because the request context needs AsyncLocalStorage.
+    assert.deepEqual([...new Set(imported.filter((r) => r.startsWith('node:')))], ['node:async_hooks']);
+  });
+
+  test('assembles one assets directory: the hashed bundle, public/ at the root, and the prerender tree', () => {
+    assert.ok(existsSync(join(ASSETS_ROOT, '_static', 'chunks')), '/_static/* is served straight from the CDN');
+    assert.ok(existsSync(join(ASSETS_ROOT, 'robots.txt')), 'public/ files keep their web-root paths');
+    assert.ok(existsSync(join(ASSETS_ROOT, '__ssg', 'docs', 'getting-started', 'index.html')), 'prerendered document');
+    assert.ok(existsSync(join(ASSETS_ROOT, '__ssg', 'docs', 'getting-started', 'index.rsc')), 'prerendered flight payload');
+  });
+
+  test('writes the caching and crawler rules the CDN cannot infer', () => {
+    const headers = readFileSync(join(ASSETS_ROOT, '_headers'), 'utf8');
+    assert.match(headers, /\/_static\/\*\n\s+Cache-Control: public, max-age=31536000, immutable/);
+    assert.match(headers, /\/__ssg\/\*\n\s+X-Robots-Tag: noindex/, 'the second copy of a page must not be indexed');
+  });
+
+  test('scaffolds a wrangler config, nodejs_compat and assets binding included', () => {
+    const config = JSON.parse(readFileSync(WRANGLER_CONFIG, 'utf8'));
+    assert.equal(config.main, 'dist/server/main.mjs');
+    assert.deepEqual(config.compatibility_flags, ['nodejs_compat']);
+    assert.equal(config.assets.directory, 'dist/cloudflare/assets');
+    assert.equal(config.assets.binding, 'ASSETS', 'the worker reads public/ and prerendered pages through it');
+  });
+
+  test('still exports app and routes, which the prerender pass imports', () => {
+    assert.equal(typeof bundle.app?.fetch, 'function');
+    assert.ok(Array.isArray(bundle.routes));
+  });
+
+  test('hands the platform a fetch handler as the default export', () => {
+    assert.equal(typeof worker.fetch, 'function');
+  });
+});
+
+describe('serving from a Worker', () => {
+  test('renders a dynamic page, with the framework baseline headers intact', async () => {
+    const res = await fetchWorker('/');
+    const body = await res.text();
+    assert.equal(res.status, 200);
+    assert.ok(body.startsWith('<!DOCTYPE html>'), 'a full SSR document');
+    assert.equal(res.headers.get('cache-control'), 'private, no-cache');
+    assert.equal(res.headers.get('x-content-type-options'), 'nosniff');
+  });
+
+  test('serves a prerendered document out of the assets binding', async () => {
+    const res = await fetchWorker('/docs/getting-started');
+    const body = await res.text();
+    assert.equal(res.status, 200);
+    assert.ok(body.startsWith('<!DOCTYPE html>'));
+    assert.equal(res.headers.get('cache-control'), 'public, max-age=300');
+    assert.ok(res.headers.get('vary')?.includes('Accept'), 'one URL, two representations');
+    assert.match(res.headers.get('etag') ?? '', /^W\//, 'weak, because compression changes the bytes but not the representation');
+  });
+
+  test('answers the same URL with the prerendered flight payload when asked for one', async () => {
+    const res = await fetchWorker('/docs/getting-started', { headers: { accept: 'text/x-component' } });
+    const body = await res.text();
+    assert.equal(res.status, 200);
+    assert.match(res.headers.get('content-type') ?? '', /^text\/x-component/);
+    assert.ok(!body.startsWith('<!DOCTYPE'), 'not the document');
+  });
+
+  test('revalidates a prerendered page with a 304', async () => {
+    const first = await fetchWorker('/docs/getting-started');
+    const etag = first.headers.get('etag');
+    await first.text();
+
+    const second = await fetchWorker('/docs/getting-started', { headers: { 'if-none-match': etag } });
+    assert.equal(second.status, 304);
+    assert.equal(await second.text(), '');
+  });
+
+  test('serves a public/ file through the binding', async () => {
+    const res = await fetchWorker('/robots.txt');
+    assert.equal(res.status, 200);
+    assert.match(await res.text(), /User-agent/i);
+  });
+
+  test('never serves the prerender tree at its own prefix', async () => {
+    const res = await fetchWorker('/__ssg/docs/getting-started/index.html');
+    await res.text();
+    assert.equal(res.status, 404, 'a page has one URL; the store prefix is not it');
+  });
+
+  test('does not compress — the edge already does, and workerd has no zlib stream', async () => {
+    const res = await fetchWorker('/', { headers: { 'accept-encoding': 'gzip' } });
+    await res.text();
+    assert.equal(res.headers.get('content-encoding'), null);
+  });
+
+  test('falls back to rendering a static route when there is no binding to read it from', async () => {
+    // A deployment that serves its assets some other way must still work: `readPrerendered` finds no
+    // binding, reports a miss, and the route renders per request.
+    //
+    // A second module instance, because the prerender cache lives for the life of one — which models
+    // an isolate, where the binding never changes underneath it.
+    const isolate = (await import(`${join(EXAMPLE_DIST, 'server', 'main.mjs')}?no-binding`)).default;
+    const res = await isolate.fetch(new Request(`${ORIGIN}/docs/getting-started`), {}, { waitUntil() {} });
+    const body = await res.text();
+    assert.equal(res.status, 200);
+    assert.ok(body.startsWith('<!DOCTYPE html>'));
+    assert.equal(res.headers.get('cache-control'), 'private, no-cache', 'rendered, not served from the prerender');
+  });
+});

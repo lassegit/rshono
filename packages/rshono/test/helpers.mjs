@@ -39,8 +39,8 @@ export function buildExampleWith(configPath) {
 }
 
 /** Build any app directory with the real CLI, the way a user would. */
-export function buildApp(dir, configPath) {
-  const args = [CLI, 'build', ...(configPath ? ['--config', configPath] : [])];
+export function buildApp(dir, configPath, extraArgs = []) {
+  const args = [CLI, 'build', ...(configPath ? ['--config', configPath] : []), ...extraArgs];
   const result = spawnSync(process.execPath, args, {
     cwd: dir,
     encoding: 'utf8',

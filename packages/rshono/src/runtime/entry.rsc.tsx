@@ -430,7 +430,7 @@ function buildApp(): Hono {
             // under `csp`, which has to be rendered per request to carry its nonce — the flight
             // payload never carries one, so it stays servable either way.
             if (!(cspEnabled && !isRsc)) {
-              const page = await runtime.readPrerendered(c.req.path, isRsc ? 'flight' : 'html');
+              const page = await runtime.readPrerendered(c, isRsc ? 'flight' : 'html');
               // A prerendered page is request-independent by construction, so it is safe to cache
               // publicly; the short max-age matches what `public/` files get. The ETag turns the
               // revalidation that follows into a 304 rather than the page all over again.

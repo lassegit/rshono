@@ -9,10 +9,11 @@ import { after, describe, test } from 'node:test';
 
 import { scanPageFiles } from '../dist/builder/page-files.js';
 import { createConfigs } from '../dist/builder/rspack-config.js';
-import { DEPLOY_TARGETS, NODE_PRESET, resolveDeployPreset } from '../dist/deploy/presets.js';
+import { DEPLOY_TARGETS, deployHintFor, NODE_PRESET, resolveDeployPreset } from '../dist/deploy/presets.js';
 import { appendVary, etagMatches } from '../dist/server/headers.js';
 import { parseByteSize, resolveServerConfig } from '../dist/server/server-config.js';
-import { prerenderStaticRoutes, readPrerendered, resolveSiteOrigin, ssgFilePath } from '../dist/server/ssg.js';
+import { prerenderedRelPath, ssgFilePath } from '../dist/server/prerendered.js';
+import { prerenderStaticRoutes, readPrerendered, resolveSiteOrigin } from '../dist/server/ssg.js';
 import { isControlDigest, parseRedirectDigest, RedirectSignal } from '../dist/runtime/control.js';
 import { MINIMAL_APP_DIR } from './helpers.mjs';
 
@@ -125,20 +126,37 @@ describe('etagMatches', () => {
 });
 
 describe('ssgFilePath', () => {
+  // Always '/'-separated, on every host: the same string addresses a file (`resolve()` takes forward
+  // slashes on Windows) and a key in an asset store, where a backslash is simply the wrong character.
   test('maps a concrete route path to its index.html', () => {
     assert.equal(ssgFilePath('/'), 'index.html');
-    assert.equal(ssgFilePath('/docs'), join('docs', 'index.html'));
-    assert.equal(ssgFilePath('/docs/getting-started/'), join('docs', 'getting-started', 'index.html'));
+    assert.equal(ssgFilePath('/docs'), 'docs/index.html');
+    assert.equal(ssgFilePath('/docs/getting-started/'), 'docs/getting-started/index.html');
   });
 
   test('maps the flight variant alongside the document', () => {
     assert.equal(ssgFilePath('/', 'flight'), 'index.rsc');
-    assert.equal(ssgFilePath('/docs', 'flight'), join('docs', 'index.rsc'));
+    assert.equal(ssgFilePath('/docs', 'flight'), 'docs/index.rsc');
   });
 
   test('refuses patterns that are not a single concrete path', () => {
     assert.equal(ssgFilePath('/docs/:slug'), null);
     assert.equal(ssgFilePath('/files/*'), null);
+  });
+});
+
+describe('prerenderedRelPath', () => {
+  // The shared guard every deploy target relies on: an asset store addressed by key has no
+  // `resolve()` to fall back on, so a traversal has to be refused here or not at all.
+  test('refuses traversal in a request path', () => {
+    for (const attempt of ['/../secret', '/docs/../../etc/passwd', '/..', '/docs/..', '/./docs', '/docs/./x']) {
+      assert.equal(prerenderedRelPath(attempt, 'html'), null, `${attempt} must not resolve to a file`);
+    }
+  });
+
+  test('passes an ordinary path through to its file', () => {
+    assert.equal(prerenderedRelPath('/docs/getting-started', 'html'), 'docs/getting-started/index.html');
+    assert.equal(prerenderedRelPath('/', 'flight'), 'index.rsc');
   });
 });
 
@@ -418,16 +436,27 @@ describe('deploy target resolution', () => {
   });
 
   test('the flag wins over the environment, which wins over the config file', () => {
-    // Only one target exists so far, so precedence is asserted through *which* value gets looked up:
-    // a loser never reaches the lookup, so only the winner can be the one reported as unknown.
-    assert.equal(resolveDeployPreset({ flag: 'node', env: 'ignored', config: 'ignored' }).name, 'node');
+    assert.equal(resolveDeployPreset({ flag: 'node', env: 'cloudflare', config: 'vercel' }).name, 'node');
+    assert.equal(resolveDeployPreset({ env: 'cloudflare', config: 'vercel' }).name, 'cloudflare');
+    assert.equal(resolveDeployPreset({ config: 'vercel' }).name, 'vercel');
+    // A loser never reaches the lookup, so only the winner can be the one reported as unknown.
     assert.throws(() => resolveDeployPreset({ flag: 'from-flag', env: 'node', config: 'node' }), /from-flag/);
-    assert.throws(() => resolveDeployPreset({ env: 'from-env', config: 'node' }), /from-env/);
+  });
+
+  test('every target resolves to a preset that can name its own runtime and deploy command', () => {
+    for (const target of DEPLOY_TARGETS) {
+      const preset = resolveDeployPreset({ config: target });
+      assert.equal(preset.name, target);
+      assert.match(preset.runtimeModule, /^deploy\/[\w-]+\/runtime\.js$/, `${target} points at a runtime module`);
+      assert.equal(deployHintFor(target), preset.deployHint);
+      assert.ok(preset.deployHint.length > 0, `${target} says how to deploy`);
+    }
   });
 
   test('an unknown target fails the build, naming the ones that exist', () => {
-    assert.throws(() => resolveDeployPreset({ config: 'cloudflare' }), /unknown deploy target "cloudflare"/);
-    assert.throws(() => resolveDeployPreset({ config: 'cloudflare' }), new RegExp(DEPLOY_TARGETS.join(', ')));
+    assert.throws(() => resolveDeployPreset({ config: 'fly' }), /unknown deploy target "fly"/);
+    assert.throws(() => resolveDeployPreset({ config: 'fly' }), new RegExp(DEPLOY_TARGETS.join(', ')));
+    assert.equal(deployHintFor('fly'), null, 'a dist/ from a newer rshono can carry a name this one lacks');
   });
 });
 
