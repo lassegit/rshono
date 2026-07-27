@@ -8,7 +8,8 @@ import { createConfigs } from '../builder/rspack-config.js';
 import type { RSHonoConfig } from '../config.js';
 import { NODE_PRESET } from '../deploy/presets.js';
 import type { DevMessage } from '../runtime/dev-protocol.js';
-import { createStaticMiddleware } from '../server/static.js';
+import { SERVER_DEFAULTS } from '../server/server-config.js';
+import { createStaticAssetsApp } from '../server/static.js';
 
 const WORKER_READY_TIMEOUT_MS = 15_000;
 
@@ -20,7 +21,7 @@ interface DevOptions {
 
 export async function devCommand(options: DevOptions): Promise<void> {
   const { rootDir, config } = options;
-  const port = options.port ?? 3000;
+  const port = options.port ?? SERVER_DEFAULTS.port;
   const distDir = join(rootDir, 'dist');
 
   await rm(distDir, { recursive: true, force: true });
@@ -157,7 +158,7 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
   const front = new Hono();
 
-  front.route('/_static', createStaticMiddleware({ root: join(distDir, 'static'), isDev: true }));
+  front.route('/_static', createStaticAssetsApp({ root: join(distDir, 'static'), isDev: true }));
 
   front.get('/_rshono/hmr', (c) => {
     let ctrl: ReadableStreamDefaultController<Uint8Array>;

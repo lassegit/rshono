@@ -32,7 +32,7 @@ function isPathRequest(request: string): boolean {
 const BROWSER_TARGETS = ['last 2 versions', '> 0.2%', 'not dead', 'Firefox ESR'];
 const NODE_TARGETS = ['node >= 22'];
 
-export interface ConfigOptions {
+export interface RspackConfigOptions {
   rootDir: string;
   isDev: boolean;
   /** The project's resolved config — supplies the {@link RSHonoConfig.rspack} hook and the runtime settings baked into the server bundle. */
@@ -42,7 +42,7 @@ export interface ConfigOptions {
   onServerComponentChanges?: () => void;
 }
 
-export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOptions] {
+export function createConfigs(options: RspackConfigOptions): [RspackOptions, RspackOptions] {
   const { rootDir, isDev, config, preset, onServerComponentChanges } = options;
   const srcDir = join(rootDir, 'src');
   const mode = isDev ? 'development' : 'production';
@@ -97,8 +97,8 @@ export function createConfigs(options: ConfigOptions): [RspackOptions, RspackOpt
   const pageScanPlugin = {
     apply(compiler: Compiler) {
       const refresh = () => scanPageFiles(routesFile, srcDir, pageFiles);
-      compiler.hooks.beforeRun.tap('RscHonoPageScan', refresh);
-      compiler.hooks.watchRun.tap('RscHonoPageScan', refresh);
+      compiler.hooks.beforeRun.tap('rshono/page-scan', refresh);
+      compiler.hooks.watchRun.tap('rshono/page-scan', refresh);
     },
   };
 

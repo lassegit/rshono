@@ -18,7 +18,7 @@ export const runtime: DeployRuntime = {
     const address = listenAddress();
     // The prerender pass imports this bundle; returning the export is inert either way, so unlike the
     // Node preset there is nothing to suppress. Only the log line is worth skipping.
-    if (!process.env.RSC_HONO_PRERENDER) console.log(readyMessage(address));
+    if (!process.env.RSHONO_PRERENDER) console.log(readyMessage(address));
     return { fetch: app.fetch, ...address };
   },
 };

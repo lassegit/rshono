@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { compress } from '../server/compress.js';
 import { loadEnvFiles } from '../server/load-env.js';
 import { readPrerendered } from '../server/ssg.js';
-import { createPublicFallback, createStaticMiddleware } from '../server/static.js';
+import { createPublicFallback, createStaticAssetsApp } from '../server/static.js';
 import type { DeployRuntime } from './contract.js';
 
 const isDev = __RSHONO_CONFIG__.isDev;
@@ -19,7 +19,7 @@ const isDev = __RSHONO_CONFIG__.isDev;
  * A preset that relocates the bundle keeps `dist/server/main.mjs` intact inside its own layout for
  * exactly this reason.
  */
-export const rootDir = join(import.meta.dirname, '..', '..');
+const rootDir = join(import.meta.dirname, '..', '..');
 
 const staticDir = join(rootDir, 'dist', 'static');
 const ssgDir = join(rootDir, 'dist', 'ssg');
@@ -35,12 +35,12 @@ const publicDir = isDev ? join(rootDir, 'public') : join(rootDir, 'dist', 'publi
  */
 export const fileSystemRuntime: Omit<DeployRuntime, 'serveApp'> = {
   mountStaticAssets(app: Hono): void {
-    app.route('/_static', createStaticMiddleware({ root: staticDir, isDev }));
+    app.route('/_static', createStaticAssetsApp({ root: staticDir, isDev }));
   },
 
   mountPublicFallback(app: Hono): void {
     if (!existsSync(publicDir)) return;
-    app.on(['GET', 'HEAD'], '/*', createPublicFallback(publicDir, isDev));
+    app.on(['GET', 'HEAD'], '/*', createPublicFallback({ root: publicDir, isDev }));
   },
 
   readPrerendered(c, variant) {

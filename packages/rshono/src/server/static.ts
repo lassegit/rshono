@@ -16,26 +16,26 @@ function cacheControl(isDev: boolean): MiddlewareHandler {
 }
 
 interface StaticOptions {
+  /** Directory the files are read from. */
   root: string;
+  /** Dev serves revalidated (`no-cache`); a build serves hashed files as immutable. */
   isDev: boolean;
 }
 
-export function createStaticMiddleware(options: StaticOptions): Hono {
+/** A sub-app serving the hashed client bundle, to be mounted at `/_static`. */
+export function createStaticAssetsApp(options: StaticOptions): Hono {
   const { root, isDev } = options;
   const app = new Hono();
 
-  app.on(
-    ['GET', 'HEAD'],
-    '/*',
-    cacheControl(isDev),
-    serveStatic({ root, rewriteRequestPath: (path) => path.replace(/^\/_static/, '') }),
-    (c) => c.text('Not Found', 404),
+  app.on(['GET', 'HEAD'], '/*', cacheControl(isDev), serveStatic({ root, rewriteRequestPath: (path) => path.replace(/^\/_static/, '') }), (c) =>
+    c.text('Not Found', 404),
   );
 
   return app;
 }
 
-export function createPublicFallback(root: string, isDev: boolean): MiddlewareHandler {
+/** Middleware serving the app's `public/` files verbatim at the web root, for paths no route claimed. */
+export function createPublicFallback({ root, isDev }: StaticOptions): MiddlewareHandler {
   const serve = serveStatic({ root });
   return async (c, next) => {
     const result = await serve(c, next);

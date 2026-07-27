@@ -128,7 +128,7 @@ export default defineConfig({
 });
 ```
 
-`defineConfig` is an identity helper for editor autocomplete; `export default { … } satisfies RSHonoConfig` works too. `deploy`/`port`/`host`/`rspack` are consumed by the CLI; the framework settings (`trustProxy`, `checkOrigin`, `allowedOrigins`, `csp`, `cspDirectives`, `bodySizeLimit`, `renderTimeout`, `compress`) are resolved from this file at build time and **compiled into the server bundle** — there is no parallel `RSC_HONO_*` env-var interface (environment variables are for secrets). Changing one of these settings means a rebuild. The two deployment-conventional exceptions stay env-overridable: `--port`/`PORT` and `HOST` win over the file, which wins over the built-in default. Point `rshono build` at a different config with `--config <path>`.
+`defineConfig` is an identity helper for editor autocomplete; `export default { … } satisfies RSHonoConfig` works too. `deploy`/`port`/`host`/`rspack` are consumed by the CLI; the framework settings (`trustProxy`, `checkOrigin`, `allowedOrigins`, `csp`, `cspDirectives`, `bodySizeLimit`, `renderTimeout`, `compress`) are resolved from this file at build time and **compiled into the server bundle** — there is no parallel env-var interface for them (environment variables are for secrets). Changing one of these settings means a rebuild. The two deployment-conventional exceptions stay env-overridable: `--port`/`PORT` and `HOST` win over the file, which wins over the built-in default. Point `rshono build` at a different config with `--config <path>`.
 
 ## Security & hardening
 

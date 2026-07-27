@@ -24,28 +24,25 @@ import { runtime } from '@rshono/deploy';
 import { routes as userRoutes } from '@rshono/routes';
 // @ts-expect-error — resolved by the '@rshono/server-app' alias (src/server.ts or the empty fallback)
 import * as serverAppModule from '@rshono/server-app';
-import { isPageRoute, type EndpointRoute, type ErrorInfo, type PageComponent, type Route, type RouteConfig, type SpecialPage } from '../router.js';
+import { isPageRoute, type ErrorInfo, type FallbackPage, type PageComponent, type Route, type RouteConfig } from '../router.js';
 import { appendVary, etagMatches } from '../server/headers.js';
 import { publicUrl, readParams, reportServerError, runWithContext } from './context.js';
 import { isControlSignal, RedirectSignal, type ControlSignal } from './control.js';
 import { renderHTML } from './entry.ssr.js';
 import { RouterProvider } from './navigation.js';
-import { acceptsFlight, isActionRequest, parseRenderRequest, wantsRsc } from './request.js';
+import { acceptsRsc, isActionRequest, parseRenderRequest, wantsRsc } from './request.js';
 
 const serverApp = ((serverAppModule as { default?: unknown }).default ?? null) as Hono | null;
 
 // Framework settings resolved from rshono.config.ts and compiled into the bundle at build time
 // (see builder/rspack-config.ts). These have no runtime env-var interface — env is for secrets.
+// Named after their ServerConfig fields, so what a setting does here is one grep from where it is
+// resolved. `isDev` among them: the build mode is decided by which command produced the bundle, not
+// by `process.env.NODE_ENV`, and not every runtime this deploys to has a `process` to read anyway.
 const CONFIG = __RSHONO_CONFIG__;
-// The build mode, read from the baked config rather than `process.env.NODE_ENV`: it is decided by
-// which command produced the bundle, and not every runtime this can be deployed to has a `process`.
-const isDev = CONFIG.isDev;
-const RENDER_TIMEOUT_MS = CONFIG.renderTimeoutMs;
-const cspEnabled = CONFIG.cspEnabled;
-const checkOrigin = CONFIG.checkOrigin; // CSRF origin check on action POSTs.
-const allowedOrigins = new Set(CONFIG.allowedOrigins); // extra cross-origin hosts permitted to post actions.
-const MAX_BODY_BYTES = CONFIG.maxBodyBytes; // request body cap in bytes; 0 disables it.
-const compressEnabled = CONFIG.compress;
+const { isDev, renderTimeoutMs, cspEnabled, checkOrigin, maxBodyBytes, compress: compressEnabled } = CONFIG;
+/** Extra cross-origin hosts permitted to post server actions, beyond the app's own origin. */
+const allowedOrigins = new Set(CONFIG.allowedOrigins);
 
 /** How long a prerendered page may be reused before revalidating. Also what `public/` files get. */
 const SSG_CACHE_CONTROL = 'public, max-age=300';
@@ -160,8 +157,10 @@ interface ComponentRenderOptions {
   formState?: ReactFormState;
   returnValue?: RscPayload['returnValue'];
   temporaryReferences?: TemporaryReferenceSet;
-  extraProps?: Record<string, unknown>;
-  payloadExtras?: Pick<RscPayload, 'redirect' | 'notFound'>;
+  /** Passed when the page being rendered is the `error` page, which takes it as an extra prop. */
+  errorInfo?: ErrorInfo;
+  /** Marks the payload as the not-found page, so a soft navigation can tell it apart from the page it asked for. */
+  notFound?: boolean;
   /** An already-running deadline to render under — passed when the request spent time on an action first. */
   deadline?: RenderDeadline;
 }
@@ -218,12 +217,12 @@ function createRenderDeadline(requestSignal: AbortSignal, ms: number): RenderDea
 }
 
 async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opts: ComponentRenderOptions): Promise<Response> {
-  const deadline = opts.deadline ?? createRenderDeadline(c.req.raw.signal, RENDER_TIMEOUT_MS);
+  const deadline = opts.deadline ?? createRenderDeadline(c.req.raw.signal, renderTimeoutMs);
   const signal = deadline.signal;
 
   const nonce = cspEnabled && !opts.isRsc ? crypto.randomUUID() : undefined;
   const params = readParams(c);
-  const props = { params, url: publicUrl(c).toString(), ...opts.extraProps };
+  const props = { params, url: publicUrl(c).toString(), ...(opts.errorInfo ? { error: opts.errorInfo } : null) };
   const root = (
     <>
       {nonce && <meta property="csp-nonce" nonce={nonce} />}
@@ -236,7 +235,8 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
     </>
   );
 
-  const rscPayload: RscPayload = { root, formState: opts.formState, returnValue: opts.returnValue, ...opts.payloadExtras };
+  // `notFound` only when it is true, so the flight payload of an ordinary page doesn't carry the key.
+  const rscPayload: RscPayload = { root, formState: opts.formState, returnValue: opts.returnValue, ...(opts.notFound ? { notFound: true } : null) };
 
   let controlSignal: ControlSignal | undefined;
   const rscStream = renderToReadableStream(rscPayload, {
@@ -291,7 +291,7 @@ async function renderPage(c: Context, loadPage: () => Promise<ServerEntry<PageCo
   const renderRequest = parseRenderRequest(request);
   // Created before the action runs so the deadline covers the whole request, then handed to
   // `renderComponent` so the render doesn't get a fresh budget of its own.
-  const deadline = createRenderDeadline(request.signal, RENDER_TIMEOUT_MS);
+  const deadline = createRenderDeadline(request.signal, renderTimeoutMs);
 
   let returnValue: ActionResult | undefined;
   let formState: ReactFormState | undefined;
@@ -382,8 +382,8 @@ function buildApp(): Hono {
   // and the src/server.ts sub-app alike — since anything that buffers a body (`.json()`,
   // `.formData()`) is exposed, not just server actions. Rejects an over-cap `Content-Length` up
   // front and otherwise counts the stream, so a chunked or under-reported body is still cut off.
-  if (MAX_BODY_BYTES > 0) {
-    app.use(bodyLimit({ maxSize: MAX_BODY_BYTES, onError: (c) => c.text('Payload Too Large', 413) }));
+  if (maxBodyBytes > 0) {
+    app.use(bodyLimit({ maxSize: maxBodyBytes, onError: (c) => c.text('Payload Too Large', 413) }));
   }
 
   runtime.mountStaticAssets(app);
@@ -395,10 +395,11 @@ function buildApp(): Hono {
     app.route('/', serverApp);
   }
 
-  const memoizePage = (page: SpecialPage, label: string) => once(() => loadPageModule(page.component, label));
+  const memoizePage = (page: FallbackPage, label: string) => once(() => loadPageModule(page.component, label));
   const loadNotFoundPage = routeConfig.notFound ? memoizePage(routeConfig.notFound, 'the notFound page') : null;
 
-  const resolveControl = async (c: Context, signal: ControlSignal): Promise<Response> => {
+  /** Turns a thrown `redirect()` / `notFound()` into the response it stands for. */
+  const respondToControlSignal = async (c: Context, signal: ControlSignal): Promise<Response> => {
     const isRsc = wantsRsc(parseRenderRequest(c.req.raw));
     if (signal instanceof RedirectSignal) {
       if (isRsc) {
@@ -409,7 +410,7 @@ function buildApp(): Hono {
       return c.redirect(signal.location, signal.status as RedirectStatusCode);
     }
     if (loadNotFoundPage) {
-      return renderComponent(c, await loadNotFoundPage(), { status: 404, isRsc, payloadExtras: { notFound: true } });
+      return renderComponent(c, await loadNotFoundPage(), { status: 404, isRsc, notFound: true });
     }
     // Plain text, but still one of the two answers this URL gives depending on `Accept`.
     return c.text('Not Found', 404, { vary: 'Accept' });
@@ -424,7 +425,7 @@ function buildApp(): Hono {
       const handler: Handler = async (c) => {
         try {
           if (servesPrerendered && c.req.method === 'GET') {
-            const isRsc = acceptsFlight(c.req.raw);
+            const isRsc = acceptsRsc(c.req.raw);
             // Both representations are prerendered, so a soft navigation is served from the build too
             // rather than re-rendering a page that was already built. The exception is the HTML
             // under `csp`, which has to be rendered per request to carry its nonce — the flight
@@ -451,21 +452,20 @@ function buildApp(): Hono {
           }
           return await runWithContext(c, () => renderPage(c, loadPage));
         } catch (error) {
-          if (isControlSignal(error)) return runWithContext(c, () => resolveControl(c, error));
+          if (isControlSignal(error)) return runWithContext(c, () => respondToControlSignal(c, error));
           throw error;
         }
       };
       app.on(['GET', 'POST'], route.path, handler);
     } else {
-      const endpoint = route as EndpointRoute;
-      const loadEndpoint = once(() => endpoint.server());
+      const loadEndpoint = once(() => route.server());
       const handler: Handler = async (c, next) => {
         const { handler: endpointHandler } = await loadEndpoint();
         return endpointHandler(c, next);
       };
-      const method = endpoint.method ?? 'all';
-      if (method === 'all') app.all(endpoint.path, handler);
-      else app.on(method.toUpperCase(), endpoint.path, handler);
+      const method = route.method ?? 'all';
+      if (method === 'all') app.all(route.path, handler);
+      else app.on(method.toUpperCase(), route.path, handler);
     }
   }
 
@@ -481,7 +481,7 @@ function buildApp(): Hono {
 
   const loadErrorPage = routeConfig.error ? memoizePage(routeConfig.error, 'the error page') : null;
   app.onError(async (error, c) => {
-    if (isControlSignal(error)) return runWithContext(c, () => resolveControl(c, error));
+    if (isControlSignal(error)) return runWithContext(c, () => respondToControlSignal(c, error));
     reportServerError(error, { source: 'request', request: c.req.raw, message: '[rshono] request error:' });
     const isRsc = wantsRsc(parseRenderRequest(c.req.raw));
     if (loadErrorPage && (isRsc || acceptsHtml(c))) {
@@ -492,13 +492,7 @@ function buildApp(): Hono {
           }
         : { message: 'Internal Server Error' };
       try {
-        return await runWithContext(c, async () =>
-          renderComponent(c, await loadErrorPage(), {
-            status: 500,
-            isRsc,
-            extraProps: { error: errorInfo },
-          }),
-        );
+        return await runWithContext(c, async () => renderComponent(c, await loadErrorPage(), { status: 500, isRsc, errorInfo }));
       } catch (renderError) {
         reportServerError(renderError, { source: 'request', request: c.req.raw, message: '[rshono] the error page failed to render:' });
       }

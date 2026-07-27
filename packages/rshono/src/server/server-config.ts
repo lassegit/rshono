@@ -38,7 +38,13 @@ export interface ServerConfig {
   host?: string;
 }
 
-/** The single source of truth for the framework's built-in defaults. */
+/**
+ * The single source of truth for the framework's built-in defaults.
+ *
+ * `renderTimeoutMs` and `maxBodyBytes` are resolved here, into the bundle. `port` and `host` are not:
+ * they stay env-overridable at runtime, so the default is applied where the address is resolved
+ * (`deploy/listen.ts` for a server bundle, `cli/dev.ts` for the dev server) and this is what both read.
+ */
 export const SERVER_DEFAULTS = {
   renderTimeoutMs: 10_000,
   maxBodyBytes: 1024 * 1024, // 1 MiB, matching Next.js's server-action body-size limit.

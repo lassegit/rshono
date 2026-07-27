@@ -10,8 +10,6 @@ export interface DeployBuildContext {
   rootDir: string;
   /** `<root>/dist`. */
   distDir: string;
-  /** The server bundle, `<root>/dist/server/main.mjs`. */
-  serverBundle: string;
   /** The hashed client bundle, `<root>/dist/static` — served at `/_static`. */
   staticDir: string;
   /** The copy of the app's `public/`, or `null` when it has none. Served at the web root. */
@@ -84,7 +82,7 @@ export const NODE_PRESET: DeployPreset = {
  * computed specifier Rspack's ESM chunk loader emits — a split bundle would deploy and then fail on
  * the first page render.
  */
-export const CLOUDFLARE_PRESET: DeployPreset = {
+const CLOUDFLARE_PRESET: DeployPreset = {
   name: 'cloudflare',
   runtimeModule: 'deploy/cloudflare/runtime.js',
   deployHint: 'deploy with `wrangler deploy`',
@@ -104,13 +102,13 @@ export const CLOUDFLARE_PRESET: DeployPreset = {
  * `node:` compatibility covers everything `server/` uses, so the bundle is Node's — only the handoff
  * differs, which is precisely the thing an app cannot do for itself.
  */
-export const BUN_PRESET: DeployPreset = {
+const BUN_PRESET: DeployPreset = {
   name: 'bun',
   runtimeModule: 'deploy/bun/runtime.js',
   deployHint: 'run `bun dist/server/main.mjs`',
 };
 
-export const DENO_PRESET: DeployPreset = {
+const DENO_PRESET: DeployPreset = {
   name: 'deno',
   runtimeModule: 'deploy/deno/runtime.js',
   deployHint: 'run `deno serve -A dist/server/main.mjs`',
@@ -120,14 +118,14 @@ export const DENO_PRESET: DeployPreset = {
  * Vercel and Netlify: one Node function behind the platform's CDN, which serves the assets and reaches
  * the function only for a page. Both `finalize` hooks assemble the layout the platform uploads.
  */
-export const VERCEL_PRESET: DeployPreset = {
+const VERCEL_PRESET: DeployPreset = {
   name: 'vercel',
   runtimeModule: 'deploy/vercel/runtime.js',
   deployHint: 'deploy with `vercel deploy --prebuilt`',
   finalize: finalizeVercelBuild,
 };
 
-export const NETLIFY_PRESET: DeployPreset = {
+const NETLIFY_PRESET: DeployPreset = {
   name: 'netlify',
   runtimeModule: 'deploy/netlify/runtime.js',
   deployHint: 'deploy with `netlify deploy --build=false --dir=.netlify/publish`',
@@ -135,7 +133,7 @@ export const NETLIFY_PRESET: DeployPreset = {
 };
 
 /** AWS Lambda behind a Function URL in `RESPONSE_STREAM` mode — the AWS shape that keeps streaming. */
-export const AWS_LAMBDA_PRESET: DeployPreset = {
+const AWS_LAMBDA_PRESET: DeployPreset = {
   name: 'aws-lambda',
   runtimeModule: 'deploy/aws-lambda/runtime.js',
   deployHint: 'zip dist/ with the handler at dist/server/main.mjs',

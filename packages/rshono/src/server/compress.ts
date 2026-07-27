@@ -4,8 +4,8 @@ import { Duplex } from 'node:stream';
 import { constants, createGzip } from 'node:zlib';
 import { appendVary } from './headers.js';
 
-/** Below this many bytes the gzip framing costs more than it saves. Only applied when the length is known up front. */
-const MIN_COMPRESSED_BYTES = 1024;
+/** Below this many uncompressed bytes the gzip framing costs more than it saves. Only applied when the length is known up front. */
+const COMPRESSION_THRESHOLD_BYTES = 1024;
 
 /** `Cache-Control: no-transform` is a proxy asking not to be re-encoded; honour it. */
 const NO_TRANSFORM = /(?:^|,)\s*no-transform\s*(?:,|$)/i;
@@ -49,7 +49,7 @@ export function compress(): MiddlewareHandler {
     if (NO_TRANSFORM.test(res.headers.get('cache-control') ?? '')) return;
 
     const contentLength = res.headers.get('content-length');
-    if (contentLength !== null && Number(contentLength) < MIN_COMPRESSED_BYTES) return;
+    if (contentLength !== null && Number(contentLength) < COMPRESSION_THRESHOLD_BYTES) return;
     if (!acceptsGzip(c.req.header('accept-encoding'))) return;
 
     // Read `.body` only once we know we're compressing: it is what makes @hono/node-server's

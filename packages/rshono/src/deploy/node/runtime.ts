@@ -17,7 +17,7 @@ export const runtime: DeployRuntime = {
     // `rshono build` imports this bundle to prerender `render: 'static'` routes. That pass renders
     // through `app.fetch` directly and must not bind a port — nothing is listening for it, and the
     // build would never exit.
-    if (process.env.RSC_HONO_PRERENDER) return;
+    if (process.env.RSHONO_PRERENDER) return;
 
     // The dev server runs this bundle in a worker thread and picks the port itself, so its choice wins
     // over both the environment and the config file.

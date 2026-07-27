@@ -29,8 +29,9 @@ import { NotFoundSignal, RedirectSignal } from './control.js';
  */
 export type RedirectStatus = 301 | 302 | 303 | 307 | 308;
 
-const store = new AsyncLocalStorage<Context>();
+const contextStorage = new AsyncLocalStorage<Context>();
 
+/** One {@link Ctx} per Hono {@link Context}, so repeated `getContext()` calls in a request share its lazy getters. */
 const wrappers = new WeakMap<Context, Ctx>();
 
 /**
@@ -50,7 +51,7 @@ function processEnv(): Record<string, string | undefined> {
 
 /**
  * True when this process is the SSG build prerendering `render: 'static'` routes,
- * rather than a server handling real requests. `build.ts` sets `RSC_HONO_PRERENDER`
+ * rather than a server handling real requests. `build.ts` sets `RSHONO_PRERENDER`
  * before importing the app bundle and starting the prerender pass; the app bundle
  * inlines its own copy of this module, so a shared `process.env` (not a module-level
  * flag) is what reliably crosses that boundary. Read by {@link getContext} to turn a
@@ -58,7 +59,7 @@ function processEnv(): Record<string, string | undefined> {
  * silently baking synthetic build-time values (a `localhost` URL, no cookies, build
  * env) into the snapshot.
  */
-const prerendering = typeof process !== 'undefined' && !!process.env?.RSC_HONO_PRERENDER;
+const prerendering = typeof process !== 'undefined' && !!process.env?.RSHONO_PRERENDER;
 
 /**
  * Runs `fn` with the given Hono {@link Context} bound as the ambient request
@@ -70,7 +71,7 @@ const prerendering = typeof process !== 'undefined' && !!process.env?.RSC_HONO_P
  * @internal
  */
 export function runWithContext<T>(c: Context, fn: () => T): T {
-  return store.run(c, fn);
+  return contextStorage.run(c, fn);
 }
 
 /**
@@ -292,7 +293,7 @@ export function getContext<E extends Env = Env>(): Ctx<E> {
         'the getContext() call.',
     );
   }
-  const c = store.getStore();
+  const c = contextStorage.getStore();
   if (!c) {
     throw new Error(
       '[rshono] getContext() was called outside a request. It only works inside a server component or a server action, not at module load.',

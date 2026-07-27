@@ -49,7 +49,7 @@ const defaultRouter: Router = { push: noop, replace: noop, back: noop, forward: 
  *
  * @internal
  */
-export const NavRuntimeContext = createContext<Router>(defaultRouter);
+export const RouterContext = createContext<Router>(defaultRouter);
 
 const NavigationContext = createContext<Navigation | null>(null);
 
@@ -60,7 +60,7 @@ const NavigationContext = createContext<Navigation | null>(null);
  * @internal
  */
 export function RouterProvider({ href, params, children }: { href: string; params: Record<string, string>; children: ReactNode }) {
-  const router = useContext(NavRuntimeContext);
+  const router = useContext(RouterContext);
   const value = useMemo<Navigation>(() => {
     const url = new URL(href);
     return { url, pathname: url.pathname, searchParams: url.searchParams, params, router };

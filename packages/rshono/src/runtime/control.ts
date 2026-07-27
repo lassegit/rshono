@@ -1,5 +1,5 @@
 const REDIRECT_PREFIX = 'RSHONO_REDIRECT;';
-export const NOT_FOUND_DIGEST = 'RSHONO_NOT_FOUND';
+const NOT_FOUND_DIGEST = 'RSHONO_NOT_FOUND';
 
 export class RedirectSignal extends Error {
   readonly digest: string;

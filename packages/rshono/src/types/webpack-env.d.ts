@@ -1,8 +1,6 @@
 interface ImportMeta {
   webpackHot?: {
-    accept(dependencies?: string | string[], callback?: () => void): void;
     check(autoApply?: boolean): Promise<unknown>;
-    apply(): Promise<unknown>;
     status(): string;
   };
 }

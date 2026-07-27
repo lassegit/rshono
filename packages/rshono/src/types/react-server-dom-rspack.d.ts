@@ -1,8 +1,10 @@
+// Hand-written declarations for `react-server-dom-rspack` and the manifest global its Rspack plugins
+// inject. Deliberately narrowed to what the framework actually calls: the package is still `0.0.x`, so
+// anything declared here that nothing uses would be an unverified guess about an API that moves
+// underneath us.
+
 declare const __rspack_rsc_manifest__: {
   serverManifest: Record<string, { id: string; name: string; chunks: string[]; async?: boolean }>;
-  clientManifest: Record<string, { id: string; name: string; chunks: string[]; async?: boolean }>;
-  entryCssFiles: Record<string, string[]>;
-  entryJsFiles: string[];
 };
 
 /**
@@ -17,7 +19,6 @@ declare module 'react-server-dom-rspack/server' {
   export type ServerManifest = Record<string, { id: string; name: string; chunks: string[]; async?: boolean }>;
 
   export type ServerEntry<T> = T & {
-    resource?: string;
     entryJsFiles?: string[];
     entryCssFiles?: string[];
   };
@@ -26,10 +27,7 @@ declare module 'react-server-dom-rspack/server' {
     model: unknown,
     options?: {
       temporaryReferences?: TemporaryReferenceSet;
-      environmentName?: string | (() => string);
-      filterStackFrame?: (url: string, functionName: string, lineNumber: number, columnNumber: number) => boolean;
       onError?: (error: unknown) => void;
-      identifierPrefix?: string;
       signal?: AbortSignal;
     },
   ): ReadableStream<Uint8Array>;
@@ -61,12 +59,7 @@ declare module 'react-server-dom-rspack/client.browser' {
 
   export function createTemporaryReferenceSet(): TemporaryReferenceSet;
 
-  export function encodeReply(
-    value: unknown,
-    options?: { temporaryReferences?: TemporaryReferenceSet; signal?: AbortSignal },
-  ): Promise<string | FormData>;
+  export function encodeReply(value: unknown, options?: { temporaryReferences?: TemporaryReferenceSet }): Promise<string | FormData>;
 
   export function setServerCallback(callback: (id: string, args: unknown[]) => Promise<unknown>): void;
-
-  export function setFindSourceMapURLCallback(callback: (fileName: string, environmentName: string) => string | null): void;
 }

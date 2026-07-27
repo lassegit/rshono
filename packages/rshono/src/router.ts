@@ -177,11 +177,11 @@ export function isPageRoute(route: Route): route is PageRoute {
 }
 
 /**
- * A framework-owned page declared outside the `routes` array — `notFound` and
+ * A page the framework falls back to rather than routes to — `notFound` and
  * `error` in {@link RouteConfig}. Same contract as a {@link PageRoute}
  * `component`, without a path of its own.
  */
-export interface SpecialPage {
+export interface FallbackPage {
   /** Dynamic import of the page module; its default export is the {@link PageComponent}. */
   component: () => Promise<{ default: PageComponent }>;
 }
@@ -224,9 +224,9 @@ export interface RouteConfig<TRoutes extends readonly Route[] = readonly Route[]
   /** Every page and endpoint in the app, matched in order. */
   routes: TRoutes;
   /** Page rendered with a 404 status for unmatched paths and for `notFound()` calls. */
-  notFound?: SpecialPage;
+  notFound?: FallbackPage;
   /** Page rendered with a 500 status when a request throws. Receives {@link ErrorPageProps}. */
-  error?: SpecialPage;
+  error?: FallbackPage;
 }
 
 type ValidateRoute<R> = R extends {

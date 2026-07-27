@@ -5,7 +5,8 @@
  *
  * The two companion entry points are runtime-only:
  * - `rshono/server` — {@link https://hono.dev | Hono} request context inside
- *   server components and actions (`getContext`, `redirect`, `notFound`).
+ *   server components and actions (`getContext`, `redirect`, `notFound`), plus
+ *   `onServerError` for reporting the errors the framework catches.
  * - `rshono/client` — hooks and components for `'use client'` modules
  *   (`useNavigation`, `Boundary`, `ErrorBoundary`, `NavigationProgress`).
  *
@@ -19,6 +20,7 @@ export {
   type EndpointServerModule,
   type ErrorInfo,
   type ErrorPageProps,
+  type FallbackPage,
   type HTTPMethod,
   type PageComponent,
   type PageProps,
@@ -26,7 +28,6 @@ export {
   type PathParams,
   type Route,
   type RouteConfig,
-  type SpecialPage,
 } from './router.js';
 
 export { defineConfig, type RSHonoConfig, type RspackHookContext } from './config.js';

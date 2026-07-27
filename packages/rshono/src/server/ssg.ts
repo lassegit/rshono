@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { isPageRoute, type PageRoute, type Route } from '../router.js';
-import { prerenderedRelPath, ssgFilePath, VARIANT, type PrerenderedPage, type PrerenderVariant } from './prerendered.js';
+import { prerenderedRelPath, ssgFilePath, VARIANTS, type PrerenderedPage, type PrerenderVariant } from './prerendered.js';
 
 /**
  * Stand-in origin for a build that didn't declare {@link RSHonoConfig.siteUrl}. Deliberately
@@ -118,9 +118,9 @@ async function renderVariant(
   url: string,
   variant: PrerenderVariant,
 ): Promise<{ body: string } | { status: number } | null> {
-  const response = await fetch(new Request(url, { headers: { Accept: VARIANT[variant].accept } }));
+  const response = await fetch(new Request(url, { headers: { Accept: VARIANTS[variant].accept } }));
   if (response.status !== 200) return { status: response.status };
-  if (!(response.headers.get('Content-Type') ?? '').includes(VARIANT[variant].contentType)) return null;
+  if (!(response.headers.get('Content-Type') ?? '').includes(VARIANTS[variant].contentType)) return null;
   return { body: await response.text() };
 }
 

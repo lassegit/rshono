@@ -16,7 +16,7 @@
  */
 export type PrerenderVariant = 'html' | 'flight';
 
-export const VARIANT = {
+export const VARIANTS = {
   html: { file: 'index.html', accept: 'text/html', contentType: 'text/html' },
   flight: { file: 'index.rsc', accept: 'text/x-component', contentType: 'text/x-component' },
 } as const satisfies Record<PrerenderVariant, { file: string; accept: string; contentType: string }>;
@@ -32,7 +32,7 @@ export const VARIANT = {
 export function ssgFilePath(routePath: string, variant: PrerenderVariant = 'html'): string | null {
   if (/[:*]/.test(routePath)) return null;
   const trimmed = routePath.replace(/^\/+|\/+$/g, '');
-  const file = VARIANT[variant].file;
+  const file = VARIANTS[variant].file;
   return trimmed === '' ? file : `${trimmed}/${file}`;
 }
 

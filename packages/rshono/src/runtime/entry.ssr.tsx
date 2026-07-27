@@ -72,11 +72,12 @@ function SsrFailureDocument({ error }: { error: unknown }) {
 }
 
 export async function renderHTML(rscStream: ReadableStream<Uint8Array>, options: RenderHTMLOptions) {
-  const [rscStream1, rscStream2] = rscStream.tee();
+  // One copy is rendered to HTML here; the other rides along in that HTML for the client to hydrate from.
+  const [rscForSsr, rscForClient] = rscStream.tee();
 
   let payload: Promise<RscPayload>;
   function SsrRoot() {
-    payload ??= createFromReadableStream<RscPayload>(rscStream1, options.nonce ? { nonce: options.nonce } : undefined);
+    payload ??= createFromReadableStream<RscPayload>(rscForSsr, options.nonce ? { nonce: options.nonce } : undefined);
     return React.use(payload).root;
   }
 
@@ -96,7 +97,7 @@ export async function renderHTML(rscStream: ReadableStream<Uint8Array>, options:
     htmlStream = await renderToReadableStream(<SsrFailureDocument error={error} />, { nonce: options.nonce });
   }
 
-  const responseStream = htmlStream.pipeThrough(injectRSCPayload(rscStream2, options.nonce ? { nonce: options.nonce } : undefined));
+  const responseStream = htmlStream.pipeThrough(injectRSCPayload(rscForClient, options.nonce ? { nonce: options.nonce } : undefined));
 
   return { stream: responseStream, status };
 }

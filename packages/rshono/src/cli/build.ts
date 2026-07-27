@@ -51,7 +51,7 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
 
   const ssgDir = join(distDir, 'ssg');
   await rm(ssgDir, { recursive: true, force: true });
-  process.env.RSC_HONO_PRERENDER = '1';
+  process.env.RSHONO_PRERENDER = '1';
   const bundle = (await import(pathToFileURL(join(distDir, 'server', 'main.mjs')).href)) as {
     app: Hono;
     routes: readonly Route[];
@@ -72,7 +72,6 @@ export async function buildCommand(options: BuildOptions): Promise<void> {
   await preset.finalize?.({
     rootDir,
     distDir,
-    serverBundle: join(distDir, 'server', 'main.mjs'),
     staticDir: join(distDir, 'static'),
     publicDir: distPublicDir,
     ssgDir,

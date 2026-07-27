@@ -11,8 +11,8 @@ import { rscStream } from 'rsc-html-stream/client';
 import { isControlDigest, parseRedirectDigest } from './control.js';
 import type { DevMessage } from './dev-protocol.js';
 import type { RscPayload } from './entry.rsc.js';
-import { NavRuntimeContext, type Router } from './navigation.js';
-import { createRscRenderRequest } from './request.js';
+import { RouterContext, type Router } from './navigation.js';
+import { createRscRequest } from './request.js';
 
 const isDev = process.env.NODE_ENV === 'development';
 
@@ -97,7 +97,7 @@ function cacheKey(href: string): string | null {
 }
 
 function requestPayload(href: string): Promise<RscPayload> {
-  return createFromFetch<RscPayload>(fetch(createRscRenderRequest(new URL(href, location.href).href)));
+  return createFromFetch<RscPayload>(fetch(createRscRequest(new URL(href, location.href).href)));
 }
 
 function warmPayload(href: string): void {
@@ -233,14 +233,14 @@ async function main() {
       [],
     );
 
-    const runtime = React.useMemo<Router>(() => ({ push, replace, back, forward, refresh, pending }), [pending]);
+    const router = React.useMemo<Router>(() => ({ push, replace, back, forward, refresh, pending }), [pending]);
 
-    return <NavRuntimeContext.Provider value={runtime}>{payload.root}</NavRuntimeContext.Provider>;
+    return <RouterContext.Provider value={router}>{payload.root}</RouterContext.Provider>;
   }
 
   setServerCallback(async (id, args) => {
     const temporaryReferences = createTemporaryReferenceSet();
-    const renderRequest = createRscRenderRequest(window.location.href, {
+    const request = createRscRequest(window.location.href, {
       id,
       body: await encodeReply(args, { temporaryReferences }),
     });
@@ -249,7 +249,7 @@ async function main() {
     payloadCache.clear();
     let payload: RscPayload;
     try {
-      payload = await createFromFetch<RscPayload>(fetch(renderRequest), { temporaryReferences });
+      payload = await createFromFetch<RscPayload>(fetch(request), { temporaryReferences });
     } catch (error) {
       if (handleControlDigest(error)) return undefined;
       throw error;

@@ -13,7 +13,8 @@ const RSC_CONTENT_TYPE = 'text/x-component';
  */
 export type RenderRequest = { kind: 'document' } | { kind: 'rsc' } | { kind: 'form-action' } | { kind: 'rsc-action'; actionId: string };
 
-export function createRscRenderRequest(urlString: string, action?: { id: string; body: BodyInit }): Request {
+/** Builds the `Request` the client sends to ask a page for its flight payload, optionally carrying a server action. */
+export function createRscRequest(urlString: string, action?: { id: string; body: BodyInit }): Request {
   const url = new URL(urlString, location.origin);
   const headers = new Headers({ Accept: RSC_CONTENT_TYPE });
   if (action) headers.set(HEADER_ACTION_ID, action.id);
@@ -33,20 +34,20 @@ export function parseRenderRequest(request: Request): RenderRequest {
     if (FORM_CONTENT_TYPES.test(request.headers.get('content-type') ?? '')) return { kind: 'form-action' };
     return { kind: 'document' };
   }
-  return { kind: acceptsFlight(request) ? 'rsc' : 'document' };
+  return { kind: acceptsRsc(request) ? 'rsc' : 'document' };
 }
 
-/** Whether the client asked for a flight payload. For GET paths that only need the boolean. */
-export function acceptsFlight(request: Request): boolean {
+/** Whether the client asked for a flight payload. For GET paths that only need the boolean, without parsing. */
+export function acceptsRsc(request: Request): boolean {
   return request.headers.get('accept')?.includes(RSC_CONTENT_TYPE) ?? false;
 }
 
 /** True when the response should be a flight payload rather than an HTML document. */
-export function wantsRsc(request: RenderRequest): boolean {
-  return request.kind === 'rsc' || request.kind === 'rsc-action';
+export function wantsRsc(renderRequest: RenderRequest): boolean {
+  return renderRequest.kind === 'rsc' || renderRequest.kind === 'rsc-action';
 }
 
 /** True when the request carries a server action to run before rendering. */
-export function isActionRequest(request: RenderRequest): request is Extract<RenderRequest, { kind: 'form-action' | 'rsc-action' }> {
-  return request.kind === 'form-action' || request.kind === 'rsc-action';
+export function isActionRequest(renderRequest: RenderRequest): renderRequest is Extract<RenderRequest, { kind: 'form-action' | 'rsc-action' }> {
+  return renderRequest.kind === 'form-action' || renderRequest.kind === 'rsc-action';
 }
