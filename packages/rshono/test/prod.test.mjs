@@ -91,6 +91,26 @@ test('getContext() exposes url/pathname, headers, cookies and env in an async se
   assert.ok(html.includes(APP_ENV.PUBLIC_API_ENDPOINT), 'ctx.env did not expose the PUBLIC_ variable');
 });
 
+test('the ctx page prop is the request context, without importing getContext()', async () => {
+  const res = await fetch(`${base}/`, { headers: { cookie: 'visitor=Ada%20Lovelace' } });
+  assert.equal(res.status, 200);
+  const html = await res.text();
+  assert.match(html, /data-ctx="method">(?:<!--[^]*?-->)?GET</, 'ctx.method was not readable from the page prop');
+  assert.match(html, /data-ctx="visitor">(?:<!--[^]*?-->)?Ada Lovelace</, 'ctx.cookies was not readable from the page prop');
+});
+
+test("a server component's props never reach the browser, so ctx cannot leak through them", async () => {
+  // Production React serializes a server component's *output*, not its props — and `ctx` is
+  // non-enumerable besides, which is what keeps React's dev-only debug serialization off it too
+  // (see `pageProps` in entry.rsc.tsx). Either way the Hono Context must not be on the wire.
+  const flight = await (await fetch(`${base}/`, { headers: { Accept: 'text/x-component', cookie: 'visitor=Ada' } })).text();
+  assert.match(flight, /"data-ctx":"visitor","children":"Ada"/, 'the page should have rendered its ctx-derived markup');
+  // As a JSON key — the page renders the literal word "ctx" as prose, which is not a leak.
+  assert.doesNotMatch(flight, /"ctx":/, 'the ctx prop itself must never be serialized into the payload');
+  assert.doesNotMatch(flight, /"props":/, 'production serializes a server component output, never its props');
+  assert.doesNotMatch(flight, /newResponse|setRenderer/, 'a serialized Hono Context would carry its own method names');
+});
+
 test('redirect() in a server component issues an HTTP 3xx on hard navigation', async () => {
   const res = await fetch(`${base}/dashboard`, { redirect: 'manual' });
   assert.equal(res.status, 303);
@@ -107,6 +127,14 @@ test('a cookie-gated server component renders once the session cookie is present
   const res = await fetch(`${base}/dashboard`, { headers: { cookie: 'session=ada%40example.com' } });
   assert.equal(res.status, 200);
   assert.match(await res.text(), /Signed in as/);
+});
+
+test('ctx.var carries a variable set by src/server.ts middleware through to the page', async () => {
+  // The sub-app is mounted ahead of the page routes, which is what makes this reachable at all; the
+  // page types it by handing its Hono Env to PageProps (see components/dashboard.tsx).
+  const html = await (await fetch(`${base}/dashboard`, { headers: { cookie: 'session=ada%40example.com' } })).text();
+  const requestId = html.match(/data-ctx="request-id">(?:<!--[^]*?-->)?([0-9a-f-]{36})</)?.[1];
+  assert.ok(requestId, `ctx.var.requestId did not reach the page: ${html.match(/data-ctx="request-id"[^<]*</) ?? '(marker absent)'}`);
 });
 
 test('notFound() in a server component renders the 404 page', async () => {

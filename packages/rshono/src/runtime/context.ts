@@ -147,7 +147,8 @@ export type EnvVars<E extends Env> = E['Bindings'] & Record<string, string | und
  * Ergonomic, read-mostly wrapper around Hono's {@link Context} for use inside
  * server components and server actions.
  *
- * Obtain one with {@link getContext} — never construct it yourself. The same
+ * Obtain one with {@link getContext}, or — in a page component — take it straight
+ * off the `ctx` prop, which is this same object. Never construct it yourself. One
  * instance is reused for the lifetime of a request, so its lazy getters
  * ({@link Ctx.url}, {@link Ctx.env}) are computed at most once.
  *
@@ -166,24 +167,37 @@ export type EnvVars<E extends Env> = E['Bindings'] & Record<string, string | und
  * ```
  */
 export class Ctx<E extends Env = Env> {
-  /** The underlying Hono {@link Context}. Escape hatch for anything this wrapper does not expose. */
-  readonly raw: Context<E>;
-
+  #raw: Context<E>;
   #url?: URL;
   #env?: EnvVars<E>;
 
   constructor(c: Context<E>) {
-    this.raw = c;
+    this.#raw = c;
+  }
+
+  /**
+   * The underlying Hono {@link Context}. Escape hatch for anything this wrapper does not expose.
+   *
+   * A getter over a private field rather than a plain property, so it is not an *own enumerable*
+   * one — which matters more than it looks. React's diagnostic for a value that cannot be sent to a
+   * client component (`describeObjectForErrorMessage`) walks `Object.keys` recursively with no depth
+   * limit and no cycle guard, and the Hono context graph reaches the socket and the whole server
+   * through `req.raw` and `env`. While this was a plain property, passing a `Ctx` to a `'use client'`
+   * component blew the stack *inside that message builder* — so React's actual, accurate "you cannot
+   * pass this" error never got printed. Hidden from `Object.keys`, the walk stops here.
+   */
+  get raw(): Context<E> {
+    return this.#raw;
   }
 
   /** The parsed Hono request (`c.req`) — headers, body parsing, param access, etc. */
   get req(): HonoRequest {
-    return this.raw.req;
+    return this.#raw.req;
   }
 
   /** The browser-facing request URL, proxy-header aware (see {@link publicUrl}). Cached per request. */
   get url(): URL {
-    return (this.#url ??= publicUrl(this.raw as Context));
+    return (this.#url ??= publicUrl(this.#raw as Context));
   }
 
   /** Shorthand for `ctx.url.pathname`, e.g. `/dashboard`. */
@@ -198,7 +212,7 @@ export class Ctx<E extends Env = Env> {
 
   /** The HTTP method of the request, e.g. `GET` or `POST`. */
   get method(): string {
-    return this.raw.req.method;
+    return this.#raw.req.method;
   }
 
   /**
@@ -206,7 +220,7 @@ export class Ctx<E extends Env = Env> {
    * empty object when there is no active route match (rather than throwing).
    */
   get params(): Record<string, string> {
-    return readParams(this.raw as Context);
+    return readParams(this.#raw as Context);
   }
 
   /**
@@ -214,7 +228,7 @@ export class Ctx<E extends Env = Env> {
    * `ctx.var.user`. Type them by parameterising this class's {@link Env}.
    */
   get var(): Readonly<E['Variables']> {
-    return this.raw.var;
+    return this.#raw.var;
   }
 
   /**
@@ -225,14 +239,14 @@ export class Ctx<E extends Env = Env> {
    */
   get env(): EnvVars<E> {
     if (this.#env) return this.#env;
-    const bindings = this.raw.env as Record<string, unknown> | undefined;
+    const bindings = this.#raw.env as Record<string, unknown> | undefined;
     // The snapshot is shared, so hand it back as-is when there are no bindings to merge over it.
     return (this.#env = (bindings ? { ...processEnv(), ...bindings } : processEnv()) as EnvVars<E>);
   }
 
   /** Sets a response header. Thin pass-through to `c.header(name, value)`. */
   header(name: string, value: string): void {
-    this.raw.header(name, value);
+    this.#raw.header(name, value);
   }
 
   /**
@@ -248,14 +262,14 @@ export class Ctx<E extends Env = Env> {
    */
   cookies = {
     /** Reads a single cookie by name, or `undefined` if absent. */
-    get: (name: string): string | undefined => getCookie(this.raw, name),
+    get: (name: string): string | undefined => getCookie(this.#raw, name),
     /** Reads every cookie as a `{ name: value }` record. */
-    all: (): Record<string, string> => getCookie(this.raw),
+    all: (): Record<string, string> => getCookie(this.#raw),
     /** Sets a cookie on the response. See Hono's {@link CookieOptions} for `path`, `httpOnly`, `maxAge`, etc. */
-    set: (name: string, value: string, options?: CookieOptions): void => setCookie(this.raw, name, value, options),
+    set: (name: string, value: string, options?: CookieOptions): void => setCookie(this.#raw, name, value, options),
     /** Clears a cookie. Pass the same `path`/`domain` it was set with so the browser matches it. */
     delete: (name: string, options?: CookieOptions): void => {
-      deleteCookie(this.raw, name, options);
+      deleteCookie(this.#raw, name, options);
     },
   };
 }
@@ -267,6 +281,10 @@ export class Ctx<E extends Env = Env> {
  * component or server action — the URL, cookies, params, env, and middleware
  * variables. The returned wrapper is memoised per request, so repeated calls in
  * the same request are cheap and return the same instance.
+ *
+ * A **page** component is handed the very same object as its `ctx` prop, so this
+ * import is for everywhere else: a nested server component, or a `'use server'`
+ * action module — neither of which receives props from the framework.
  *
  * @typeParam E - The app's Hono {@link Env}, to type {@link Ctx.var} and {@link Ctx.env}.
  * @throws If called at module load, where there is no ambient context to resolve.

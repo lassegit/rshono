@@ -28,6 +28,12 @@ test('an app with only src/routes.ts builds and serves', async () => {
   assert.match(html, /__FLIGHT_DATA/, 'the page still hydrates without any optional file present');
 });
 
+test('the ctx page prop works with no config, no server.ts and no imports', async () => {
+  const html = await (await fetch(`${base}/`, { headers: { cookie: 'probe=seen' } })).text();
+  assert.match(html, /data-ctx-cookie="seen"/, 'ctx.cookies should be readable from the page prop');
+  assert.match(html, /data-ctx-method="GET"/);
+});
+
 test('the routes array shorthand is accepted (no notFound/error wrapper object)', async () => {
   assert.equal((await fetch(`${base}/files/a/b/c`)).status, 200);
 });

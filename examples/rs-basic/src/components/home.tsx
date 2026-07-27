@@ -2,7 +2,11 @@ import type { PageProps } from 'rshono';
 import { Counter } from './counter';
 import { Layout } from './layout';
 
-export default function Home(props: PageProps) {
+export default function Home({ url, ctx }: PageProps) {
+  // `ctx` is the request context — the same object `getContext()` returns, handed over as a prop
+  // so a page can read cookies, headers and env without importing anything.
+  const visitor = ctx.cookies.get('visitor');
+
   return (
     <Layout title="rshono — Ultra-minimalist RSC framework" description="Hono + Rspack + React Server Components">
       <div className="hero">
@@ -42,7 +46,11 @@ export default function Home(props: PageProps) {
         </div>
 
         <p className="meta">
-          Rendered on the server for <code>{props.url}</code>
+          Rendered on the server for <code>{url}</code>
+        </p>
+        <p className="meta">
+          The <code>ctx</code> prop is the request context: this was a <code data-ctx="method">{ctx.method}</code>, and you are{' '}
+          <code data-ctx="visitor">{visitor ? decodeURIComponent(visitor) : 'a first-time visitor'}</code>.
         </p>
       </div>
     </Layout>

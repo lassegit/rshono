@@ -4,6 +4,9 @@ import { bodyLimit } from 'hono/body-limit';
 import type { ContentfulStatusCode, RedirectStatusCode } from 'hono/utils/http-status';
 import type React from 'react';
 import type { ReactFormState } from 'react-dom/client';
+// The JSX factory, by name: the page element is created with this directly rather than as
+// `<Page {...props} />`, because a spread would drop the non-enumerable `ctx` prop. See `pageProps`.
+import { jsx } from 'react/jsx-runtime';
 // The bare specifier, not `/server.node`: the package ships a build per runtime behind export
 // conditions (`node`, `workerd`, `deno`, `edge-light`), and the RSC layer's `conditionNames` is what
 // picks one — so a non-Node deploy target gets its own build instead of Node's by hard-coded path.
@@ -24,9 +27,9 @@ import { runtime } from '@rshono/deploy';
 import { routes as userRoutes } from '@rshono/routes';
 // @ts-expect-error — resolved by the '@rshono/server-app' alias (src/server.ts or the empty fallback)
 import * as serverAppModule from '@rshono/server-app';
-import { isPageRoute, type ErrorInfo, type FallbackPage, type PageComponent, type Route, type RouteConfig } from '../router.js';
+import { isPageRoute, type ErrorInfo, type FallbackPage, type PageComponent, type PageProps, type Route, type RouteConfig } from '../router.js';
 import { appendVary, etagMatches } from '../server/headers.js';
-import { publicUrl, readParams, reportServerError, runWithContext } from './context.js';
+import { getContext, publicUrl, readParams, reportServerError, runWithContext } from './context.js';
 import { isControlSignal, RedirectSignal, type ControlSignal } from './control.js';
 import { renderHTML } from './entry.ssr.js';
 import { RouterProvider } from './navigation.js';
@@ -216,21 +219,44 @@ function createRenderDeadline(requestSignal: AbortSignal, ms: number): RenderDea
   };
 }
 
+/**
+ * Builds the props a page component is called with.
+ *
+ * `ctx` is *defined* rather than assigned, and both parts of how carry their weight:
+ *
+ * - **A getter**, so nothing is built for the pages that never read it, and so a `render: 'static'`
+ *   page that does read it gets {@link getContext}'s own "no per-request context while
+ *   prerendering" error rather than a bare `undefined` — one explanation, in one place.
+ * - **Non-enumerable**, so React's *development-only* serialization of a server component's props
+ *   (the debug channel behind component stacks and the performance track) skips it. That walks own
+ *   enumerable properties, and `ctx.raw` is the Hono {@link Context} — whose `env` holds the
+ *   runtime's bindings. An enumerable `ctx` ships every one of them, secrets included, to the
+ *   browser in dev, and grows a small page's flight payload by well over 10 kB. Production never
+ *   serializes a server component's props at all, so this is the dev half of the same guarantee.
+ *
+ * The cost is that the element has to be created by handing this object to `jsx()` *by reference*:
+ * a `<Page {...props} />` spread copies enumerable properties only, and would drop `ctx` silently.
+ */
+function pageProps(c: Context, errorInfo: ErrorInfo | undefined): PageProps & { error?: ErrorInfo } {
+  const props = { params: readParams(c), url: publicUrl(c).toString(), ...(errorInfo ? { error: errorInfo } : null) };
+  Object.defineProperty(props, 'ctx', { get: getContext, enumerable: false, configurable: true });
+  return props as PageProps & { error?: ErrorInfo };
+}
+
 async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opts: ComponentRenderOptions): Promise<Response> {
   const deadline = opts.deadline ?? createRenderDeadline(c.req.raw.signal, renderTimeoutMs);
   const signal = deadline.signal;
 
   const nonce = cspEnabled && !opts.isRsc ? crypto.randomUUID() : undefined;
-  const params = readParams(c);
-  const props = { params, url: publicUrl(c).toString(), ...(opts.errorInfo ? { error: opts.errorInfo } : null) };
+  const props = pageProps(c, opts.errorInfo);
   const root = (
     <>
       {nonce && <meta property="csp-nonce" nonce={nonce} />}
       {Page.entryCssFiles?.map((href) => (
         <link key={href} rel="stylesheet" href={href} precedence="default" />
       ))}
-      <RouterProvider href={props.url} params={params}>
-        <Page {...props} />
+      <RouterProvider href={props.url} params={props.params}>
+        {jsx(Page, props)}
       </RouterProvider>
     </>
   );

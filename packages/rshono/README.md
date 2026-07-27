@@ -49,16 +49,21 @@ If a component is wired up some other way (variable indirection, barrel re-expor
 import type { PageProps } from 'rshono';
 import { db } from '../db';
 
-export default async function Profile({ params, url }: PageProps<'/profile/:id'>) {
+export default async function Profile({ params, ctx }: PageProps<'/profile/:id'>) {
   const user = await db.getUser(params.id);
+  const theme = ctx.cookies.get('theme') ?? 'light';
   return <Layout>…</Layout>;
 }
 ```
 
-- Pages receive `{ params, url }` (`PageProps<'/profile/:id'>` types `params.id`).
+- Pages receive `{ params, url, ctx }` (`PageProps<'/profile/:id'>` types `params.id`).
+- **`ctx` is the request context** — cookies, headers, env, middleware variables, the proxy-aware URL. It is the same object `getContext()` returns from `rshono/server`, handed over so a page needs no import; reach for `getContext()` in the places that get no props (a nested server component, a `'use server'` action). Type `ctx.var` / `ctx.env` for your app by passing its Hono `Env`: `PageProps<'/profile/:id', MyEnv>`.
+- Reading `ctx` on a **`render: 'static'`** page throws — a page rendered once at build time has no request to read. Use `params` and `url`, which are available either way, or make the route `render: 'dynamic'`.
 - Pages render the **entire document** (`<html>…</html>`), usually via a shared layout component.
 - Interactive parts are `'use client'` components imported by the page; only those ship JavaScript.
 - A fully interactive page is a thin server component wrapping a `'use client'` component.
+- Page props are **server-only and never serialized** — React puts a server component's output on the wire, not its props. `ctx` is additionally non-enumerable, which keeps it out of React's dev-only debug payload (an enumerable one would ship the whole Hono context, bindings included, to the browser in dev).
+- **`ctx` cannot cross into a `'use client'` component**; it wraps the live request and response, which don't exist in the browser. Passing it explicitly (`<Counter ctx={ctx} />`) fails the render with React's _"Only plain objects … can be passed to Client Components"_, naming the prop. Spreading page props instead (`<Counter {...props} />`) drops it silently, since a spread copies enumerables only. Either way: read what you need on the server and pass plain values down.
 
 ## Server actions
 

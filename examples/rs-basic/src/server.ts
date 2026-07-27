@@ -3,7 +3,14 @@ import { trimTrailingSlash } from 'hono/trailing-slash';
 import { onServerError } from 'rshono/server';
 import { fakeDB } from './db';
 
-const server = new Hono();
+/**
+ * What this app's middleware puts on the Hono context. Pass it to `PageProps<path, AppEnv>` (or
+ * `getContext<AppEnv>()`) and `ctx.var` is typed key-by-key instead of an open record — see
+ * `components/dashboard.tsx`.
+ */
+export type AppEnv = { Variables: { requestId: string } };
+
+const server = new Hono<AppEnv>();
 const startedAt = Date.now();
 
 // Where an error tracker goes. Registered at module load — src/server.ts is imported as the server
@@ -17,6 +24,9 @@ onServerError((error, { source, request }) => {
 server.use(trimTrailingSlash({ alwaysRedirect: true }));
 
 server.use('*', async (c, next) => {
+  // The sub-app is mounted ahead of the page routes, so a variable set here is readable from a page
+  // as `ctx.var.requestId` — this is what typing `PageProps` with `AppEnv` buys.
+  c.set('requestId', crypto.randomUUID());
   const start = performance.now();
   await next();
   const end = performance.now();

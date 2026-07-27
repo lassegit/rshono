@@ -2,15 +2,16 @@
 
 Test app for `packages/rshono` — exercises every framework feature:
 
-| Route               | Demonstrates                                                                        |
-| ------------------- | ----------------------------------------------------------------------------------- |
-| `/`                 | Server component page + `'use client'` counter island, PUBLIC\_ env inlining        |
-| `/users`            | Async server component reading the `db` module directly + direct server action call |
-| `/signup`           | `useActionState` form action with progressive enhancement (works without JS)        |
-| `/profile/:id`      | Typed route params (`PageProps<'/profile/:id'>`)                                    |
-| `/docs/:slug`       | `render: 'static'` — prerendered at build time via `staticPaths`                    |
-| `/api/quick-health` | `type: 'endpoint'` route with a Hono handler in a server module (`health.ts`)        |
-| `/api/*`            | Hono sub-app (`src/server.ts`) mounted at `/`                                       |
+| Route               | Demonstrates                                                                                  |
+| ------------------- | --------------------------------------------------------------------------------------------- |
+| `/`                 | Server component page + `'use client'` counter island, PUBLIC\_ env inlining, `ctx` page prop |
+| `/users`            | Async server component reading the `db` module directly + direct server action call           |
+| `/signup`           | `useActionState` form action with progressive enhancement (works without JS)                  |
+| `/profile/:id`      | Typed route params (`PageProps<'/profile/:id'>`)                                              |
+| `/whoami`           | `getContext()` inside a nested async server component (headers, cookies, env)                 |
+| `/docs/:slug`       | `render: 'static'` — prerendered at build time via `staticPaths`                              |
+| `/api/quick-health` | `type: 'endpoint'` route with a Hono handler in a server module (`health.ts`)                 |
+| `/api/*`            | Hono sub-app (`src/server.ts`) mounted at `/`                                                 |
 
 ```bash
 pnpm dev     # http://localhost:3000

@@ -37,6 +37,19 @@ test('dev resolves the browser-facing URL through the proxy, not the worker addr
   assert.doesNotMatch(flight, /127\.0\.0\.1/, 'the internal worker address must not leak into the page URL');
 });
 
+test('dev does not serialize the ctx page prop into the flight payload', async () => {
+  // Dev is the case that needs guarding: React's debug channel puts a server component's props on
+  // the wire (that is what the `"props":` row below is), walking own *enumerable* properties. `ctx`
+  // is defined non-enumerable precisely so it is skipped — an enumerable one would ship the whole
+  // Hono Context, `c.env` bindings and all, to the browser and add >10 kB to every page.
+  const flight = await (await fetch(`${base}/`, { headers: { Accept: 'text/x-component', cookie: 'visitor=Ada' } })).text();
+  assert.match(flight, /"props":\{[^{}]*"url"/, 'dev really does serialize page props — this test is only meaningful while it does');
+  // As a JSON key — the home page renders the literal word "ctx" as prose, which is not a leak.
+  assert.doesNotMatch(flight, /"ctx":/, 'the ctx prop must stay out of the dev debug payload');
+  assert.doesNotMatch(flight, /newResponse|setRenderer|HtmlEscapedCallbackPhase/, 'a serialized Hono Context would carry its own internals');
+  assert.match(flight, /data-ctx/, 'the page should still have rendered its ctx-derived markup');
+});
+
 test('a cross-origin action is still rejected in dev (trustProxy does not weaken the CSRF check)', async () => {
   const res = await fetch(`${base}/signup`, {
     method: 'POST',

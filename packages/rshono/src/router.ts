@@ -1,6 +1,9 @@
-import type { Handler } from 'hono';
+import type { Env, Handler } from 'hono';
 import type { ParamKeys, ParamKeyToRecord } from 'hono/types';
 import type { ReactNode } from 'react';
+// Type-only, so this stays a build-time module: the import is erased and none of `context.ts`'s
+// runtime machinery (AsyncLocalStorage, hono/cookie) is pulled in by importing `rshono`.
+import type { Ctx } from './runtime/context.js';
 
 type Simplify<T> = { [K in keyof T]: T[K] } & {};
 type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never) extends (k: infer I) => void ? I : never;
@@ -31,6 +34,8 @@ export type PathParams<P extends string> =
  * time, so a mismatched path literal is a type error at the route definition.
  *
  * @typeParam Path - The literal path this page is mounted at, e.g. `'/profile/:id'`.
+ * @typeParam E - The app's Hono {@link Env}, to type {@link Ctx.var} and
+ *   {@link Ctx.env} on {@link PageProps.ctx}.
  *
  * @example
  * ```tsx
@@ -42,7 +47,7 @@ export type PathParams<P extends string> =
  * }
  * ```
  */
-export interface PageProps<Path extends string = string> {
+export interface PageProps<Path extends string = string, E extends Env = Env> {
   /** Matched route params for this request, e.g. `{ id: '42' }` for `/profile/:id`. */
   params: string extends Path ? Record<string, string> : PathParams<Path>;
   /**
@@ -51,6 +56,38 @@ export interface PageProps<Path extends string = string> {
    * `searchParams` or `pathname`.
    */
   url: string;
+  /**
+   * The request context — the very object `getContext()` returns, handed to the
+   * page so cookies, headers, env and middleware variables are reachable without
+   * an import.
+   *
+   * Server-only, and never serialized: React renders a server component and puts
+   * its *output* on the wire, not its props. It is also deliberately a
+   * non-enumerable property, which has three consequences worth knowing:
+   *
+   * - It **cannot be handed to a `'use client'` component** — it wraps the live
+   *   request and response, which do not exist in the browser. Passing it
+   *   explicitly (`<Counter ctx={ctx} />`) fails the render with React's *"Only
+   *   plain objects … can be passed to Client Components"*. Read what you need on
+   *   the server and pass plain values down.
+   * - Spreading the page's props instead (`<Counter {...props} />`) drops `ctx`
+   *   silently rather than failing, since the spread copies enumerables only.
+   * - `Object.keys(props)`, `JSON.stringify(props)` and friends don't see it.
+   *
+   * Reading it on a `render: 'static'` route throws: a prerendered page has no
+   * per-request context at build time. Mark the route `render: 'dynamic'` (or
+   * use the `params` / `url` props, which are available either way).
+   *
+   * @example
+   * ```tsx
+   * export default function Dashboard({ ctx }: PageProps) {
+   *   const session = ctx.cookies.get('session');
+   *   if (!session) redirect('/login');
+   *   return <Layout>Signed in as {session}</Layout>;
+   * }
+   * ```
+   */
+  ctx: Ctx<E>;
 }
 
 /**
@@ -202,6 +239,8 @@ export interface ErrorInfo {
  * Props for the `error` page declared in {@link RouteConfig.error} — the usual
  * {@link PageProps} plus the redaction-aware {@link ErrorInfo}.
  *
+ * @typeParam E - The app's Hono {@link Env}, forwarded to {@link PageProps.ctx}.
+ *
  * @example
  * ```tsx
  * import type { ErrorPageProps } from 'rshono';
@@ -211,7 +250,7 @@ export interface ErrorInfo {
  * }
  * ```
  */
-export type ErrorPageProps = PageProps & { error: ErrorInfo };
+export type ErrorPageProps<E extends Env = Env> = PageProps<string, E> & { error: ErrorInfo };
 
 /**
  * The object form accepted by {@link defineRoutes}: the route table plus the two
@@ -229,11 +268,15 @@ export interface RouteConfig<TRoutes extends readonly Route[] = readonly Route[]
   error?: FallbackPage;
 }
 
+// `PageProps<P, any>`, not `PageProps<P>`: this check is about the *path* matching the page's
+// `params`, and pinning the Env to the default would additionally demand that a page declaring its
+// own (`PageProps<'/x', MyEnv>`, to type `ctx.var`) accept a `Ctx<Env>` — which it doesn't, so every
+// such page would fail its own route check. `any` makes `ctx` compatible either way.
 type ValidateRoute<R> = R extends {
   path: infer P extends string;
   component: () => Promise<{ default: PageComponent<infer CP> }>;
 }
-  ? [PageProps<P>] extends [CP]
+  ? [PageProps<P, any>] extends [CP]
     ? R
     : R & { component: `component props are not satisfied by PageProps<'${P}'>` }
   : R;

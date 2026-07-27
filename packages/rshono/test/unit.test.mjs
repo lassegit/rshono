@@ -15,6 +15,7 @@ import { parseByteSize, resolveServerConfig } from '../dist/server/server-config
 import { prerenderedRelPath, ssgFilePath } from '../dist/server/prerendered.js';
 import { prerenderStaticRoutes, readPrerendered, resolveSiteOrigin } from '../dist/server/ssg.js';
 import { isControlDigest, parseRedirectDigest, RedirectSignal } from '../dist/runtime/control.js';
+import { Ctx } from '../dist/runtime/context.js';
 import { MINIMAL_APP_DIR } from './helpers.mjs';
 
 const tempDirs = [];
@@ -373,6 +374,31 @@ describe('control signals', () => {
     for (const digest of [undefined, null, 42, '', 'some-react-digest']) {
       assert.equal(isControlDigest(digest), false, `${String(digest)} must not read as a control signal`);
     }
+  });
+});
+
+describe('Ctx enumerability', () => {
+  // React's diagnostic for a value that cannot cross to a client component walks `Object.keys`
+  // recursively with no depth limit and no cycle guard. The Hono context reaches the socket and the
+  // whole server through `req.raw` / `env`, so while `raw` was an own enumerable property, passing a
+  // Ctx to a `'use client'` component overflowed the stack *inside React's error-message builder* —
+  // and its real "Only plain objects … can be passed to Client Components" error never printed.
+  const fakeHonoContext = { req: { url: 'http://example.test/', param: () => ({}) }, env: {} };
+  // The cycle that made the walk unbounded, so this test fails the same way React did if `raw` ever
+  // becomes enumerable again.
+  fakeHonoContext.self = fakeHonoContext;
+
+  test('the Hono context is reachable but not enumerable, so a serializer cannot walk into it', () => {
+    const ctx = new Ctx(fakeHonoContext);
+    assert.equal(ctx.raw, fakeHonoContext, 'ctx.raw is documented public API and must keep working');
+    assert.ok(!Object.keys(ctx).includes('raw'), 'ctx.raw must not be an own enumerable property');
+    assert.doesNotThrow(() => JSON.stringify(ctx), 'walking a Ctx must not reach the cyclic Hono context');
+  });
+
+  test('the wrapper still resolves request data through the hidden context', () => {
+    const ctx = new Ctx(fakeHonoContext);
+    assert.equal(ctx.pathname, '/');
+    assert.deepEqual(ctx.params, {});
   });
 });
 
