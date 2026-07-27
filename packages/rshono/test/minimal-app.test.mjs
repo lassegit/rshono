@@ -34,6 +34,13 @@ test('the ctx page prop works with no config, no server.ts and no imports', asyn
   assert.match(html, /data-ctx-method="GET"/);
 });
 
+test('the url page prop is a real URL — pathname and query read off it', async () => {
+  const html = await (await fetch(`${base}/?q=hello`)).text();
+  assert.match(html, new RegExp(`data-url="http://localhost:${server.port}/\\?q=hello"`), 'url is the absolute browser-facing URL');
+  assert.match(html, /data-pathname="\/"/);
+  assert.match(html, /data-query="hello"/, 'url.searchParams should be the request query, not an empty set');
+});
+
 test('the routes array shorthand is accepted (no notFound/error wrapper object)', async () => {
   assert.equal((await fetch(`${base}/files/a/b/c`)).status, 200);
 });

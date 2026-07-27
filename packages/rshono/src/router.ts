@@ -33,6 +33,10 @@ export type PathParams<P extends string> =
  * `defineRoutes` checks each page's props against `PageProps<path>` at compile
  * time, so a mismatched path literal is a type error at the route definition.
  *
+ * The location props (`url` and `params`) mirror what a `'use client'` component
+ * gets from `useNavigation()` — same names, same types — so moving a read across
+ * the server/client line is a copy-paste.
+ *
  * @typeParam Path - The literal path this page is mounted at, e.g. `'/profile/:id'`.
  * @typeParam E - The app's Hono {@link Env}, to type {@link Ctx.var} and
  *   {@link Ctx.env} on {@link PageProps.ctx}.
@@ -43,19 +47,30 @@ export type PathParams<P extends string> =
  *
  * export default async function Profile({ params, url }: PageProps<'/profile/:id'>) {
  *   const user = await db.getUser(params.id); // params.id is string
- *   return <Layout>{user.name} — {new URL(url).search}</Layout>;
+ *   const tab = url.searchParams.get('tab') ?? 'overview';
+ *   return <Layout>{user.name} — {tab}</Layout>;
  * }
  * ```
  */
 export interface PageProps<Path extends string = string, E extends Env = Env> {
+  /**
+   * The absolute browser-facing request {@link URL}, proxy-header aware
+   * (`X-Forwarded-Host` / `-Proto`). Read `url.pathname`, `url.searchParams` and
+   * the rest off it.
+   *
+   * A fresh instance per request that nothing else holds, so mutating it is local
+   * to the page — but note it is *not* serializable, so a `'use client'` component
+   * has to be handed `url.href` rather than `url`.
+   *
+   * On a prerendered page it is the build-time URL: a `render: 'static'` route is
+   * rendered once, against `siteUrl` and with no query string, and that one file
+   * then answers every request whatever its own query. So `url.searchParams` is
+   * always empty there — read the query from `useNavigation().url` in a
+   * `'use client'` component instead, or mark the route `render: 'dynamic'`.
+   */
+  url: URL;
   /** Matched route params for this request, e.g. `{ id: '42' }` for `/profile/:id`. */
   params: string extends Path ? Record<string, string> : PathParams<Path>;
-  /**
-   * The absolute browser-facing request URL as a string, proxy-header aware
-   * (`X-Forwarded-Host` / `-Proto`). Wrap it in `new URL(url)` to read
-   * `searchParams` or `pathname`.
-   */
-  url: string;
   /**
    * The request context — the very object `getContext()` returns, handed to the
    * page so cookies, headers, env and middleware variables are reachable without
@@ -72,11 +87,14 @@ export interface PageProps<Path extends string = string, E extends Env = Env> {
    *   the server and pass plain values down.
    * - Spreading the page's props instead (`<Counter {...props} />`) drops `ctx`
    *   silently rather than failing, since the spread copies enumerables only.
+   *   (That spread still fails, mind — on `url`, which is enumerable and just as
+   *   unserializable. Pass the values you need.)
    * - `Object.keys(props)`, `JSON.stringify(props)` and friends don't see it.
    *
    * Reading it on a `render: 'static'` route throws: a prerendered page has no
-   * per-request context at build time. Mark the route `render: 'dynamic'` (or
-   * use the `params` / `url` props, which are available either way).
+   * per-request context at build time. Mark the route `render: 'dynamic'` (or use
+   * the `url` / `params` props, which are available either way — with the
+   * build-time caveats noted on `url`).
    *
    * @example
    * ```tsx

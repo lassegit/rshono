@@ -36,7 +36,7 @@ export interface ErrorBoundaryProps {
   /**
    * When any value in this array changes while the boundary is showing its
    * fallback, the error is cleared automatically. Pass the current pathname to
-   * recover when the user navigates away: `resetKeys={[useNavigation().pathname]}`.
+   * recover when the user navigates away: `resetKeys={[useNavigation().url.pathname]}`.
    */
   resetKeys?: readonly unknown[];
   children: ReactNode;

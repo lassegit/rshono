@@ -15,7 +15,7 @@ export default async function Documentation({ params, url }: PageProps<'/docs/:s
         canonical tag baked into this file would point at localhost. React 19 hoists the link into
         <head> on its own.
       */}
-      <link rel="canonical" href={url} />
+      <link rel="canonical" href={url.href} />
       <div className="page">
         <nav className="meta">
           {docs.map((d, i) => (

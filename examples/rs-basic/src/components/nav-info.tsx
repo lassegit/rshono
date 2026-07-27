@@ -9,11 +9,11 @@ export function NavInfo() {
     <div className="feature-card" style={{ margin: '1.5rem auto', maxWidth: '28rem' }}>
       <h3>useNavigation()</h3>
       <p className="meta">
-        pathname: <code data-nav="pathname">{nav.pathname}</code>
+        pathname: <code data-nav="pathname">{nav.url.pathname}</code>
         <br />
         param id: <code data-nav="param-id">{nav.params.id ?? '(none)'}</code>
         <br />
-        query tab: <code data-nav="query-tab">{nav.searchParams.get('tab') ?? '(none)'}</code>
+        query tab: <code data-nav="query-tab">{nav.url.searchParams.get('tab') ?? '(none)'}</code>
         <br />
         pending: <code data-nav="pending">{nav.router.pending ? 'yes' : 'no'}</code>
       </p>

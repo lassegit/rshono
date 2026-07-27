@@ -26,12 +26,12 @@ export interface Router {
 
 /** The current location plus the {@link Router}, as returned by {@link useNavigation}. */
 export interface Navigation {
-  /** The full current {@link URL}. */
+  /**
+   * The full current {@link URL} — read `url.pathname`, `url.searchParams` and the
+   * rest off it. A fresh instance per navigation, so mutating it affects nothing
+   * else; it is not written back to the address bar either.
+   */
   url: URL;
-  /** Shorthand for `url.pathname`, e.g. `/docs/deployment`. */
-  pathname: string;
-  /** Shorthand for `url.searchParams`. */
-  searchParams: URLSearchParams;
   /** Matched route params for the current page, e.g. `{ id: '42' }` for `/profile/:id`. */
   params: Record<string, string>;
   /** Imperative navigation actions and the `pending` flag. */
@@ -61,10 +61,7 @@ const NavigationContext = createContext<Navigation | null>(null);
  */
 export function RouterProvider({ href, params, children }: { href: string; params: Record<string, string>; children: ReactNode }) {
   const router = useContext(RouterContext);
-  const value = useMemo<Navigation>(() => {
-    const url = new URL(href);
-    return { url, pathname: url.pathname, searchParams: url.searchParams, params, router };
-  }, [href, params, router]);
+  const value = useMemo<Navigation>(() => ({ url: new URL(href), params, router }), [href, params, router]);
 
   return <NavigationContext.Provider value={value}>{children}</NavigationContext.Provider>;
 }
@@ -72,12 +69,11 @@ export function RouterProvider({ href, params, children }: { href: string; param
 /**
  * Reactive access to the current URL and programmatic navigation, in one hook.
  *
- * Call it from a `'use client'` component. The location fields (`url`,
- * `pathname`, `searchParams`, `params`) are computed on the server and travel
- * in the flight payload, so they are correct during SSR — no hydration flicker
- * — and update automatically on every navigation. The `router` sub-object holds
- * the imperative actions plus a `pending` flag that is `true` while a client
- * navigation is in flight.
+ * Call it from a `'use client'` component. The location fields (`url` and
+ * `params`) are computed on the server and travel in the flight payload, so they
+ * are correct during SSR — no hydration flicker — and update automatically on
+ * every navigation. The `router` sub-object holds the imperative actions plus a
+ * `pending` flag that is `true` while a client navigation is in flight.
  *
  * Hooks can't run in a server component; read the same URL data there from
  * `getContext()` (`rshono/server`) instead.
@@ -88,19 +84,19 @@ export function RouterProvider({ href, params, children }: { href: string; param
  * import { useNavigation } from 'rshono/client';
  *
  * export function NextPage() {
- *   const nav = useNavigation();
- *   const page = Number(nav.searchParams.get('page') ?? '1');
+ *   const { url, router } = useNavigation();
+ *   const page = Number(url.searchParams.get('page') ?? '1');
  *   return (
- *     <button disabled={nav.router.pending} onClick={() => nav.router.push(`${nav.pathname}?page=${page + 1}`)}>
- *       Next {nav.router.pending ? '…' : ''}
+ *     <button disabled={router.pending} onClick={() => router.push(`${url.pathname}?page=${page + 1}`)}>
+ *       Next {router.pending ? '…' : ''}
  *     </button>
  *   );
  * }
  * ```
  *
- * @returns The current {@link Navigation}: `url` / `pathname` / `searchParams` /
- * `params`, plus `router` ({@link Router}) with `push` / `replace` / `back` /
- * `forward` / `refresh` / `pending`.
+ * @returns The current {@link Navigation}: `url` and `params`, plus `router`
+ * ({@link Router}) with `push` / `replace` / `back` / `forward` / `refresh` /
+ * `pending`.
  * @throws If called outside a page's React tree, where there is no navigation
  *   context to read.
  */

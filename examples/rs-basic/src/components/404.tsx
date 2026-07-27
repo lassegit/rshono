@@ -7,7 +7,7 @@ export default function NotFound({ url }: PageProps) {
       <div className="page">
         <h1>404 — nothing here</h1>
         <p className="description">
-          No page at <code>{url}</code>. <a href="/">Back to the start</a>.
+          No page at <code>{url.pathname}</code>. <a href="/">Back to the start</a>.
         </p>
       </div>
     </Layout>

@@ -9,7 +9,7 @@ export default function Wildcard({ url }: PageProps) {
       </head>
       <body>
         <h1 data-page="wildcard">Wildcard</h1>
-        <p data-path={new URL(url).pathname}>Matched by /files/*</p>
+        <p data-path={url.pathname}>Matched by /files/*</p>
       </body>
     </html>
   );

@@ -222,6 +222,10 @@ function createRenderDeadline(requestSignal: AbortSignal, ms: number): RenderDea
 /**
  * Builds the props a page component is called with.
  *
+ * `url` and `params` match `useNavigation()` field for field, so a read can move between a page and
+ * a `'use client'` component unchanged. The `URL` is this page's own — `Ctx` parses its own — so a
+ * page that mutates it cannot disturb anything else on the request.
+ *
  * `ctx` is *defined* rather than assigned, and both parts of how carry their weight:
  *
  * - **A getter**, so nothing is built for the pages that never read it, and so a `render: 'static'`
@@ -238,7 +242,7 @@ function createRenderDeadline(requestSignal: AbortSignal, ms: number): RenderDea
  * a `<Page {...props} />` spread copies enumerable properties only, and would drop `ctx` silently.
  */
 function pageProps(c: Context, errorInfo: ErrorInfo | undefined): PageProps & { error?: ErrorInfo } {
-  const props = { params: readParams(c), url: publicUrl(c).toString(), ...(errorInfo ? { error: errorInfo } : null) };
+  const props = { url: publicUrl(c), params: readParams(c), ...(errorInfo ? { error: errorInfo } : null) };
   Object.defineProperty(props, 'ctx', { get: getContext, enumerable: false, configurable: true });
   return props as PageProps & { error?: ErrorInfo };
 }
@@ -255,7 +259,8 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
       {Page.entryCssFiles?.map((href) => (
         <link key={href} rel="stylesheet" href={href} precedence="default" />
       ))}
-      <RouterProvider href={props.url} params={props.params}>
+      {/* `href`, not the `URL` itself: these props cross into a client component, so they have to be serializable. */}
+      <RouterProvider href={props.url.href} params={props.params}>
         {jsx(Page, props)}
       </RouterProvider>
     </>

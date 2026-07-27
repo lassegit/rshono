@@ -56,14 +56,14 @@ export default async function Profile({ params, ctx }: PageProps<'/profile/:id'>
 }
 ```
 
-- Pages receive `{ params, url, ctx }` (`PageProps<'/profile/:id'>` types `params.id`).
+- Pages receive `{ url, params, ctx }` (`PageProps<'/profile/:id'>` types `params.id`). `url` is a real `URL` — read `url.pathname` and `url.searchParams` off it — and the pair matches what a `'use client'` component gets from `useNavigation()`, so a read moves across the line unchanged.
 - **`ctx` is the request context** — cookies, headers, env, middleware variables, the proxy-aware URL. It is the same object `getContext()` returns from `rshono/server`, handed over so a page needs no import; reach for `getContext()` in the places that get no props (a nested server component, a `'use server'` action). Type `ctx.var` / `ctx.env` for your app by passing its Hono `Env`: `PageProps<'/profile/:id', MyEnv>`.
-- Reading `ctx` on a **`render: 'static'`** page throws — a page rendered once at build time has no request to read. Use `params` and `url`, which are available either way, or make the route `render: 'dynamic'`.
+- Reading `ctx` on a **`render: 'static'`** page throws — a page rendered once at build time has no request to read. Use `params` and `url`, which are available either way, or make the route `render: 'dynamic'`. One quiet caveat: a prerendered `url` is the build-time one (`siteUrl` + the path, no query), and that one file answers every request whatever its own query — so `url.searchParams` is always empty there. Read the query with `useNavigation().url` on the client instead.
 - Pages render the **entire document** (`<html>…</html>`), usually via a shared layout component.
 - Interactive parts are `'use client'` components imported by the page; only those ship JavaScript.
 - A fully interactive page is a thin server component wrapping a `'use client'` component.
 - Page props are **server-only and never serialized** — React puts a server component's output on the wire, not its props. `ctx` is additionally non-enumerable, which keeps it out of React's dev-only debug payload (an enumerable one would ship the whole Hono context, bindings included, to the browser in dev).
-- **`ctx` cannot cross into a `'use client'` component**; it wraps the live request and response, which don't exist in the browser. Passing it explicitly (`<Counter ctx={ctx} />`) fails the render with React's _"Only plain objects … can be passed to Client Components"_, naming the prop. Spreading page props instead (`<Counter {...props} />`) drops it silently, since a spread copies enumerables only. Either way: read what you need on the server and pass plain values down.
+- **`ctx` cannot cross into a `'use client'` component**; it wraps the live request and response, which don't exist in the browser. Passing it explicitly (`<Counter ctx={ctx} />`) fails the render with React's _"Only plain objects … can be passed to Client Components"_, naming the prop. Spreading page props instead (`<Counter {...props} />`) drops it silently, since a spread copies enumerables only — though that spread fails anyway on `url`, which is enumerable and just as unserializable. Either way: read what you need on the server and pass plain values down (`url.href`, not `url`).
 
 ## Server actions
 
