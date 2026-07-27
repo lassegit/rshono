@@ -28,8 +28,8 @@
       "import": "./dist/index.js"
     },
     "./server": {
-      "types": "./dist/runtime/context.d.ts",
-      "import": "./dist/runtime/context.js"
+      "types": "./dist/runtime/server.d.ts",
+      "import": "./dist/runtime/server.js"
     },
     "./client": {
       "types": "./dist/runtime/client.d.ts",

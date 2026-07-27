@@ -85,7 +85,7 @@ test('getContext() exposes url/pathname, headers, cookies and env in an async se
   });
   assert.equal(res.status, 200);
   const html = await res.text();
-  assert.match(html, /pathname:.*\/whoami/s, 'ctx.pathname was wrong');
+  assert.match(html, /pathname:.*\/whoami/s, 'ctx.url.pathname was wrong');
   assert.match(html, /hello-ctx/, 'x-test header was not visible to the async server component');
   assert.match(html, /ada-cookie/, 'visitor cookie was not visible to the async server component');
   assert.ok(html.includes(APP_ENV.PUBLIC_API_ENDPOINT), 'ctx.env did not expose the PUBLIC_ variable');

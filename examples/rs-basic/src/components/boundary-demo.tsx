@@ -17,7 +17,7 @@ function Section({ fail }: { fail: boolean }) {
 }
 
 export default function BoundaryDemo(_props: PageProps) {
-  const fail = getContext().searchParams.get('fail') === '1';
+  const fail = getContext().url.searchParams.get('fail') === '1';
 
   return (
     <Layout title="Boundary — rshono">

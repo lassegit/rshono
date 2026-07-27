@@ -3,7 +3,7 @@
  * DefinePlugin (see `builder/rspack-config.ts`).
  *
  * Declared in its own file, separate from the bundler-internal globals, because `runtime/context.ts`
- * — the public `rshono/server` entry — reads it, and so references this file directly. That keeps
+ * — reached from the public `rshono/server` entry — reads it, and so references this file directly. That keeps
  * `tsc` working in an app that imports `rshono/server` without dragging webpack's globals into the
  * app's global scope.
  */

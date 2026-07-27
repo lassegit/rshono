@@ -1,16 +1,14 @@
 /// <reference path="../types/rshono-config.d.ts" />
 /**
- * `rshono/server` — the request-scoped surface, for use inside server components
- * and `'use server'` action modules: {@link getContext} for the URL, cookies,
- * params, env and middleware variables, plus the {@link redirect} and
- * {@link notFound} control-flow helpers.
+ * The request context: {@link getContext} and the {@link Ctx} wrapper it returns,
+ * the {@link redirect} / {@link notFound} control-flow helpers, and the
+ * {@link onServerError} reporting funnel — plus the `@internal` plumbing that binds
+ * a request to the async context in the first place.
  *
- * Server-only. Importing this from a `'use client'` module is a mistake — those
- * run in the browser (and are SSR'd without a bound context). Read what you need
- * on the server and pass it down as props, or use `useNavigation()` from
- * `rshono/client` for URL data.
- *
- * @packageDocumentation
+ * The public half of this module is re-exported by `runtime/server.ts`, which is
+ * what the `rshono/server` subpath resolves to; import *that* from an app. Nothing
+ * here is safe in a `'use client'` module — those run in the browser, with no bound
+ * request context.
  */
 
 import type { Context, Env, HonoRequest } from 'hono';
@@ -113,7 +111,9 @@ const trustProxy = typeof __RSHONO_CONFIG__ !== 'undefined' && __RSHONO_CONFIG__
  * dictate the origin of every absolute URL the app builds — canonical tags, emails, redirects — and
  * poison a shared cache with them. So the default is to ignore them entirely.
  *
- * Prefer {@link Ctx.url}, which caches the result per request.
+ * Framework internal — prefer {@link Ctx.url}, which caches the result per request.
+ *
+ * @internal
  */
 export function publicUrl(c: Context): URL {
   const url = new URL(c.req.url);
@@ -162,7 +162,7 @@ export type EnvVars<E extends Env> = E['Bindings'] & Record<string, string | und
  * export default async function Whoami() {
  *   const ctx = getContext();
  *   const session = ctx.cookies.get('session');
- *   return <p>{ctx.pathname} — {session ?? 'anonymous'}</p>;
+ *   return <p>{ctx.url.pathname} — {session ?? 'anonymous'}</p>;
  * }
  * ```
  */
@@ -195,19 +195,14 @@ export class Ctx<E extends Env = Env> {
     return this.#raw.req;
   }
 
-  /** The browser-facing request URL, proxy-header aware (see {@link publicUrl}). Cached per request. */
+  /**
+   * The browser-facing request URL, proxy-header aware (see {@link publicUrl}) —
+   * read `url.pathname`, `url.searchParams` and the rest off it. Parsed once and
+   * cached, so the same instance comes back on every read within a request; treat
+   * it as read-only for that reason.
+   */
   get url(): URL {
     return (this.#url ??= publicUrl(this.#raw as Context));
-  }
-
-  /** Shorthand for `ctx.url.pathname`, e.g. `/dashboard`. */
-  get pathname(): string {
-    return this.url.pathname;
-  }
-
-  /** Shorthand for `ctx.url.searchParams`, e.g. `ctx.searchParams.get('q')`. */
-  get searchParams(): URLSearchParams {
-    return this.url.searchParams;
   }
 
   /** The HTTP method of the request, e.g. `GET` or `POST`. */

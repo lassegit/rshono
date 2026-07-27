@@ -16,7 +16,7 @@ export default async function WhoAmI() {
         <p className="description">The rshono request context — one object, read inside an async server component.</p>
         <ul className="user-list">
           <li className="feature-card">
-            pathname: <code>{ctx.pathname}</code>
+            pathname: <code>{ctx.url.pathname}</code>
           </li>
           <li className="feature-card">
             x-test header: <code>{testHeader}</code>

@@ -397,7 +397,7 @@ describe('Ctx enumerability', () => {
 
   test('the wrapper still resolves request data through the hidden context', () => {
     const ctx = new Ctx(fakeHonoContext);
-    assert.equal(ctx.pathname, '/');
+    assert.equal(ctx.url.pathname, '/');
     assert.deepEqual(ctx.params, {});
   });
 });
