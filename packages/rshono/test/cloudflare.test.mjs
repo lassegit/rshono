@@ -7,7 +7,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { after, before, describe, test } from 'node:test';
-import { APP_ENV, buildApp, EXAMPLE_DIR, EXAMPLE_DIST } from './helpers.mjs';
+import { APP_ENV, buildApp, EXAMPLE_DIR, EXAMPLE_DIST, importServerBundle } from './helpers.mjs';
 
 const ASSETS_ROOT = join(EXAMPLE_DIST, 'cloudflare', 'assets');
 const WRANGLER_CONFIG = join(EXAMPLE_DIR, 'wrangler.jsonc');
@@ -51,7 +51,7 @@ function fetchWorker(path, init) {
 before(async () => {
   hadWranglerConfig = existsSync(WRANGLER_CONFIG);
   buildApp(EXAMPLE_DIR, { args: ['--deploy', 'cloudflare'] });
-  bundle = await import(`${join(EXAMPLE_DIST, 'server', 'main.mjs')}?cloudflare`);
+  bundle = await importServerBundle('cloudflare');
   worker = bundle.default;
 });
 
@@ -165,7 +165,7 @@ describe('serving from a Worker', () => {
     //
     // A second module instance, because the prerender cache lives for the life of one — which models
     // an isolate, where the binding never changes underneath it.
-    const isolate = (await import(`${join(EXAMPLE_DIST, 'server', 'main.mjs')}?no-binding`)).default;
+    const isolate = (await importServerBundle('no-binding')).default;
     const res = await isolate.fetch(new Request(`${ORIGIN}/docs/getting-started`), {}, { waitUntil() {} });
     const body = await res.text();
     assert.equal(res.status, 200);

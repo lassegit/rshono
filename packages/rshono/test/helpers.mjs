@@ -1,7 +1,7 @@
 import { spawn, spawnSync } from 'node:child_process';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = join(fileURLToPath(import.meta.url), '..', '..', '..', '..');
 export const EXAMPLE_DIR = join(ROOT, 'examples', 'rs-basic');
@@ -50,6 +50,22 @@ export function buildApp(dir, { config, args = [] } = {}) {
 
 export function buildExample(config) {
   return buildApp(EXAMPLE_DIR, { config });
+}
+
+/**
+ * Imports the server bundle the last build produced, for a suite that calls its export the way a
+ * platform would rather than over HTTP.
+ *
+ * `import()` resolves a *URL*, not a path, so the path has to be converted: on Windows an absolute
+ * path starts with a drive letter, which parses as a `d:` scheme and Node rejects with
+ * `ERR_UNSUPPORTED_ESM_URL_SCHEME`. A bare path only gets away with it on POSIX, where it happens to
+ * read as a URL path — so this lives here rather than at each call site.
+ *
+ * `cacheKey` is appended as a query. Every target builds to the same filename and the module cache
+ * is keyed by specifier, so importing twice without one hands back the previous build.
+ */
+export function importServerBundle(cacheKey) {
+  return import(`${pathToFileURL(join(EXAMPLE_DIST, 'server', 'main.mjs')).href}?${cacheKey}`);
 }
 
 /** Runs `rshono <command>` in `dir` and resolves once it reports the address it is listening on. */

@@ -13,17 +13,16 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { before, describe, test } from 'node:test';
-import { buildApp, EXAMPLE_DIR, EXAMPLE_DIST } from './helpers.mjs';
+import { buildApp, EXAMPLE_DIR, EXAMPLE_DIST, importServerBundle } from './helpers.mjs';
 
 const ORIGIN = 'https://rshono.example';
-const SERVER_BUNDLE = join(EXAMPLE_DIST, 'server', 'main.mjs');
 const CLI = fileURLToPath(new URL('../bin/rshono.mjs', import.meta.url));
 
 /** Builds the example for one target and returns its bundle, freshly evaluated. */
 async function buildFor(target) {
   const stdout = buildApp(EXAMPLE_DIR, { args: ['--deploy', target] });
-  // A distinct query per target: the module cache would otherwise hand back the previous build.
-  const bundle = await import(`${SERVER_BUNDLE}?${target}`);
+  // The target names the cache key, so each build is a distinct module rather than the previous one.
+  const bundle = await importServerBundle(target);
   return { stdout, bundle };
 }
 
