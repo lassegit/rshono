@@ -296,6 +296,7 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
       signal,
       nonce,
       onShellError: (error) => reportServerError(error, { source: 'ssr', request: c.req.raw, message: '[rshono] SSR shell error:' }),
+      onError: (error) => reportServerError(error, { source: 'ssr', request: c.req.raw, message: '[rshono] SSR error:' }),
     });
   } catch (error) {
     deadline.clear();

@@ -8,7 +8,8 @@
 // becomes a problem; nothing else depends on it.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { before, describe, test } from 'node:test';
@@ -16,10 +17,11 @@ import { buildApp, EXAMPLE_DIR, EXAMPLE_DIST } from './helpers.mjs';
 
 const ORIGIN = 'https://rshono.example';
 const SERVER_BUNDLE = join(EXAMPLE_DIST, 'server', 'main.mjs');
+const CLI = fileURLToPath(new URL('../bin/rshono.mjs', import.meta.url));
 
 /** Builds the example for one target and returns its bundle, freshly evaluated. */
 async function buildFor(target) {
-  const stdout = buildApp(EXAMPLE_DIR, undefined, ['--deploy', target]);
+  const stdout = buildApp(EXAMPLE_DIR, { args: ['--deploy', target] });
   // A distinct query per target: the module cache would otherwise hand back the previous build.
   const bundle = await import(`${SERVER_BUNDLE}?${target}`);
   return { stdout, bundle };
@@ -40,14 +42,10 @@ describe('bun', () => {
   let bundle;
   before(async () => ({ bundle } = await buildFor('bun')));
 
-  test('exports what Bun serves: a fetch handler and the address to bind', async () => {
+  test('exports what Bun serves — a fetch handler and the address to bind — and renders through it', async () => {
     assert.equal(buildMarker().deploy, 'bun');
-    assert.equal(typeof bundle.default.fetch, 'function');
     assert.equal(typeof bundle.default.port, 'number', 'Bun reads the port off the default export');
     assert.equal(typeof bundle.default.hostname, 'string');
-  });
-
-  test('renders through that handler', async () => {
     const { res, body } = await requestVia(bundle.default.fetch, '/');
     assert.equal(res.status, 200);
     assert.ok(body.startsWith('<!DOCTYPE html>'));
@@ -58,12 +56,8 @@ describe('deno', () => {
   let bundle;
   before(async () => ({ bundle } = await buildFor('deno')));
 
-  test('exports a fetch handler, which is what `deno serve` and Deno Deploy both look for', () => {
+  test('serves a prerendered page from disk through the fetch handler `deno serve` looks for', async () => {
     assert.equal(buildMarker().deploy, 'deno');
-    assert.equal(typeof bundle.default.fetch, 'function');
-  });
-
-  test('serves a prerendered page from disk, through Deno node compatibility', async () => {
     const { res, body } = await requestVia(bundle.default.fetch, '/docs/getting-started');
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('cache-control'), 'public, max-age=300', 'came from the prerender, not a render');
@@ -157,15 +151,23 @@ describe('aws-lambda', () => {
     assert.equal(buildMarker().deploy, 'aws-lambda');
     assert.equal(typeof bundle.default, 'function', 'streamifyResponse-wrapped, so SSR still streams');
   });
+});
 
-  // Asserted against whichever target built last, which is the point: the build on disk belongs to a
-  // platform, and a bundle whose entry hands a handler to its host has no listener — so starting it
-  // would exit silently the moment the module finished evaluating.
-  test('`rshono start` refuses a build made for a platform instead of starting nothing', () => {
-    const cli = fileURLToPath(new URL('../bin/rshono.mjs', import.meta.url));
-    const result = spawnSync(process.execPath, [cli, 'start'], { cwd: EXAMPLE_DIR, encoding: 'utf8', timeout: 30_000 });
+// Last, so the build on disk is the aws-lambda one: `start` has to refuse it rather than run it.
+describe('`rshono start` refuses what it cannot run', () => {
+  const start = (cwd) => spawnSync(process.execPath, [CLI, 'start'], { cwd, encoding: 'utf8', timeout: 30_000 });
+
+  test('a build made for a platform, which has no listener in it and would exit silently', () => {
+    const result = start(EXAMPLE_DIR);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /targets aws-lambda/);
     assert.match(result.stderr, /--deploy node/, 'says how to get a build it can run');
+  });
+
+  test('no build at all, naming the command that makes one', () => {
+    const result = start(mkdtempSync(join(tmpdir(), 'rshono-unbuilt-')));
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /no production build found/);
+    assert.match(result.stderr, /rshono build/);
   });
 });

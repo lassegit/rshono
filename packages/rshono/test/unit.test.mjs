@@ -210,15 +210,12 @@ describe('readPrerendered', () => {
     assert.equal(await readPrerendered(tempDir(), '/nope'), null);
   });
 
-  test('refuses to escape the ssg directory', async () => {
+  test('refuses to escape the ssg directory, decoded form included', async () => {
+    // `prerenderedRelPath` above is where the exhaustive path cases live; what this adds is that the
+    // percent-encoded form is decoded *before* the check rather than after it.
     const dir = tempDir();
-    const secretDir = mkdtempSync(join(tmpdir(), 'rshono-secret-'));
-    tempDirs.push(secretDir);
-    writeFileSync(join(secretDir, 'index.html'), 'secret');
-
-    for (const attempt of ['/../', '/..%2f', '/docs/../../etc', '/./../']) {
-      const result = await readPrerendered(dir, attempt);
-      assert.equal(result, null, `traversal attempt "${attempt}" must not resolve`);
+    for (const attempt of ['/../', '/..%2f', '/docs/../../etc']) {
+      assert.equal(await readPrerendered(dir, attempt), null, `traversal attempt "${attempt}" must not resolve`);
     }
   });
 });

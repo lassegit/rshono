@@ -29,7 +29,12 @@ export default defineConfig({
     env: { PORT: String(PORT) },
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
-    stdout: 'pipe',
-    stderr: 'pipe',
+    // Two of these tests make the server fail on purpose — a rejected action, a section that throws
+    // — and the framework reports every server-side failure with its stack. Piping that turns a
+    // passing run into a wall of stack traces that reads like a crash, so it is kept for CI, where a
+    // failure's only clue may be in there. Locally, `RSHONO_SERVER_LOG=1 pnpm test:browser` brings it
+    // back; reach for it if the run dies waiting for the server, since the build log is in here too.
+    stdout: process.env.CI || process.env.RSHONO_SERVER_LOG ? 'pipe' : 'ignore',
+    stderr: process.env.CI || process.env.RSHONO_SERVER_LOG ? 'pipe' : 'ignore',
   },
 });

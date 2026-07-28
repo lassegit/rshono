@@ -50,7 +50,7 @@ function fetchWorker(path, init) {
 
 before(async () => {
   hadWranglerConfig = existsSync(WRANGLER_CONFIG);
-  buildApp(EXAMPLE_DIR, undefined, ['--deploy', 'cloudflare']);
+  buildApp(EXAMPLE_DIR, { args: ['--deploy', 'cloudflare'] });
   bundle = await import(`${join(EXAMPLE_DIST, 'server', 'main.mjs')}?cloudflare`);
   worker = bundle.default;
 });
@@ -96,13 +96,10 @@ describe('the Workers build output', () => {
     assert.equal(config.assets.binding, 'ASSETS', 'the worker reads public/ and prerendered pages through it');
   });
 
-  test('still exports app and routes, which the prerender pass imports', () => {
+  test('hands the platform a fetch handler, and still exports the app and routes the prerender pass imports', () => {
+    assert.equal(typeof worker.fetch, 'function');
     assert.equal(typeof bundle.app?.fetch, 'function');
     assert.ok(Array.isArray(bundle.routes));
-  });
-
-  test('hands the platform a fetch handler as the default export', () => {
-    assert.equal(typeof worker.fetch, 'function');
   });
 });
 

@@ -1,23 +1,14 @@
-// Everything except `src/routes.ts` is optional — this app proves it by leaving all of it out:
-// no server.ts, no public/, no rshono.config, no notFound page, no error page. The rest of the
-// suite runs against one richly-configured example, which is exactly the app that would never
-// catch "the framework assumes X exists".
+// Everything except `src/routes.ts` is optional — this app proves it by leaving all of it out: no
+// server.ts, no public/, no rshono.config, no notFound page, no error page, and the bare-array
+// `defineRoutes` shorthand. The rest of the suite runs against one richly-configured example, which
+// is exactly the app that would never catch "the framework assumes X exists".
 import assert from 'node:assert/strict';
-import { after, before, test } from 'node:test';
-import { buildApp, MINIMAL_APP_DIR, START_READY, startApp, stopServer } from './helpers.mjs';
+import { after, test } from 'node:test';
+import { buildApp, MINIMAL_APP_DIR, startApp, stopServer } from './helpers.mjs';
 
-let server;
-let base;
-
-before(async () => {
-  buildApp(MINIMAL_APP_DIR);
-  server = await startApp(MINIMAL_APP_DIR, 'start', { urlPattern: START_READY });
-  base = `http://localhost:${server.port}`;
-});
-
-after(async () => {
-  if (server) await stopServer(server.child);
-});
+buildApp(MINIMAL_APP_DIR);
+const { base, child, port } = await startApp(MINIMAL_APP_DIR, 'start');
+after(() => stopServer(child));
 
 test('an app with only src/routes.ts builds and serves', async () => {
   const res = await fetch(`${base}/`);
@@ -36,13 +27,9 @@ test('the ctx page prop works with no config, no server.ts and no imports', asyn
 
 test('the url page prop is a real URL — pathname and query read off it', async () => {
   const html = await (await fetch(`${base}/?q=hello`)).text();
-  assert.match(html, new RegExp(`data-url="http://localhost:${server.port}/\\?q=hello"`), 'url is the absolute browser-facing URL');
+  assert.match(html, new RegExp(`data-url="http://localhost:${port}/\\?q=hello"`), 'url is the absolute browser-facing URL');
   assert.match(html, /data-pathname="\/"/);
   assert.match(html, /data-query="hello"/, 'url.searchParams should be the request query, not an empty set');
-});
-
-test('the routes array shorthand is accepted (no notFound/error wrapper object)', async () => {
-  assert.equal((await fetch(`${base}/files/a/b/c`)).status, 200);
 });
 
 test('a hand-written "use server-entry" works when the thunk is not inline', async () => {

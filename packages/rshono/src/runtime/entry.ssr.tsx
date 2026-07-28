@@ -17,6 +17,13 @@ export interface RenderHTMLOptions {
    * handler registered through `rshono/server` isn't reachable from in here.
    */
   onShellError?: (error: unknown) => void;
+  /**
+   * Called for an error that happened during SSR and *originated* in SSR — a client component that
+   * threw while rendering on the server, whether a boundary went on to contain it or it took the
+   * shell down with it. See {@link renderHTML} for why the ones that didn't originate here are
+   * dropped instead.
+   */
+  onError?: (error: unknown) => void;
 }
 
 // From the baked config, not `process.env.NODE_ENV`: this is a property of the build, and a deploy
@@ -81,6 +88,21 @@ export async function renderHTML(rscStream: ReadableStream<Uint8Array>, options:
     return React.use(payload).root;
   }
 
+  // React hands `onError` every error it meets while streaming, including ones an error boundary
+  // contained — and with no handler installed it logs each one itself. Almost all of them are errors
+  // it read out of the flight payload, where they arrive as React's redacted stand-in: a `digest`
+  // and no message. The RSC layer has already reported the real one in full, so the default handler
+  // prints an alarming, detail-free duplicate for a request a boundary handled perfectly well. Only
+  // an error carrying no digest started life in this render — a client component that threw during
+  // SSR — and that one nothing else will report.
+  let reported: unknown;
+  const onError = (error: unknown): void => {
+    if (typeof (error as { digest?: unknown } | null)?.digest === 'string') return;
+    if (options.signal?.aborted) return; // an abort is the deadline or the client leaving, not a fault
+    reported = error;
+    options.onError?.(error);
+  };
+
   let htmlStream: ReadableStream<Uint8Array>;
   let status: number | undefined;
   try {
@@ -89,10 +111,15 @@ export async function renderHTML(rscStream: ReadableStream<Uint8Array>, options:
       formState: options.formState,
       signal: options.signal,
       nonce: options.nonce,
+      // Deliberately returns nothing, so the digest React gives the client's `onRecoverableError`
+      // stays exactly what it was before a handler was installed here.
+      onError,
     });
   } catch (error) {
     if (isControlDigest((error as { digest?: unknown } | null)?.digest)) throw error;
-    if (!options.signal?.aborted) options.onShellError?.(error);
+    // `onError` runs first for the failure that aborts the shell, so this reports only what it let
+    // through: an error out of the flight payload, whose detail the RSC layer alone has.
+    if (!options.signal?.aborted && error !== reported) options.onShellError?.(error);
     status = 500;
     htmlStream = await renderToReadableStream(<SsrFailureDocument error={error} />, { nonce: options.nonce });
   }
