@@ -1,0 +1,121 @@
+// What `plan.test.mjs` cannot tell you: that the manifest it produces installs, that the tsconfig it
+// writes typechecks against the framework's real declarations, and that the app builds. Every failure
+// this has caught was of that kind — a `baseUrl` TypeScript 7 had removed, a peer range no package
+// manager would resolve — and none of them are visible in the file contents.
+//
+// Opt-in: it packs the framework, then installs from the registry twice. Set CREATE_RSHONO_E2E=1.
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { after, test } from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+const PACKAGE_DIR = join(fileURLToPath(import.meta.url), '..', '..');
+const REPO_ROOT = join(PACKAGE_DIR, '..', '..');
+const CLI = join(PACKAGE_DIR, 'bin', 'create-rshono.mjs');
+
+const enabled = process.env.CREATE_RSHONO_E2E === '1';
+const workspace = enabled ? mkdtempSync(join(tmpdir(), 'create-rshono-')) : '';
+after(() => {
+  if (workspace) rmSync(workspace, { recursive: true, force: true });
+});
+
+function run(command, args, cwd, label) {
+  const result = spawnSync(command, args, { cwd, encoding: 'utf8', shell: process.platform === 'win32', timeout: 600_000 });
+  if (result.status !== 0) {
+    throw new Error(`${label} failed (${result.status}):\n${result.stdout ?? ''}\n${result.stderr ?? ''}`);
+  }
+  return result.stdout ?? '';
+}
+
+/**
+ * The framework as a tarball, so the scaffolded app installs the code in this checkout rather than
+ * whatever is on npm — which for an unreleased version is nothing at all.
+ */
+function packFramework() {
+  run('pnpm', ['--filter', 'rshono', 'pack', '--pack-destination', workspace], REPO_ROOT, 'pnpm pack');
+  const tarball = readdirSync(workspace).find((entry) => entry.endsWith('.tgz'));
+  assert.ok(tarball, 'pnpm pack produced no tarball');
+  return join(workspace, tarball);
+}
+
+function scaffold(name, flags, tarball) {
+  run(process.execPath, [CLI, name, '-y', '--pm', 'npm', '--no-install', '--no-git', ...flags], workspace, `scaffold ${name}`);
+  const dir = join(workspace, name);
+
+  // The one edit a user would not make: point `rshono` at the packed tarball.
+  const manifestPath = join(dir, 'package.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  manifest.dependencies.rshono = `file:${tarball}`;
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  run('npm', ['install', '--no-audit', '--no-fund'], dir, `npm install (${name})`);
+
+  // The CLI formats the scaffold right after installing, which the tarball edit above has to work around
+  // — so the step is replicated here rather than skipped, or `check` would report a diff a real user
+  // would never see.
+  const scripts = JSON.parse(readFileSync(manifestPath, 'utf8')).scripts;
+  if (scripts.format) run('npm', ['run', 'format'], dir, `format (${name})`);
+
+  return dir;
+}
+
+test('a scaffolded app installs, typechecks and builds', { skip: enabled ? false : 'set CREATE_RSHONO_E2E=1' }, () => {
+  const tarball = packFramework();
+  const dir = scaffold('plain-app', [], tarball);
+
+  run('npm', ['run', 'typecheck'], dir, 'typecheck');
+  const output = run('npm', ['run', 'build'], dir, 'build');
+  assert.match(output, /build complete/);
+
+  run('npm', ['run', 'format:check'], dir, 'format:check');
+  run('npm', ['run', 'lint'], dir, 'lint');
+});
+
+/**
+ * Every quality preset ships config files for tools this package does not control, and a key one of them
+ * has renamed is a broken scaffold that no amount of asserting on file contents would reveal. Only the
+ * tools are installed — the framework and React are not needed to find out whether Biome accepts its own
+ * config — which keeps this to a few seconds per preset.
+ */
+test('every quality preset produces configs its own tools accept', { skip: enabled ? false : 'set CREATE_RSHONO_E2E=1' }, () => {
+  for (const preset of ['prettier-oxlint', 'biome', 'oxc']) {
+    const name = `quality-${preset}`;
+    run(process.execPath, [CLI, name, '-y', '--pm', 'npm', '--quality', preset, '--no-install', '--no-git'], workspace, `scaffold ${name}`);
+    const dir = join(workspace, name);
+
+    const manifestPath = join(dir, 'package.json');
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+    const tools = ['prettier', 'oxfmt', 'oxlint', '@biomejs/biome'];
+    manifest.dependencies = {};
+    manifest.devDependencies = Object.fromEntries(Object.entries(manifest.devDependencies).filter(([dep]) => tools.includes(dep)));
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+    run('npm', ['install', '--no-audit', '--no-fund'], dir, `npm install (${name})`);
+    run('npm', ['run', 'format'], dir, `format (${preset})`);
+    run('npm', ['run', 'format:check'], dir, `format:check (${preset})`);
+    run('npm', ['run', 'lint'], dir, `lint (${preset})`);
+  }
+});
+
+test('Tailwind compiles through its own PostCSS pass, on a real install', { skip: enabled ? false : 'set CREATE_RSHONO_E2E=1' }, () => {
+  const tarball = join(workspace, readdirSync(workspace).find((entry) => entry.endsWith('.tgz')) ?? '');
+  const dir = scaffold('tw-app', ['--tailwind', '--quality', 'biome', '--deploy', 'cloudflare'], tarball);
+
+  run('npm', ['run', 'typecheck'], dir, 'typecheck');
+  assert.match(run('npm', ['run', 'build'], dir, 'build'), /build complete/);
+
+  const chunks = join(dir, 'dist', 'static', 'chunks');
+  const css = readdirSync(chunks)
+    .filter((file) => file.endsWith('.css'))
+    .map((file) => readFileSync(join(chunks, file), 'utf8'))
+    .join('\n');
+  assert.doesNotMatch(css, /@import\s+['"]tailwindcss['"]/, 'an unexpanded @import means no PostCSS pass ran');
+  assert.match(css, /\.font-semibold\{/, 'a utility used by the scaffolded page should be compiled in');
+
+  // Biome has to accept its own generated config, and the Tailwind stylesheet it cannot parse must be
+  // outside what it checks.
+  run('npm', ['run', 'check'], dir, 'biome check');
+});

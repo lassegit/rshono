@@ -32,26 +32,42 @@ function signupBody() {
 }
 
 /**
- * POSTs on a throwaway connection and resolves with the status code. For requests the server is
- * expected to reject mid-upload, where a connection reset is the correct outcome but must not be
- * left behind in a shared keep-alive pool.
+ * A POST that *declares* an over-cap body without sending one, resolving with the status code.
+ *
+ * The cap is decided from `Content-Length` before a byte of the body is touched, so sending the body at
+ * all is pointless — and actively harmful in a test. An earlier version streamed a real 2MB upload, which
+ * meant the server answered 413 and tore the connection down while the write was still in flight: whether
+ * that write drained first is a race between the socket buffer and the server, and losing it surfaced as
+ * `write EPIPE` on the *client* side. That failure said nothing about the body cap, and it turned up on
+ * exactly the runners with different buffer sizes (Linux/Node 24, Windows). Nothing large is sent now, so
+ * there is no race to lose.
+ *
+ * Plain `fetch` cannot express this: it computes `Content-Length` from the body it is handed. Keep-alive
+ * is off because this request is abandoned half-sent by design, and a socket in that state must not go
+ * back into a pool for a later test to pick up.
  */
-function postWithoutKeepAlive(path, body) {
+function postDeclaringBodyOf(path, declaredBytes) {
   return new Promise((resolve, reject) => {
     const req = request(
       `${base}${path}`,
-      { method: 'POST', agent: new Agent({ keepAlive: false }), headers: { 'content-type': 'application/json' } },
-      // Resolve on headers: the status is all we assert, and the connection may well be reset
-      // before the body finishes streaming either way.
+      {
+        method: 'POST',
+        agent: new Agent({ keepAlive: false }),
+        headers: { 'content-type': 'application/json', 'content-length': String(declaredBytes) },
+      },
       (res) => {
         res.resume();
         resolve(res.statusCode);
+        // The rest of the declared body is never coming; say so rather than holding the socket open.
+        req.destroy();
       },
     );
-    // Only reaches the caller if the request failed *before* any response — a write-side reset after
-    // the 413 has landed is expected here, and the promise has already settled by then.
+    req.setTimeout(10_000, () => reject(new Error(`no response to the over-cap POST to ${path} within 10s`)));
+    // Only ever reaches the caller before a response: the teardown that follows the 413 is the expected
+    // end of this exchange, and the promise has settled by then.
     req.on('error', reject);
-    req.end(body);
+    // A token chunk, so the request is genuinely on the wire — the declared length is what is under test.
+    req.write('{"name":"');
   });
 }
 
@@ -569,9 +585,9 @@ test('an action id the app does not export is a 400, not a fault or a prototype 
 });
 
 test('the body-size cap covers endpoint routes and the server sub-app, not just actions', async () => {
-  // Deliberately not `fetch`: the cap is enforced before the body is read, so the server answers
-  // while the 2MB upload is still in flight and resets the connection. That's correct — but it
-  // would leave a poisoned socket in undici's shared keep-alive pool for a later test to trip over.
-  const status = await postWithoutKeepAlive('/api/users', JSON.stringify({ name: 'x'.repeat(2 * 1024 * 1024), email: 'big@example.com' }));
-  assert.equal(status, 413, 'a 2MB body to a sub-app route should be refused by the 1MiB default cap');
+  // What is under test is the *coverage* — that a plain Hono route in src/server.ts sits behind the same
+  // cap as a server action. Both mechanisms the cap uses (a declared length, and the streaming counter for
+  // a chunked body) are asserted against a small configured cap in prod-config.test.mjs.
+  const status = await postDeclaringBodyOf('/api/users', 2 * 1024 * 1024);
+  assert.equal(status, 413, 'a 2MB body declared to a sub-app route should be refused by the 1MiB default cap');
 });

@@ -32,6 +32,21 @@ function isPathRequest(request: string): boolean {
 const BROWSER_TARGETS = ['last 2 versions', '> 0.2%', 'not dead', 'Firefox ESR'];
 const NODE_TARGETS = ['node >= 22'];
 
+/**
+ * Rspack's native CSS pipeline, which both compilers get.
+ *
+ * It parses *finished* CSS, so a stylesheet needing a PostCSS plugin — Tailwind, most obviously — adds
+ * the loader through the {@link RSHonoConfig.rspack} hook, along with the two packages a PostCSS pass
+ * takes. The framework stays out of it: `postcss` is a dependency an app that wants one can have, rather
+ * than one every app pays for. The Styling section of the README has the four lines involved.
+ *
+ * A fresh object per compiler, not one shared between them — the hook is handed each config in turn, and
+ * an app that reaches in to change this rule should not find it has changed the other bundle's too.
+ */
+function cssRule(): RuleSetRule {
+  return { test: /\.css$/i, type: 'css/auto' };
+}
+
 export interface RspackConfigOptions {
   rootDir: string;
   isDev: boolean;
@@ -127,11 +142,7 @@ export function createConfigs(options: RspackConfigOptions): [RspackOptions, Rsp
       alias: { '@': srcDir },
     },
     module: {
-      rules: [
-        swcRule(BROWSER_TARGETS),
-        { test: /\.css$/i, type: 'css/auto' },
-        { test: /\.(png|jpe?g|gif|webp|avif|ico|svg|woff2?|ttf|otf)$/i, type: 'asset' },
-      ],
+      rules: [swcRule(BROWSER_TARGETS), cssRule(), { test: /\.(png|jpe?g|gif|webp|avif|ico|svg|woff2?|ttf|otf)$/i, type: 'asset' }],
     },
     plugins: [
       new ClientPlugin(),
@@ -210,7 +221,7 @@ export function createConfigs(options: RspackConfigOptions): [RspackOptions, Rsp
           ],
         },
         swcRule([...(preset.syntaxTargets ?? NODE_TARGETS)]),
-        { test: /\.css$/i, type: 'css/auto' },
+        cssRule(),
         {
           test: /\.(png|jpe?g|gif|webp|avif|ico|svg|woff2?|ttf|otf)$/i,
           type: 'asset',

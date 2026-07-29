@@ -1,0 +1,178 @@
+/*
+ * Deliberately element-level: nothing here names a class, so the markup in src/components stays plain
+ * HTML you can restyle or replace wholesale without hunting for selectors.
+ *
+ * Rspack compiles this natively — there is no PostCSS anywhere in the framework. If you want a plugin
+ * chain, add the loader in `rshono.config.ts`'s `rspack` hook; that, plus the packages, is all the
+ * Tailwind setup is.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #fcfcfd;
+  --surface: #fff;
+  --text: #18181b;
+  --muted: #71717a;
+  --border: #e4e4e7;
+  --accent: #2563eb;
+  --radius: 8px;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #09090b;
+    --surface: #131316;
+    --text: #f4f4f5;
+    --muted: #a1a1aa;
+    --border: #27272a;
+    --accent: #60a5fa;
+  }
+}
+
+body {
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  line-height: 1.6;
+  color: var(--text);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+header,
+main,
+footer {
+  max-width: 44rem;
+  margin-inline: auto;
+  padding-inline: 1.5rem;
+}
+
+header {
+  padding-block: 1.25rem;
+}
+
+nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+main {
+  padding-block: 1rem 4rem;
+}
+
+footer {
+  padding-block: 2rem;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+h1 {
+  font-size: 2.25rem;
+  letter-spacing: -0.02em;
+  margin-block-end: 0.5rem;
+}
+
+h2 {
+  font-size: 1.125rem;
+  margin-block: 2.5rem 0.5rem;
+}
+
+p,
+ul {
+  margin-block-end: 1rem;
+}
+
+ul {
+  padding-inline-start: 1.25rem;
+}
+
+li {
+  margin-block-end: 0.25rem;
+}
+
+a {
+  color: var(--accent);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+code {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.875em;
+  padding: 0.1em 0.35em;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--surface);
+}
+
+pre {
+  overflow-x: auto;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  font-size: 0.8125rem;
+}
+
+form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+}
+
+label {
+  flex-basis: 100%;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+input {
+  flex: 1 1 12rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: inherit;
+  font: inherit;
+}
+
+button {
+  padding: 0.5rem 1rem;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+output {
+  flex-basis: 100%;
+  font-size: 0.9375rem;
+  color: var(--muted);
+}
