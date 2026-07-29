@@ -1,6 +1,6 @@
 # RSC-Basic
 
-Test app for `packages/rshono` — exercises every framework feature:
+Test app for `packages/core` — exercises every framework feature:
 
 | Route               | Demonstrates                                                                                  |
 | ------------------- | --------------------------------------------------------------------------------------------- |

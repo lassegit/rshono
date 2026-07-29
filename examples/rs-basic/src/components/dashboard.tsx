@@ -1,5 +1,5 @@
-import type { PageProps } from 'rshono';
-import { redirect } from 'rshono/server';
+import type { PageProps } from '@rshono/core';
+import { redirect } from '@rshono/core/server';
 // Type-only, so importing the server sub-app from a page module costs nothing at runtime.
 import type { AppEnv } from '../server';
 import { Layout } from './layout';

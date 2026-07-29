@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { NavigationProgress } from 'rshono/client';
+import { NavigationProgress } from '@rshono/core/client';
 import '../styles.css';
 
 export function Layout({ title = 'rshono', description, children }: { title?: string; description?: string; children: ReactNode }) {

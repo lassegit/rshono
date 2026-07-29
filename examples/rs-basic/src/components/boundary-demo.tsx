@@ -1,6 +1,6 @@
-import type { PageProps } from 'rshono';
-import { Boundary } from 'rshono/client';
-import { getContext } from 'rshono/server';
+import type { PageProps } from '@rshono/core';
+import { Boundary } from '@rshono/core/client';
+import { getContext } from '@rshono/core/server';
 import { Layout } from './layout';
 
 // A slow async server component — shows the Suspense loading half of <Boundary>.

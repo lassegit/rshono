@@ -1,6 +1,6 @@
 'use server';
 
-import { getContext, redirect } from 'rshono/server';
+import { getContext, redirect } from '@rshono/core/server';
 import { fakeDB, type User } from './db';
 
 export async function createUser(data: { name: string; email: string }): Promise<User> {

@@ -1,4 +1,4 @@
-import type { PageProps } from 'rshono';
+import type { PageProps } from '@rshono/core';
 import { CrashForm } from './crash-form';
 import { Layout } from './layout';
 

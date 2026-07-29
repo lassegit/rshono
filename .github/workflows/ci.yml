@@ -33,11 +33,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Typecheck the framework
-        run: pnpm --filter rshono typecheck
+        run: pnpm --filter @rshono/core typecheck
 
       # Builds the package, then the unit, compression, minimal-app, dev and production e2e suites.
       - name: Test
-        run: pnpm --filter rshono test
+        run: pnpm --filter @rshono/core test
 
       # The example is typechecked against the *built* declarations, which is the only check that
       # what gets published is usable by a consumer.
@@ -48,8 +48,8 @@ jobs:
       # Cheap enough to run on every platform, and Windows is where its path handling would break.
       - name: Typecheck and test the scaffolder
         run: |
-          pnpm --filter create-rshono typecheck
-          pnpm --filter create-rshono test
+          pnpm --filter @rshono/create typecheck
+          pnpm --filter @rshono/create test
 
   scaffold:
     name: scaffold (install and build a generated app)
@@ -69,13 +69,13 @@ jobs:
       # The scaffolder's codegen reads the framework's built output for the deploy targets and the
       # dependency pins, so the framework has to exist before it can build.
       - name: Build the framework
-        run: pnpm --filter rshono build
+        run: pnpm --filter @rshono/core build
 
       # Packs the framework, scaffolds real apps from it and installs them from the registry, so this is
       # the job that catches what no assertion on generated file contents can: a manifest that will not
       # resolve, a tsconfig option the compiler has removed, a tool config key that was renamed.
       - name: Scaffold, install and build
-        run: pnpm --filter create-rshono test
+        run: pnpm --filter @rshono/create test
         env:
           CREATE_RSHONO_E2E: '1'
 
@@ -95,18 +95,18 @@ jobs:
       - run: pnpm install --frozen-lockfile
 
       - name: Install Chromium
-        run: pnpm --filter rshono exec playwright install --with-deps chromium
+        run: pnpm --filter @rshono/core exec playwright install --with-deps chromium
 
       # Soft navigation, prefetching, scroll restoration and the fatal overlay only exist in a real
       # browser; nothing in the node:test suite can reach them.
       - name: Browser tests
-        run: pnpm --filter rshono test:browser
+        run: pnpm --filter @rshono/core test:browser
 
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
-          path: packages/rshono/playwright-report/
+          path: packages/core/playwright-report/
           retention-days: 7
 
   package:
@@ -127,11 +127,11 @@ jobs:
       # A tarball that is missing the compiled runtime, or that ships the whole repo, is a broken
       # release — and neither shows up in any other job.
       - name: Pack and inspect the tarball
-        run: pnpm --filter rshono pack --pack-destination "$RUNNER_TEMP"
+        run: pnpm --filter @rshono/core pack --pack-destination "$RUNNER_TEMP"
 
       - name: Check the published entry points exist
         run: |
-          tar -tzf "$RUNNER_TEMP"/rshono-*.tgz | sort > /tmp/files.txt
+          tar -tzf "$RUNNER_TEMP"/rshono-core-*.tgz | sort > /tmp/files.txt
           for required in \
             package/dist/index.js \
             package/dist/index.d.ts \

@@ -23,6 +23,9 @@ importers:
 
   examples/rs-basic:
     dependencies:
+      '@rshono/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       hono:
         specifier: ^4.12.31
         version: 4.12.31
@@ -32,9 +35,6 @@ importers:
       react-dom:
         specifier: 19.2.8
         version: 19.2.8(react@19.2.8)
-      rshono:
-        specifier: workspace:*
-        version: link:../../packages/rshono
     devDependencies:
       '@types/node':
         specifier: ^26.1.1
@@ -46,25 +46,7 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
 
-  packages/create-rshono:
-    devDependencies:
-      '@clack/prompts':
-        specifier: ^1.7.0
-        version: 1.7.0
-      '@rspack/core':
-        specifier: 2.1.5
-        version: 2.1.5
-      '@types/node':
-        specifier: ^26.1.1
-        version: 26.1.1
-      rshono:
-        specifier: workspace:*
-        version: link:../rshono
-      typescript:
-        specifier: ^7.0.2
-        version: 7.0.2
-
-  packages/rshono:
+  packages/core:
     dependencies:
       '@hono/node-server':
         specifier: ^2.0.11
@@ -113,8 +95,11 @@ importers:
         specifier: ^7.0.2
         version: 7.0.2
 
-  packages/rshono/test/fixtures/minimal-app:
+  packages/core/test/fixtures/minimal-app:
     dependencies:
+      '@rshono/core':
+        specifier: workspace:*
+        version: link:../../..
       hono:
         specifier: ^4.12.31
         version: 4.12.31
@@ -124,12 +109,12 @@ importers:
       react-dom:
         specifier: 19.2.8
         version: 19.2.8(react@19.2.8)
-      rshono:
-        specifier: workspace:*
-        version: link:../../..
 
-  packages/rshono/test/fixtures/postcss-app:
+  packages/core/test/fixtures/postcss-app:
     dependencies:
+      '@rshono/core':
+        specifier: workspace:*
+        version: link:../../..
       hono:
         specifier: ^4.12.31
         version: 4.12.31
@@ -139,9 +124,6 @@ importers:
       react-dom:
         specifier: 19.2.8
         version: 19.2.8(react@19.2.8)
-      rshono:
-        specifier: workspace:*
-        version: link:../../..
     devDependencies:
       '@tailwindcss/postcss':
         specifier: ^4.3.3
@@ -155,6 +137,24 @@ importers:
       tailwindcss:
         specifier: ^4.3.3
         version: 4.3.3
+
+  packages/create:
+    devDependencies:
+      '@clack/prompts':
+        specifier: ^1.7.0
+        version: 1.7.0
+      '@rshono/core':
+        specifier: workspace:*
+        version: link:../core
+      '@rspack/core':
+        specifier: 2.1.5
+        version: 2.1.5
+      '@types/node':
+        specifier: ^26.1.1
+        version: 26.1.1
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
 
 packages:
 

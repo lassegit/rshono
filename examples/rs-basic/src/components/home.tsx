@@ -1,4 +1,4 @@
-import type { PageProps } from 'rshono';
+import type { PageProps } from '@rshono/core';
 import { Counter } from './counter';
 import { Layout } from './layout';
 
