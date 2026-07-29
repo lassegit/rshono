@@ -1,6 +1,6 @@
 {
   "name": "rshono",
-  "version": "0.1.0",
+  "version": "1.0.0-rc.0",
   "description": "Minimalist web framework — Hono + Rspack + React Server Components",
   "author": "Lasse <lasse@lassetange.com> (https://www.lassetange.com)",
   "license": "ISC",
