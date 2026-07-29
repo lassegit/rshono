@@ -10,9 +10,9 @@
     "tanstack"
   ],
   "bugs": {
-    "url": "https://github.com/lassegit/rshono/issues"
+    "url": "https://github.com/rshono/rshono/issues"
   },
-  "homepage": "https://github.com/lassegit/rshono",
+  "homepage": "https://github.com/rshono/rshono",
   "workspaces": [
     "packages/*",
     "examples/*"

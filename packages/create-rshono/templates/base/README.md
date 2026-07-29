@@ -1,6 +1,6 @@
 # **PROJECT_NAME**
 
-A [rshono](https://github.com/lassegit/rshono) app — [Hono](https://hono.dev) + [Rspack](https://rspack.rs) + [React Server Components](https://react.dev/reference/rsc/server-components).
+A [rshono](https://github.com/rshono/rshono) app — [Hono](https://hono.dev) + [Rspack](https://rspack.rs) + [React Server Components](https://react.dev/reference/rsc/server-components).
 
 ```bash
 __PM_RUN__ dev        # dev server with HMR, http://localhost:3000

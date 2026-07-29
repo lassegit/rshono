@@ -36,7 +36,7 @@ export function Layout({ title, description, children }: { title?: string; descr
         <main className="mx-auto max-w-2xl px-6 pt-4 pb-16">{children}</main>
         <footer className="mx-auto max-w-2xl border-t border-zinc-200 px-6 py-8 text-sm text-zinc-500 dark:border-zinc-800 dark:text-zinc-400">
           <p>
-            Built with <a href="https://github.com/lassegit/rshono">rshono</a> — Hono + Rspack + React Server Components.
+            Built with <a href="https://github.com/rshono/rshono">rshono</a> — Hono + Rspack + React Server Components.
           </p>
         </footer>
       </body>

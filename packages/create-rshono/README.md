@@ -1,6 +1,6 @@
 # create-rshono
 
-Scaffolds a new [rshono](https://github.com/lassegit/rshono) app — Hono + Rspack + React Server Components.
+Scaffolds a new [rshono](https://github.com/rshono/rshono) app — Hono + Rspack + React Server Components.
 
 ```bash
 npm  create rshono@latest my-app

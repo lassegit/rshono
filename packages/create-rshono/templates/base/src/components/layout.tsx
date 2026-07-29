@@ -36,7 +36,7 @@ export function Layout({ title, description, children }: { title?: string; descr
         <main>{children}</main>
         <footer>
           <p>
-            Built with <a href="https://github.com/lassegit/rshono">rshono</a> — Hono + Rspack + React Server Components.
+            Built with <a href="https://github.com/rshono/rshono">rshono</a> — Hono + Rspack + React Server Components.
           </p>
         </footer>
       </body>
