@@ -1,0 +1,32 @@
+import type { Answers } from '../options.js';
+import { combinationFeatures } from './combinations.js';
+import { deployFeature } from './deploy.js';
+import { formatterFeature, linterFeature } from './quality.js';
+import { stylingFeature } from './styling.js';
+import type { Feature } from './types.js';
+
+export type { Feature };
+
+/**
+ * The features a set of answers selects, in application order — so an overlay listed later wins a file
+ * both of them ship. Deduplicated by `id`, which is what lets one feature answer two questions (Biome
+ * is both the formatter and the linter) without contributing twice.
+ */
+export function selectFeatures(answers: Answers): Feature[] {
+  const selected = [
+    deployFeature(answers.deploy),
+    stylingFeature(answers.styling),
+    formatterFeature(answers.formatter),
+    linterFeature(answers.linter),
+    ...combinationFeatures(answers),
+  ];
+
+  const features: Feature[] = [];
+  const seen = new Set<string>();
+  for (const feature of selected) {
+    if (!feature || seen.has(feature.id)) continue;
+    seen.add(feature.id);
+    features.push(feature);
+  }
+  return features;
+}

@@ -1,0 +1,12 @@
+/*
+ * `source(none)` plus an explicit `@source` keeps Tailwind's class detection inside this fixture.
+ * Left to itself it walks up looking for a project boundary, which in a monorepo means scanning
+ * every sibling package — slow here, and it would make the emitted CSS depend on what else is
+ * checked out.
+ */
+@import 'tailwindcss' source(none);
+@source './pages/**/*.tsx';
+
+@theme {
+  --color-fixture: #2563eb;
+}

@@ -10,9 +10,30 @@ Minimalist framework — [Hono](https://hono.dev) + [Rspack](https://rspack.rs) 
 One required file (`src/routes.ts`), one optional file (`src/server.ts`), and you get a dev server with HMR, streaming SSR with RSC hydration, server actions with progressive enhancement, soft navigation, build-time prerendering, and hard env/secret safety.
 
 ```bash
+npm create rshono@latest my-app   # scaffold one, with a deploy target and tooling of your choosing
+```
+
+```bash
 rshono dev     # dev server with HMR (default port 3000)
 rshono build   # production build: client + server bundles + SSG
 rshono start   # run the production build
+```
+
+## Project layout
+
+```
+rshono.config.ts   optional — every field has a default (see Configuration)
+public/            optional — served verbatim at the web root
+src/
+  routes.ts        required — the route table
+  server.ts        optional — a Hono sub-app mounted ahead of the page routes
+  …               everything else is yours to arrange
+```
+
+Only the two files under `src/` mean anything to the framework; there is no convention attached to any other name or directory. `@/…` resolves to `src/…` in both compilers, so add the matching `paths` to your `tsconfig.json` if you use it — relative, and with no `baseUrl`, which TypeScript 7 removed:
+
+```json
+{ "compilerOptions": { "paths": { "@/*": ["./src/*"] } } }
 ```
 
 ## The one required file: src/routes.ts
@@ -81,6 +102,37 @@ Call them directly from client code (typed args and result), or wire them to `<f
 - `{ type: 'endpoint' }` routes export a Hono `handler` from a server module (it only ever runs on the server).
 - `src/server.ts` may default-export a whole Hono sub-app: any method, streaming, cookies, middleware. `export type AppType = typeof server` gives end-to-end type safety with `hono/client`.
 - The sub-app is mounted at `/` **ahead of the page routes**, so its middleware (auth, logging, trailing-slash) wraps page requests too. The flip side: a _terminal_ handler in `src/server.ts` at the same path as a page route shadows the page.
+
+## Styling
+
+- `import './styles.css'` from any component. Rspack's native CSS pipeline compiles it, and the import attaches the stylesheet to the importing page's assets — so CSS is code-split per route and arrives with the page that needs it, `<link>`ed in the streamed HTML rather than fetched after hydration. `*.module.css` gets a class map.
+- **There is no PostCSS in the framework**, and no dependency on any of it — native CSS is fast, and it is everything a plain stylesheet needs. What it cannot do is read CSS that isn't finished yet: `@import 'tailwindcss'`, `@theme` and `@apply` are all parse-time nonsense to it. A stylesheet that needs a plugin puts the plugin in front of that parser itself, through the [`rspack` hook](#configuration-rshonoconfigts), and installs the two packages a PostCSS pass takes.
+- **Tailwind** is exactly that, and nothing else:
+
+  ```bash
+  npm i -D tailwindcss @tailwindcss/postcss postcss postcss-loader
+  ```
+
+  ```ts
+  // rshono.config.ts — the hook is called once per compiler, so this reaches both graphs
+  export default defineConfig({
+    rspack(config) {
+      config.module!.rules!.push({ test: /\.css$/i, use: ['postcss-loader'], type: 'css/auto' });
+    },
+  });
+  ```
+
+  ```js
+  // postcss.config.mjs — the plugin list, which postcss-loader finds on its own
+  export default { plugins: { '@tailwindcss/postcss': {} } };
+  ```
+
+  ```css
+  /* src/styles.css */
+  @import 'tailwindcss';
+  ```
+
+  Keep `type: 'css/auto'` rather than `'css'`, or `*.module.css` stops being a CSS module. `npm create rshono@latest --tailwind` writes all four of these for you.
 
 ## Static files
 
@@ -171,6 +223,7 @@ export default defineConfig({
 - **compression** — that gzip does not swallow a streamed response: a chunk the renderer flushes has to reach the client while the response is still open, which is the one property the platform `CompressionStream` would quietly break.
 - **production e2e** — builds `examples/rs-basic`, boots the real production server, and asserts pages, flight protocol, actions (client + progressive enhancement), CSRF rejection, secret stripping in bundles _and_ rendered HTML, SSG output with `ETag`/304, cache and security headers, and error reporting. Settings baked into the bundle (CSP, CSRF allowlist/origin-check, body-size cap) each get their own build from a fixture config (`test/fixtures/`, via `rshono build --config`).
 - **minimal app** — a fixture with `src/routes.ts` and nothing else: no `server.ts`, no `public/`, no config, no `notFound`/`error` pages. Everything the docs call optional, actually left out.
+- **postcss** — a Tailwind fixture wiring the loader up through the `rspack` hook, from an `@import "tailwindcss"` nothing could resolve through to compiled utilities in the stylesheet the served page links. The documented four lines, actually run.
 - **dev** — a smoke test through the dev server's worker + proxy.
 
 `pnpm --filter rshono test:browser` runs the Playwright suite against a production build: hydration, soft navigation, prefetch-on-hover, `useNavigation`, client-initiated actions, boundary fallbacks, scroll restoration and the fatal overlay — the client runtime, which no amount of asserting on HTML can reach.

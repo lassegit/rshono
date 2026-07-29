@@ -1,0 +1,10 @@
+node_modules/
+dist/
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+bun.lock
+
+# Written by `rshono build` for the Cloudflare target, in the shape the build decided. Yours to edit —
+# just not the formatter's to reflow on every build.
+wrangler.jsonc

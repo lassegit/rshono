@@ -1,0 +1,7 @@
+{
+  "plugins": ["typescript", "react"],
+  "categories": {
+    "correctness": "error"
+  },
+  "ignorePatterns": ["dist"]
+}

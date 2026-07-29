@@ -1,0 +1,7 @@
+{
+  "$schema": "https://biomejs.dev/schemas/2.5.6/schema.json",
+  "files": { "includes": ["**", "!dist", "!wrangler.jsonc"] },
+  "formatter": { "indentStyle": "space", "indentWidth": 2, "lineWidth": 140 },
+  "javascript": { "formatter": { "quoteStyle": "single", "jsxQuoteStyle": "double" } },
+  "linter": { "enabled": true, "rules": { "preset": "recommended" } }
+}
