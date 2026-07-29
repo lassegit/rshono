@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import {
   DEPLOY_TARGET_NAMES,
+  ESLINT_TYPESCRIPT,
   FRAMEWORK_DEPS,
   QUALITY_PRESETS,
   RSHONO_RANGE,
@@ -39,7 +40,7 @@ function answers(overrides = {}) {
   };
 }
 
-/** Every combination the prompts can produce: 7 targets × 2 stylings × 4 presets. */
+/** Every combination the prompts can produce: 7 targets × 2 stylings × 5 presets. */
 function* matrix() {
   for (const deploy of DEPLOY_TARGET_NAMES) {
     for (const styling of ['css', 'tailwind']) {
@@ -149,6 +150,7 @@ test('Biome answers both slots once, and steps around Tailwind CSS when both are
 test('each quality preset brings its own config files and no other tool', () => {
   const configs = {
     'prettier-oxlint': ['.prettierrc.json', '.oxlintrc.json'],
+    'prettier-eslint': ['.prettierrc.json', 'eslint.config.mjs'],
     biome: ['biome.json'],
     oxc: ['.oxfmtrc.json', '.oxlintrc.json'],
     none: [],
@@ -161,6 +163,28 @@ test('each quality preset brings its own config files and no other tool', () => 
       const expected = configs[preset.id].includes(path);
       assert.equal(result.files.has(path), expected, `${preset.id} ${expected ? 'is missing' : 'should not ship'} ${path}`);
     }
+  }
+});
+
+test('ESLint brings the TypeScript its parser accepts, and is the only preset that touches TypeScript', () => {
+  const manifest = (overrides) => JSON.parse(plan(answers(overrides), pm).files.get('package.json'));
+  const eslint = manifest({ formatter: 'prettier', linter: 'eslint' });
+
+  for (const name of ['eslint', 'typescript-eslint', '@eslint/js', 'eslint-plugin-react-hooks']) {
+    assert.ok(eslint.devDependencies[name], `the ESLint preset needs ${name}`);
+  }
+  assert.equal(eslint.scripts.lint, 'eslint .');
+
+  // typescript-eslint reads the compiler API directly, and its peer range stops below 6.1 — a pin that
+  // drifts above that is an app npm refuses to install, so the ceiling is the assertion.
+  assert.equal(eslint.devDependencies.typescript, ESLINT_TYPESCRIPT);
+  assert.match(ESLINT_TYPESCRIPT, /^~6\.0\.\d+$/, 'the pin has to stay inside >=4.8.4 <6.1.0');
+  assert.notEqual(eslint.devDependencies.typescript, FRAMEWORK_DEPS.typescript, 'otherwise the pin is pointless');
+
+  for (const preset of QUALITY_PRESETS.filter((entry) => entry.linter !== 'eslint')) {
+    const other = manifest({ formatter: preset.formatter, linter: preset.linter });
+    assert.equal(other.devDependencies.typescript, FRAMEWORK_DEPS.typescript, `${preset.id} should leave TypeScript alone`);
+    assert.ok(!other.devDependencies.eslint, `${preset.id} should not ship ESLint`);
   }
 });
 

@@ -102,10 +102,33 @@ test("and installs and builds on pnpm, whose layout hides the framework's own de
 });
 
 /**
+ * The ESLint preset, which the stripped install below cannot cover: its rules are type-aware, so they need
+ * the same program `tsc` builds — React's types, the framework's declarations, the whole app.
+ *
+ * Two things are on trial. That the peer set *resolves at all*, which is the reason this preset pins
+ * TypeScript 6 (typescript-eslint accepts nothing newer, and npm fails an unsatisfiable peer outright
+ * rather than warning). And that the scaffold passes its own `lint` — a fresh app reporting errors in code
+ * the user has not written yet is worse than shipping no linter option.
+ */
+test('the ESLint preset installs on the TypeScript it pins, and the scaffold passes its own rules', { skip: enabled ? false : 'set CREATE_RSHONO_E2E=1' }, () => {
+  const tarball = join(workspace, readdirSync(workspace).find((entry) => entry.endsWith('.tgz')) ?? '');
+  const dir = scaffold('eslint-app', ['--quality', 'prettier-eslint'], tarball);
+
+  const installed = JSON.parse(readFileSync(join(dir, 'node_modules', 'typescript', 'package.json'), 'utf8')).version;
+  assert.match(installed, /^6\.0\./, `typescript-eslint's peer range stops below 6.1 — installed ${installed}`);
+
+  run('npm', ['run', 'typecheck'], dir, 'typecheck (eslint)');
+  run('npm', ['run', 'lint'], dir, 'lint (eslint)');
+  run('npm', ['run', 'format:check'], dir, 'format:check (eslint)');
+  assert.match(run('npm', ['run', 'build'], dir, 'build (eslint)'), /build complete/);
+});
+
+/**
  * Every quality preset ships config files for tools this package does not control, and a key one of them
  * has renamed is a broken scaffold that no amount of asserting on file contents would reveal. Only the
  * tools are installed — the framework and React are not needed to find out whether Biome accepts its own
- * config — which keeps this to a few seconds per preset.
+ * config — which keeps this to a few seconds per preset. ESLint is not among them: type-aware rules need
+ * the real dependency graph, so it gets the full install above.
  */
 test('every quality preset produces configs its own tools accept', { skip: enabled ? false : 'set CREATE_RSHONO_E2E=1' }, () => {
   for (const preset of ['prettier-oxlint', 'biome', 'oxc']) {

@@ -32,9 +32,9 @@ Options:
   -d, --deploy <target>    ${DEPLOY_TARGET_NAMES.join(' | ')}
       --tailwind           Tailwind CSS (--no-tailwind for plain CSS)
       --quality <preset>   ${QUALITY_PRESETS.map((preset) => preset.id).join(' | ')}
-      --formatter <name>   prettier | biome | oxfmt | none  (overrides --quality)
-      --linter <name>      oxlint | biome | none            (overrides --quality)
-      --pm <name>          npm | pnpm | yarn | bun          (default: whatever ran this)
+      --formatter <name>   prettier | biome | oxfmt | none      (overrides --quality)
+      --linter <name>      oxlint | eslint | biome | none       (overrides --quality; eslint pins TypeScript 6)
+      --pm <name>          npm | pnpm | yarn | bun              (default: whatever ran this)
       --no-install         write the files and stop
       --no-git             do not initialize a repository
       --force              scaffold into a directory that is not empty
@@ -102,7 +102,7 @@ async function main(): Promise<void> {
 
   const deployFlag = oneOf(values.deploy, DEPLOY_TARGET_NAMES as DeployTargetName[], 'deploy');
   const formatterFlag = oneOf(values.formatter, ['prettier', 'biome', 'oxfmt', 'none'] as const, 'formatter');
-  const linterFlag = oneOf(values.linter, ['oxlint', 'biome', 'none'] as const, 'linter');
+  const linterFlag = oneOf(values.linter, ['oxlint', 'eslint', 'biome', 'none'] as const, 'linter');
   const qualityFlag = oneOf(
     values.quality,
     QUALITY_PRESETS.map((preset) => preset.id),

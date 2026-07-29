@@ -22,7 +22,7 @@ Six, each with a default, and each answerable by a flag instead:
 | Where should it go?   | `my-rshono-app`    | first positional argument, or `.`                                   |
 | Where is it deployed? | `node`             | `--deploy node\|bun\|deno\|cloudflare\|vercel\|netlify\|aws-lambda` |
 | Styling               | plain CSS          | `--tailwind` / `--no-tailwind`                                      |
-| Formatting & linting  | Prettier + oxlint  | `--quality prettier-oxlint\|biome\|oxc\|none`                       |
+| Formatting & linting  | Prettier + oxlint  | `--quality prettier-oxlint\|prettier-eslint\|biome\|oxc\|none`      |
 | Install dependencies? | yes                | `--no-install`                                                      |
 | Initialize git?       | yes, unless nested | `--no-git`                                                          |
 
@@ -84,10 +84,16 @@ import { plan, writePlan } from '@rshono/create';
 
 ## Two things worth knowing
 
-**There is no ESLint option.** Linting TypeScript with ESLint means `typescript-eslint`, whose peer range is
-`typescript >=4.8.4 <6.1.0`; rshono is built and tested against TypeScript 7. `npm install` fails outright
-on the conflict, and forcing past it would hand you a linter running against a compiler API it was never
-built for. When upstream widens the range, ESLint becomes one more entry in `features/quality.ts`.
+**The ESLint preset pins TypeScript 6.** Linting TypeScript with ESLint means `typescript-eslint`, which
+reads the compiler API directly rather than through a stable interface, so its peer range is
+`typescript >=4.8.4 <6.1.0` — below the TypeScript rshono is built and tested against. An app that chooses
+ESLint therefore gets `typescript ~6.0.3`, the newest that range allows: `npm install` would otherwise fail
+outright on the conflict, and forcing past it hands you a linter running against a compiler API it was never
+built for. The framework's declarations compile identically under either version, which is what makes this
+the app's pin and not the framework's — every other preset leaves TypeScript alone. What you trade for
+type-aware rules is a compiler one major behind, and the JavaScript implementation rather than the native
+one, so `typecheck` on a large app is several times slower. When upstream widens the range, the pin in
+`features/quality.ts` is the only thing to delete.
 
 **Tailwind is four packages, a `postcss.config.mjs` and one rule in `rshono.config.ts`.** rshono compiles
 CSS natively and has no PostCSS in it — that is deliberate, and it means an app that wants a plugin chain

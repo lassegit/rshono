@@ -26,5 +26,5 @@ export {
 export { buildPackageJson } from './pkg.js';
 export { plan, type Plan } from './plan.js';
 export { detectPackageManager, packageManager, type PackageManager } from './pm.js';
-export { FRAMEWORK_DEPS, RSHONO_RANGE, TOOL_VERSIONS } from './versions.js';
+export { ESLINT_TYPESCRIPT, FRAMEWORK_DEPS, RSHONO_RANGE, TOOL_VERSIONS } from './versions.js';
 export { inspectTarget, writePlan, type TargetState } from './write.js';

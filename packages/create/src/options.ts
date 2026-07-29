@@ -3,9 +3,9 @@ import { DEPLOY_TARGETS, type DeployTargetName } from './generated/framework.js'
 export type { DeployTargetName };
 
 export type Styling = 'css' | 'tailwind';
-/** Note the absence of ESLint — see {@link QUALITY_PRESETS}. */
 export type Formatter = 'prettier' | 'biome' | 'oxfmt' | 'none';
-export type Linter = 'oxlint' | 'biome' | 'none';
+/** ESLint comes with a TypeScript pin the others do not — see {@link QUALITY_PRESETS}. */
+export type Linter = 'oxlint' | 'eslint' | 'biome' | 'none';
 export type PackageManagerName = 'npm' | 'pnpm' | 'yarn' | 'bun';
 
 export const PACKAGE_MANAGERS: readonly PackageManagerName[] = ['npm', 'pnpm', 'yarn', 'bun'];
@@ -41,12 +41,14 @@ export function isDeployTarget(value: string): value is DeployTargetName {
  * fill either slot — but presenting them as one question keeps combinations that make no sense
  * (Biome formatting next to a second linter) out of the flow.
  *
- * **Why there is no ESLint option.** Linting TypeScript with ESLint means `typescript-eslint`, whose
- * peer range is `typescript >=4.8.4 <6.1.0`. rshono is built and tested against TypeScript 7, so the
- * two cannot be installed together: `npm install` fails outright with ERESOLVE, and forcing it past
- * that would hand you a linter running against a compiler API it was never built for. The range is
- * upstream's to widen; when it does, ESLint becomes one more entry in `features/quality.ts` and one
- * more preset here.
+ * **What the ESLint preset costs.** Linting TypeScript with ESLint means `typescript-eslint`, which
+ * reads the compiler API directly and so accepts `typescript >=4.8.4 <6.1.0` — below the version rshono
+ * itself is built and tested against. An app that picks ESLint therefore pins TypeScript 6 (the newest
+ * that range allows), which is why it is a preset a user chooses rather than the default: the framework's
+ * declarations compile identically under either, but the compiler is a major version behind and, being
+ * the JavaScript implementation rather than the native one, several times slower on a large app. Every
+ * other preset leaves TypeScript where the framework put it. When upstream widens the range, the pin in
+ * `features/quality.ts` is the only thing to remove.
  */
 export interface QualityPreset {
   id: string;
@@ -63,6 +65,13 @@ export const QUALITY_PRESETS: QualityPreset[] = [
     hint: 'the conventional formatter, with a fast linter',
     formatter: 'prettier',
     linter: 'oxlint',
+  },
+  {
+    id: 'prettier-eslint',
+    label: 'Prettier + ESLint',
+    hint: 'type-aware rules — pins TypeScript 6, which is all typescript-eslint accepts',
+    formatter: 'prettier',
+    linter: 'eslint',
   },
   { id: 'biome', label: 'Biome', hint: 'formatter and linter in one tool', formatter: 'biome', linter: 'biome' },
   { id: 'oxc', label: 'oxfmt + oxlint', hint: 'the oxc toolchain — fastest, newest', formatter: 'oxfmt', linter: 'oxlint' },

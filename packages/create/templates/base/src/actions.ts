@@ -9,7 +9,10 @@
  * The signature is the one `useActionState` expects: previous state first, then the form data.
  */
 export async function greet(_previous: string | null, formData: FormData): Promise<string> {
-  const name = String(formData.get('name') ?? '').trim();
+  // A form field is a string or a File, never only a string — a file input posted under this name would
+  // stringify to "[object File]" rather than fail. Narrowing is the validation the endpoint owes itself.
+  const field = formData.get('name');
+  const name = typeof field === 'string' ? field.trim() : '';
   if (!name) return 'Type a name first.';
 
   // Where real work goes — a database write, an email, a queue push.
