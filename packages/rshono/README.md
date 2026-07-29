@@ -1,6 +1,6 @@
 # rshono
 
-Minimalist framework — [Hono](https://hono.dev) + [Rspack](https://rspack.rs) + [React Server Components](https://react.dev/reference/rsc/server-components).
+Minimalist web framework — [Hono](https://hono.dev) + [Rspack](https://rspack.rs) + [React Server Components](https://react.dev/reference/rsc/server-components).
 
 > **Alpha.** The framework itself is covered by an end-to-end suite (see [Testing](#testing)), but it
 > is built on Rspack's experimental RSC support (`rspack.experiments.rsc`) and `react-server-dom-rspack`,

@@ -1,4 +1,4 @@
-# Rshono: Minimalist web framework
+# Rshono: minimalist web framework
 
 [Hono](https://hono.dev) + [Rspack](https://rspack.rs) + [React Server Components](https://react.dev/reference/rsc/server-components).
 
