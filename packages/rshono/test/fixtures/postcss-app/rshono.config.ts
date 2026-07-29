@@ -1,4 +1,4 @@
-import { defineConfig } from 'rshono';
+import { defineConfig } from '@rshono/core';
 
 /**
  * The documented way to put a PostCSS pass in front of Rspack's native CSS parser — the whole of what

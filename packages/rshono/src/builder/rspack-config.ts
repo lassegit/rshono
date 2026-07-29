@@ -13,7 +13,7 @@ import { publicEnv } from './public-env.js';
 const FRAMEWORK_DIST = join(import.meta.dirname, '..');
 const FRAMEWORK_ROOT = join(FRAMEWORK_DIST, '..');
 
-const BUNDLED_PACKAGES = /^(rshono|react|react-dom|react-server-dom-rspack|rsc-html-stream|hono|@hono\/node-server)(\/|$)/;
+const BUNDLED_PACKAGES = /^(@rshono\/core|react|react-dom|react-server-dom-rspack|rsc-html-stream|hono|@hono\/node-server)(\/|$)/;
 
 /**
  * Whether a request names a file rather than a package, and so belongs in the bundle.

@@ -1,6 +1,6 @@
+import { onServerError } from '@rshono/core/server';
 import { Hono } from 'hono';
 import { trimTrailingSlash } from 'hono/trailing-slash';
-import { onServerError } from 'rshono/server';
 
 /**
  * What this app's middleware puts on the Hono context. Pass it to `PageProps<path, AppEnv>` (or

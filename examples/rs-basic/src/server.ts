@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { trimTrailingSlash } from 'hono/trailing-slash';
-import { onServerError } from 'rshono/server';
+import { onServerError } from '@rshono/core/server';
 import { fakeDB } from './db';
 
 /**

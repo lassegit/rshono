@@ -1,5 +1,5 @@
 {
-  "name": "create-rshono",
+  "name": "@rshono/create",
   "version": "1.0.0-rc.0",
   "description": "Scaffold a new rshono app — Hono + Rspack + React Server Components",
   "author": "Lasse <lasse@lassetange.com> (https://www.lassetange.com)",
@@ -53,7 +53,7 @@
     "@clack/prompts": "^1.7.0",
     "@rspack/core": "2.1.5",
     "@types/node": "^26.1.1",
-    "rshono": "workspace:*",
+    "@rshono/core": "workspace:*",
     "typescript": "^7.0.2"
   }
 }

@@ -1,4 +1,4 @@
-import type { PageProps } from 'rshono';
+import type { PageProps } from '@rshono/core';
 import { publicEnv } from '../lib/env';
 import type { AppEnv } from '../server';
 import { GreetForm } from './greet-form';

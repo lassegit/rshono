@@ -1,6 +1,6 @@
 'use client';
 
-import { useNavigation } from 'rshono/client';
+import { useNavigation } from '@rshono/core/client';
 
 export function NavInfo() {
   const nav = useNavigation();

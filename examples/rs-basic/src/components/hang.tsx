@@ -1,4 +1,4 @@
-import { Boundary } from 'rshono/client';
+import { Boundary } from '@rshono/core/client';
 import { hang } from '../actions';
 import { Layout } from './layout';
 

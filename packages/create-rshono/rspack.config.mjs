@@ -1,4 +1,4 @@
-// One bundled file, no runtime dependencies. `npm create rshono@latest` downloads this package before
+// One bundled file, no runtime dependencies. `npm create @rshono@latest` downloads this package before
 // it can ask its first question, so every dependency left unbundled is latency the user waits through
 // — @clack/prompts (MIT) and its own dependency tree are compiled in instead.
 import { rspack } from '@rspack/core';

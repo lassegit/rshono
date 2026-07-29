@@ -1,4 +1,4 @@
-import { defineConfig } from 'rshono';
+import { defineConfig } from '@rshono/core';
 
 // Every option is optional — this file mostly restates the defaults as living documentation.
 export default defineConfig({

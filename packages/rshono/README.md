@@ -10,7 +10,7 @@ Minimalist web framework — [Hono](https://hono.dev) + [Rspack](https://rspack.
 One required file (`src/routes.ts`), one optional file (`src/server.ts`), and you get a dev server with HMR, streaming SSR with RSC hydration, server actions with progressive enhancement, soft navigation, build-time prerendering, and hard env/secret safety.
 
 ```bash
-npm create rshono@latest my-app   # scaffold one, with a deploy target and tooling of your choosing
+npm create @rshono@latest my-app   # scaffold one, with a deploy target and tooling of your choosing
 ```
 
 ```bash
@@ -39,7 +39,7 @@ Only the two files under `src/` mean anything to the framework; there is no conv
 ## The one required file: src/routes.ts
 
 ```ts
-import { defineRoutes } from 'rshono';
+import { defineRoutes } from '@rshono/core';
 
 export const routes = defineRoutes({
   routes: [
@@ -67,7 +67,7 @@ Every page module **default-exports a server component** — nothing else. Under
 If a component is wired up some other way (variable indirection, barrel re-exports, computed specifiers), write `'use server-entry'` as the first line of the page module yourself — a manually written directive is always respected. The framework throws a descriptive error when neither happened.
 
 ```tsx
-import type { PageProps } from 'rshono';
+import type { PageProps } from '@rshono/core';
 import { db } from '../db';
 
 export default async function Profile({ params, ctx }: PageProps<'/profile/:id'>) {
@@ -78,7 +78,7 @@ export default async function Profile({ params, ctx }: PageProps<'/profile/:id'>
 ```
 
 - Pages receive `{ url, params, ctx }` (`PageProps<'/profile/:id'>` types `params.id`). `url` is a real `URL` — read `url.pathname` and `url.searchParams` off it — and the pair matches what a `'use client'` component gets from `useNavigation()`, so a read moves across the line unchanged.
-- **`ctx` is the request context** — cookies, headers, env, middleware variables, the proxy-aware URL. It is the same object `getContext()` returns from `rshono/server`, handed over so a page needs no import; reach for `getContext()` in the places that get no props (a nested server component, a `'use server'` action). Type `ctx.var` / `ctx.env` for your app by passing its Hono `Env`: `PageProps<'/profile/:id', MyEnv>`.
+- **`ctx` is the request context** — cookies, headers, env, middleware variables, the proxy-aware URL. It is the same object `getContext()` returns from `@rshono/core/server`, handed over so a page needs no import; reach for `getContext()` in the places that get no props (a nested server component, a `'use server'` action). Type `ctx.var` / `ctx.env` for your app by passing its Hono `Env`: `PageProps<'/profile/:id', MyEnv>`.
 - Reading `ctx` on a **`render: 'static'`** page throws — a page rendered once at build time has no request to read. Use `params` and `url`, which are available either way, or make the route `render: 'dynamic'`. One quiet caveat: a prerendered `url` is the build-time one (`siteUrl` + the path, no query), and that one file answers every request whatever its own query — so `url.searchParams` is always empty there. Read the query with `useNavigation().url` on the client instead.
 - Pages render the **entire document** (`<html>…</html>`), usually via a shared layout component.
 - Interactive parts are `'use client'` components imported by the page; only those ship JavaScript.
@@ -132,7 +132,7 @@ Call them directly from client code (typed args and result), or wire them to `<f
   @import 'tailwindcss';
   ```
 
-  Keep `type: 'css/auto'` rather than `'css'`, or `*.module.css` stops being a CSS module. `npm create rshono@latest --tailwind` writes all four of these for you.
+  Keep `type: 'css/auto'` rather than `'css'`, or `*.module.css` stops being a CSS module. `npm create @rshono@latest --tailwind` writes all four of these for you.
 
 ## Static files
 
@@ -164,7 +164,7 @@ The client/server boundary is the RSC directives — `'use client'` and `'use se
 An optional `rshono.config.ts` (`.js` / `.mjs` also work) at the project root tunes the framework. Every field is optional; delete the file to accept all defaults.
 
 ```ts
-import { defineConfig } from 'rshono';
+import { defineConfig } from '@rshono/core';
 
 export default defineConfig({
   deploy: 'node', // hosting platform to build for — see Deployment (--deploy or RSHONO_DEPLOY override)
@@ -202,7 +202,7 @@ export default defineConfig({
 
   ```ts
   // src/server.ts
-  import { onServerError } from 'rshono/server';
+  import { onServerError } from '@rshono/core/server';
 
   onServerError((error, { source, request }) => {
     Sentry.captureException(error, { tags: { source }, extra: { url: request.url } });
@@ -217,7 +217,7 @@ export default defineConfig({
 
 ## Testing
 
-`pnpm --filter rshono test` builds the package and runs everything that doesn't need a browser:
+`pnpm --filter @rshono/core test` builds the package and runs everything that doesn't need a browser:
 
 - **unit** — the parsers and path maths (`bodySizeLimit`, `allowedOrigins`, SSG paths and traversal, control-signal digests, page-file scanning, `Vary`/`ETag` helpers). Imports the built `dist/`, so it also proves the published output loads in plain Node.
 - **compression** — that gzip does not swallow a streamed response: a chunk the renderer flushes has to reach the client while the response is still open, which is the one property the platform `CompressionStream` would quietly break.
@@ -226,7 +226,7 @@ export default defineConfig({
 - **postcss** — a Tailwind fixture wiring the loader up through the `rspack` hook, from an `@import "tailwindcss"` nothing could resolve through to compiled utilities in the stylesheet the served page links. The documented four lines, actually run.
 - **dev** — a smoke test through the dev server's worker + proxy.
 
-`pnpm --filter rshono test:browser` runs the Playwright suite against a production build: hydration, soft navigation, prefetch-on-hover, `useNavigation`, client-initiated actions, boundary fallbacks, scroll restoration and the fatal overlay — the client runtime, which no amount of asserting on HTML can reach.
+`pnpm --filter @rshono/core test:browser` runs the Playwright suite against a production build: hydration, soft navigation, prefetch-on-hover, `useNavigation`, client-initiated actions, boundary fallbacks, scroll restoration and the fatal overlay — the client runtime, which no amount of asserting on HTML can reach.
 
 ## How it works
 

@@ -36,7 +36,7 @@ async function main(): Promise<void> {
 
   if (values.version) {
     const require = createRequire(import.meta.url);
-    console.log(require('rshono/package.json').version);
+    console.log(require('@rshono/core/package.json').version);
     return;
   }
 

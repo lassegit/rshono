@@ -25,7 +25,7 @@ const DEFAULT_DIRECTORY = 'my-rshono-app';
 const HELP = `create-rshono — scaffold a new rshono app
 
 Usage:
-  npm create rshono@latest [directory] [options]
+  npm create @rshono@latest [directory] [options]
 
 Options:
   -y, --yes                accept the default for every question not given as a flag
@@ -45,7 +45,7 @@ Options:
 Every question can be answered by a flag, and a non-interactive terminal implies --yes — so one command
 scaffolds without prompting:
 
-  npm create rshono@latest my-app -y --deploy cloudflare --tailwind --quality biome
+  npm create @rshono@latest my-app -y --deploy cloudflare --tailwind --quality biome
 `;
 
 function fail(message: string): never {

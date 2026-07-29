@@ -1,4 +1,4 @@
-import { getContext } from 'rshono/server';
+import { getContext } from '@rshono/core/server';
 import { Layout } from './layout';
 
 export default async function WhoAmI() {

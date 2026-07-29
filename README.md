@@ -3,7 +3,7 @@
 [Hono](https://hono.dev) + [Rspack](https://rspack.rs) + [React Server Components](https://react.dev/reference/rsc/server-components).
 
 ```bash
-npm create rshono@latest my-app
+npm create @rshono@latest my-app
 ```
 
 | Path                     | What it is                                               |

@@ -35,7 +35,7 @@ function run(command, args, cwd, label) {
  * whatever is on npm — which for an unreleased version is nothing at all.
  */
 function packFramework() {
-  run('pnpm', ['--filter', 'rshono', 'pack', '--pack-destination', workspace], REPO_ROOT, 'pnpm pack');
+  run('pnpm', ['--filter', '@rshono/core', 'pack', '--pack-destination', workspace], REPO_ROOT, 'pnpm pack');
   const tarball = readdirSync(workspace).find((entry) => entry.endsWith('.tgz'));
   assert.ok(tarball, 'pnpm pack produced no tarball');
   return join(workspace, tarball);
@@ -45,10 +45,10 @@ function scaffold(name, flags, tarball) {
   run(process.execPath, [CLI, name, '-y', '--pm', 'npm', '--no-install', '--no-git', ...flags], workspace, `scaffold ${name}`);
   const dir = join(workspace, name);
 
-  // The one edit a user would not make: point `rshono` at the packed tarball.
+  // The one edit a user would not make: point `@rshono/core` at the packed tarball.
   const manifestPath = join(dir, 'package.json');
   const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
-  manifest.dependencies.rshono = `file:${tarball}`;
+  manifest.dependencies['@rshono/core'] = `file:${tarball}`;
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
   run('npm', ['install', '--no-audit', '--no-fund'], dir, `npm install (${name})`);

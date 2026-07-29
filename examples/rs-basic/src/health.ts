@@ -1,4 +1,4 @@
-import type { Handler } from 'rshono';
+import type { Handler } from '@rshono/core';
 
 const startedAt = Date.now();
 

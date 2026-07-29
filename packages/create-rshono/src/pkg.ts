@@ -30,10 +30,10 @@ function sorted(record: Record<string, string>): Record<string, string> {
 export function buildPackageJson(answers: Answers, features: Feature[], pm: PackageManager): string {
   const scripts: Record<string, string> = { ...BASE_SCRIPTS };
   const dependencies: Record<string, string> = {
+    '@rshono/core': RSHONO_RANGE,
     hono: FRAMEWORK_DEPS.hono,
     react: FRAMEWORK_DEPS.react,
     'react-dom': FRAMEWORK_DEPS['react-dom'],
-    rshono: RSHONO_RANGE,
   };
   const devDependencies: Record<string, string> = {
     '@types/node': FRAMEWORK_DEPS['@types/node'],

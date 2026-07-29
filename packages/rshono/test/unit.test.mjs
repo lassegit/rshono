@@ -532,7 +532,15 @@ describe('server bundle externals', () => {
   });
 
   test('bundles the framework, React and Hono, which the server cannot resolve at runtime', () => {
-    for (const request of ['rshono', 'react', 'react-dom/server.edge', 'hono/cookie', '@rshono/routes', '@/components/home', './entry.ssr.js']) {
+    for (const request of [
+      '@rshono/core',
+      'react',
+      'react-dom/server.edge',
+      'hono/cookie',
+      '@rshono/routes',
+      '@/components/home',
+      './entry.ssr.js',
+    ]) {
       assert.equal(verdict(request), undefined, `${request} must be bundled`);
     }
   });

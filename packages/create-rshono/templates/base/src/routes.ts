@@ -1,4 +1,4 @@
-import { defineRoutes } from 'rshono';
+import { defineRoutes } from '@rshono/core';
 
 /**
  * The one file rshono requires. It only ever runs on the server, so importing server-only modules from

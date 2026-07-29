@@ -1,5 +1,5 @@
 {
-  "name": "rshono",
+  "name": "@rshono/core",
   "version": "1.0.0-rc.0",
   "description": "Minimalist web framework — Hono + Rspack + React Server Components",
   "author": "Lasse <lasse@lassetange.com> (https://www.lassetange.com)",

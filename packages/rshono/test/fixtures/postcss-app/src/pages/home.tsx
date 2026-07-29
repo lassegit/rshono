@@ -1,4 +1,4 @@
-import type { PageProps } from 'rshono';
+import type { PageProps } from '@rshono/core';
 import '../styles.css';
 
 export default function Home({ url }: PageProps) {

@@ -1,13 +1,13 @@
 /**
- * `rshono` — the build-time surface: route and config declaration plus the types
+ * `@rshono/core` — the build-time surface: route and config declaration plus the types
  * your pages and endpoints are written against. Everything here is safe to
  * import from server code; none of it pulls in runtime machinery.
  *
  * The two companion entry points are runtime-only:
- * - `rshono/server` — {@link https://hono.dev | Hono} request context inside
+ * - `@rshono/core/server` — {@link https://hono.dev | Hono} request context inside
  *   server components and actions (`getContext`, `redirect`, `notFound`), plus
  *   `onServerError` for reporting the errors the framework catches.
- * - `rshono/client` — hooks and components for `'use client'` modules
+ * - `@rshono/core/client` — hooks and components for `'use client'` modules
  *   (`useNavigation`, `Boundary`, `ErrorBoundary`, `NavigationProgress`).
  *
  * @packageDocumentation

@@ -1,6 +1,6 @@
 'use server-entry';
 
-import type { PageProps } from 'rshono';
+import type { PageProps } from '@rshono/core';
 
 // Reached through a variable in routes.ts, so the directive above is the only thing attaching this
 // page's client assets. Without it the framework throws its "missing client-asset info" error.

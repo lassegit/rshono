@@ -1,5 +1,5 @@
-import type { PageProps } from 'rshono';
-import { notFound } from 'rshono/server';
+import type { PageProps } from '@rshono/core';
+import { notFound } from '@rshono/core/server';
 import { fakeDB } from '../db';
 import { Layout } from './layout';
 import { NavInfo } from './nav-info';

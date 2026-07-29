@@ -1,4 +1,4 @@
-import { defineConfig } from 'rshono';
+import { defineConfig } from '@rshono/core';
 
 /**
  * Every field is optional — delete this file to accept all the defaults. The commented lines are the

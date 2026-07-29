@@ -15,7 +15,7 @@ export interface RspackHookContext {
  *
  * @example
  * ```ts
- * import { defineConfig } from 'rshono';
+ * import { defineConfig } from '@rshono/core';
  *
  * export default defineConfig({
  *   csp: true,

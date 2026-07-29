@@ -14,7 +14,7 @@ export interface RenderHTMLOptions {
   /**
    * Called when SSR fails before the shell is sent. Reporting is the RSC layer's job — this module
    * is compiled into the SSR layer, which gets its own instance of every module it imports, so a
-   * handler registered through `rshono/server` isn't reachable from in here.
+   * handler registered through `@rshono/core/server` isn't reachable from in here.
    */
   onShellError?: (error: unknown) => void;
   /**

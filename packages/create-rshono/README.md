@@ -1,12 +1,12 @@
-# create-rshono
+# @rshono/create
 
 Scaffolds a new [rshono](https://github.com/rshono/rshono) app — Hono + Rspack + React Server Components.
 
 ```bash
-npm  create rshono@latest my-app
-pnpm create rshono my-app
-yarn create rshono my-app
-bun  create rshono my-app
+npm  create @rshono@latest my-app
+pnpm create @rshono my-app
+yarn create @rshono my-app
+bun  create @rshono my-app
 ```
 
 The package manager that ran it is the one the project gets: it is read from `npm_config_user_agent`, used
@@ -32,7 +32,7 @@ to take the defaults for everything not given. **A non-interactive terminal impl
 command in CI or from an agent:
 
 ```bash
-npm create rshono@latest my-app -y --deploy cloudflare --tailwind --quality biome
+npm create @rshono@latest my-app -y --deploy cloudflare --tailwind --quality biome
 ```
 
 The deploy targets, and the deploy command each one prints, are generated from the framework's own
@@ -78,7 +78,7 @@ makes the whole matrix of options testable in milliseconds (`test/plan.test.mjs`
 is also exported, for a tool that wants to scaffold without the prompts:
 
 ```ts
-import { plan, writePlan } from 'create-rshono';
+import { plan, writePlan } from '@rshono/create';
 ```
 
 ## Two things worth knowing
@@ -96,9 +96,9 @@ delete to go back to plain CSS.
 ## Development
 
 ```bash
-pnpm --filter create-rshono build       # codegen, then one bundled dist/cli.mjs with no runtime deps
-pnpm --filter create-rshono test        # the plan matrix — fast, no I/O
-CREATE_RSHONO_E2E=1 pnpm --filter create-rshono test   # also: pack, install and build real apps
+pnpm --filter @rshono/create build       # codegen, then one bundled dist/cli.mjs with no runtime deps
+pnpm --filter @rshono/create test        # the plan matrix — fast, no I/O
+CREATE_RSHONO_E2E=1 pnpm --filter @rshono/create test   # also: pack, install and build real apps
 ```
 
 `@clack/prompts` (MIT) is bundled rather than depended on, so `npm create` downloads one tarball before it

@@ -76,12 +76,12 @@ export function RouterProvider({ href, params, children }: { href: string; param
  * `pending` flag that is `true` while a client navigation is in flight.
  *
  * Hooks can't run in a server component; read the same URL data there from
- * `getContext()` (`rshono/server`) instead.
+ * `getContext()` (`@rshono/core/server`) instead.
  *
  * @example
  * ```tsx
  * 'use client';
- * import { useNavigation } from 'rshono/client';
+ * import { useNavigation } from '@rshono/core/client';
  *
  * export function NextPage() {
  *   const { url, router } = useNavigation();
@@ -125,7 +125,7 @@ export interface NavigationProgressProps {
  *
  * @example
  * ```tsx
- * import { NavigationProgress } from 'rshono/client';
+ * import { NavigationProgress } from '@rshono/core/client';
  *
  * // in your layout, once:
  * <body>

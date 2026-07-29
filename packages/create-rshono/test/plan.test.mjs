@@ -65,7 +65,7 @@ test('every combination produces a complete, parseable project', () => {
     assert.equal(manifest.name, 'my-app', label);
     assert.equal(manifest.private, true, label);
     assert.equal(manifest.type, 'module', label);
-    assert.equal(manifest.dependencies.rshono, RSHONO_RANGE, label);
+    assert.equal(manifest.dependencies['@rshono/core'], RSHONO_RANGE, label);
     assert.ok(manifest.scripts.dev && manifest.scripts.build && manifest.scripts.typecheck, `${label} is missing a base script`);
 
     // A stray `__TOKEN__` in any file means a template referenced something `tokensFor` does not supply.
@@ -189,7 +189,7 @@ test('every overlay a feature names exists on disk', () => {
 test('the React pins are the ones the framework is tested against, not a copy that can drift', () => {
   const framework = JSON.parse(readFileSync(join(PACKAGE_DIR, '..', 'rshono', 'package.json'), 'utf8'));
   for (const [name, range] of Object.entries(FRAMEWORK_DEPS)) {
-    assert.equal(range, framework.devDependencies[name], `${name} has drifted from packages/rshono — run \`pnpm --filter create-rshono codegen\``);
+    assert.equal(range, framework.devDependencies[name], `${name} has drifted from packages/rshono — run \`pnpm --filter @rshono/create codegen\``);
   }
   // Exact, not caret: rshono's RSC internals are coupled across builds, and a generated app has no
   // workspace overrides to keep a single copy of React.

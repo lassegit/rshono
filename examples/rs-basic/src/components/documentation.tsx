@@ -1,6 +1,6 @@
 'use server-entry';
 
-import type { PageProps } from 'rshono';
+import type { PageProps } from '@rshono/core';
 import { fakeDB } from '../db';
 import { Layout } from './layout';
 

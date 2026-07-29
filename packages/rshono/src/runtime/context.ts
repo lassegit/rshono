@@ -6,7 +6,7 @@
  * a request to the async context in the first place.
  *
  * The public half of this module is re-exported by `runtime/server.ts`, which is
- * what the `rshono/server` subpath resolves to; import *that* from an app. Nothing
+ * what the `@rshono/core/server` subpath resolves to; import *that* from an app. Nothing
  * here is safe in a `'use client'` module — those run in the browser, with no bound
  * request context.
  */
@@ -97,7 +97,7 @@ function firstForwardedValue(header: string | undefined): string | undefined {
 }
 
 // DefinePlugin inlines the config into the server bundle, but this module is the public
-// `rshono/server` entry and could be loaded by tooling that doesn't (a unit test, a one-off script).
+// `@rshono/core/server` entry and could be loaded by tooling that doesn't (a unit test, a one-off script).
 // Read through `typeof` so that degrades to the safe answer — don't trust — instead of a ReferenceError.
 const trustProxy = typeof __RSHONO_CONFIG__ !== 'undefined' && __RSHONO_CONFIG__.trustProxy;
 
@@ -157,7 +157,7 @@ export type EnvVars<E extends Env> = E['Bindings'] & Record<string, string | und
  *
  * @example
  * ```tsx
- * import { getContext } from 'rshono/server';
+ * import { getContext } from '@rshono/core/server';
  *
  * export default async function Whoami() {
  *   const ctx = getContext();
@@ -289,7 +289,7 @@ export class Ctx<E extends Env = Env> {
  * @example
  * ```ts
  * 'use server';
- * import { getContext, redirect } from 'rshono/server';
+ * import { getContext, redirect } from '@rshono/core/server';
  *
  * export async function login(form: FormData) {
  *   getContext().cookies.set('session', String(form.get('email')), { httpOnly: true });
@@ -399,7 +399,7 @@ let errorHandler: ServerErrorHandler | undefined;
  * ```ts
  * // src/server.ts
  * import * as Sentry from '@sentry/node';
- * import { onServerError } from 'rshono/server';
+ * import { onServerError } from '@rshono/core/server';
  *
  * onServerError((error, { source, request }) => {
  *   Sentry.captureException(error, { tags: { source }, extra: { url: request.url } });

@@ -1,5 +1,5 @@
 /**
- * `rshono/server` — the request-scoped surface, for use inside server components
+ * `@rshono/core/server` — the request-scoped surface, for use inside server components
  * and `'use server'` action modules: {@link getContext} for the URL, cookies,
  * params, env and middleware variables, the {@link redirect} and {@link notFound}
  * control-flow helpers, and {@link onServerError} for reporting the errors the
@@ -8,7 +8,7 @@
  * Server-only. Importing this from a `'use client'` module is a mistake — those
  * run in the browser (and are SSR'd without a bound context). Read what you need
  * on the server and pass it down as props, or use `useNavigation()` from
- * `rshono/client` for URL data.
+ * `@rshono/core/client` for URL data.
  *
  * A barrel rather than `./context.js` itself, which is where all of this is
  * implemented: that module also exports the plumbing the framework's own entry

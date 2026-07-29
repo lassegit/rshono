@@ -62,7 +62,7 @@ function keysChanged(a: readonly unknown[], b: readonly unknown[]): boolean {
  *
  * @example
  * ```tsx
- * import { ErrorBoundary } from 'rshono/client';
+ * import { ErrorBoundary } from '@rshono/core/client';
  *
  * <ErrorBoundary fallback={(error, reset) => (
  *   <div role="alert">
@@ -139,7 +139,7 @@ export interface BoundaryProps {
  *
  * @example
  * ```tsx
- * import { Boundary } from 'rshono/client';
+ * import { Boundary } from '@rshono/core/client';
  *
  * <Boundary loading={<Spinner />} error={(e, reset) => <Retry onClick={reset} />}>
  *   <SlowServerComponent />

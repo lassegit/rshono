@@ -2,7 +2,7 @@ import type { Env, Handler } from 'hono';
 import type { ParamKeys, ParamKeyToRecord } from 'hono/types';
 import type { ReactNode } from 'react';
 // Type-only, so this stays a build-time module: the import is erased and none of `context.ts`'s
-// runtime machinery (AsyncLocalStorage, hono/cookie) is pulled in by importing `rshono`.
+// runtime machinery (AsyncLocalStorage, hono/cookie) is pulled in by importing `@rshono/core`.
 import type { Ctx } from './runtime/context.js';
 
 type Simplify<T> = { [K in keyof T]: T[K] } & {};
@@ -43,7 +43,7 @@ export type PathParams<P extends string> =
  *
  * @example
  * ```tsx
- * import type { PageProps } from 'rshono';
+ * import type { PageProps } from '@rshono/core';
  *
  * export default async function Profile({ params, url }: PageProps<'/profile/:id'>) {
  *   const user = await db.getUser(params.id); // params.id is string
@@ -128,7 +128,7 @@ export type PageComponent<P = any> = (props: P) => ReactNode | Promise<ReactNode
  * @example
  * ```ts
  * // src/health.ts
- * import type { Handler } from 'rshono';
+ * import type { Handler } from '@rshono/core';
  *
  * export const handler: Handler = (c) => c.json({ ok: true });
  * ```
@@ -261,7 +261,7 @@ export interface ErrorInfo {
  *
  * @example
  * ```tsx
- * import type { ErrorPageProps } from 'rshono';
+ * import type { ErrorPageProps } from '@rshono/core';
  *
  * export default function ServerError({ error }: ErrorPageProps) {
  *   return <html><body><h1>Something went wrong</h1><p>{error.message}</p></body></html>;
@@ -321,7 +321,7 @@ type ValidateRoutes<TRoutes extends readonly Route[]> = { [K in keyof TRoutes]: 
  * @example
  * ```ts
  * // src/routes.ts
- * import { defineRoutes } from 'rshono';
+ * import { defineRoutes } from '@rshono/core';
  *
  * export const routes = defineRoutes({
  *   routes: [

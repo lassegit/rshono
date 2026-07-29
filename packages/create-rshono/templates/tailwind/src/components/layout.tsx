@@ -1,5 +1,5 @@
+import { NavigationProgress } from '@rshono/core/client';
 import type { ReactNode } from 'react';
-import { NavigationProgress } from 'rshono/client';
 import { publicEnv } from '../lib/env';
 import '../styles.css';
 

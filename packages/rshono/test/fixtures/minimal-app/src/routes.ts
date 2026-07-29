@@ -1,4 +1,4 @@
-import { defineRoutes } from 'rshono';
+import { defineRoutes } from '@rshono/core';
 
 // Deliberately *not* an inline `component: () => import('…')` thunk: routed through a variable so
 // the build cannot detect it and inject 'use server-entry'. The page writes the directive itself,

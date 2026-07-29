@@ -1,4 +1,4 @@
-import type { Handler } from 'rshono';
+import type { Handler } from '@rshono/core';
 
 // An endpoint that always throws, to exercise the framework's uncaught-error path: anything that
 // escapes a handler reaches Hono's onError, which renders the `error` page from routes.ts as HTML or

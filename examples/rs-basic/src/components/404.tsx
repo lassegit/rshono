@@ -1,4 +1,4 @@
-import type { PageProps } from 'rshono';
+import type { PageProps } from '@rshono/core';
 import { Layout } from './layout';
 
 export default function NotFound({ url }: PageProps) {
