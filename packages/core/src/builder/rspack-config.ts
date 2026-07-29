@@ -1,7 +1,8 @@
 import { rspack, type Compiler, type RspackOptions, type RuleSetRule } from '@rspack/core';
 import { ReactRefreshRspackPlugin } from '@rspack/plugin-react-refresh';
 import { existsSync } from 'node:fs';
-import { join, win32 } from 'node:path';
+import { createRequire } from 'node:module';
+import { basename, dirname, join, win32 } from 'node:path';
 import type { RSHonoConfig } from '../config.js';
 import type { DeployPreset } from '../deploy/presets.js';
 import { resolveServerConfig } from '../server/server-config.js';
@@ -14,6 +15,54 @@ const FRAMEWORK_DIST = join(import.meta.dirname, '..');
 const FRAMEWORK_ROOT = join(FRAMEWORK_DIST, '..');
 
 const BUNDLED_PACKAGES = /^(@rshono\/core|react|react-dom|react-server-dom-rspack|rsc-html-stream|hono|@hono\/node-server)(\/|$)/;
+
+/**
+ * Packages that end up imported *by app source* without the app ever mentioning them: the RSC
+ * transform rewrites a `'use client'` module, a page or a server action into imports of the RSC
+ * runtime, and those requests resolve from the app's own `src/`.
+ */
+const INJECTED_PACKAGES = ['react-server-dom-rspack'];
+
+/** The `node_modules` directory a resolved file sits in — `…/node_modules/pkg/index.js` → `…/node_modules`. */
+function enclosingNodeModules(file: string): string | undefined {
+  let dir = dirname(file);
+  while (basename(dir) !== 'node_modules') {
+    const parent = dirname(dir);
+    if (parent === dir) return undefined;
+    dir = parent;
+  }
+  return dir;
+}
+
+/**
+ * Where packages are resolved from: the app's own `node_modules`, then the framework's.
+ *
+ * The second part is what makes {@link INJECTED_PACKAGES} resolvable from app source. npm, yarn and bun
+ * hoist the framework's dependencies to the app's own `node_modules`, so they need nothing; pnpm gives
+ * `@rshono/core` a private directory and installs its dependencies as *siblings* of the framework
+ * rather than inside it, and nothing under the app's tree can see them — the build fails with
+ * `Can't resolve 'react-server-dom-rspack/client'` in a file the user never wrote that import into.
+ *
+ * Asking Node where the framework itself resolves the package finds the directory in any layout, and
+ * making it a search path rather than an alias keeps the package's own `exports` conditions in play —
+ * the RSC layer, the SSR layer and each deploy target need a different build of it.
+ */
+function resolveModules(): string[] {
+  const require = createRequire(import.meta.url);
+  const dirs = new Set<string>();
+  for (const name of INJECTED_PACKAGES) {
+    try {
+      const dir = enclosingNodeModules(require.resolve(name));
+      if (dir) dirs.add(dir);
+    } catch {
+      // Left to the resolver to report against the request that actually needed it.
+    }
+  }
+  // A checkout or a vendored copy, where the framework has real dependencies of its own and the lookup
+  // above found nothing to add.
+  dirs.add(join(FRAMEWORK_ROOT, 'node_modules'));
+  return ['node_modules', ...dirs];
+}
 
 /**
  * Whether a request names a file rather than a package, and so belongs in the bundle.
@@ -94,7 +143,7 @@ export function createConfigs(options: RspackConfigOptions): [RspackOptions, Rsp
   const resolveBase = {
     extensions: ['.tsx', '.ts', '.jsx', '.js', '.json'],
     extensionAlias: { '.js': ['.ts', '.tsx', '.js'] },
-    modules: ['node_modules', join(FRAMEWORK_ROOT, 'node_modules')],
+    modules: resolveModules(),
   };
 
   // The platform's own resolve conditions, ahead of whatever the Rspack target implies ('...'). This

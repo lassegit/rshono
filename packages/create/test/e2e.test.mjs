@@ -75,6 +75,33 @@ test('a scaffolded app installs, typechecks and builds', { skip: enabled ? false
 });
 
 /**
+ * The same app on pnpm, which is a different question and not a redundant one: npm, yarn and bun hoist
+ * the framework's dependencies into the app's own `node_modules`, and pnpm gives the framework a private
+ * directory with its dependencies *beside* it. Anything the framework relies on being resolvable from
+ * app source — the RSC runtime the transform injects into pages, client components and actions — is
+ * reachable by accident under the first layout and only on purpose under the second, so a build that
+ * passes above can still fail here with `Can't resolve 'react-server-dom-rspack/client'`.
+ */
+test("and installs and builds on pnpm, whose layout hides the framework's own dependencies", { skip: enabled ? false : 'set CREATE_RSHONO_E2E=1' }, () => {
+  const tarball = join(workspace, readdirSync(workspace).find((entry) => entry.endsWith('.tgz')) ?? '');
+  const name = 'pnpm-app';
+  run(process.execPath, [CLI, name, '-y', '--pm', 'pnpm', '--no-install', '--no-git'], workspace, `scaffold ${name}`);
+  const dir = join(workspace, name);
+
+  const manifestPath = join(dir, 'package.json');
+  const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  manifest.dependencies['@rshono/core'] = `file:${tarball}`;
+  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+  // Exactly what a user runs, with no flags to smooth anything over: `pnpm install` also fails on an
+  // install script the project has not decided about, and `pnpm run` fails again on its way to the
+  // script, so this covers the `allowBuilds` list in the generated pnpm-workspace.yaml as well.
+  run('pnpm', ['install'], dir, `pnpm install (${name})`);
+  run('pnpm', ['run', 'typecheck'], dir, 'typecheck (pnpm)');
+  assert.match(run('pnpm', ['run', 'build'], dir, 'build (pnpm)'), /build complete/);
+});
+
+/**
  * Every quality preset ships config files for tools this package does not control, and a key one of them
  * has renamed is a broken scaffold that no amount of asserting on file contents would reveal. Only the
  * tools are installed — the framework and React are not needed to find out whether Biome accepts its own

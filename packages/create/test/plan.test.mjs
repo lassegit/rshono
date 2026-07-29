@@ -197,6 +197,23 @@ test('the React pins are the ones the framework is tested against, not a copy th
   assert.match(FRAMEWORK_DEPS['react-dom'], /^\d+\.\d+\.\d+$/);
 });
 
+test('a pnpm app answers for the install scripts it inherits, its deploy target included', () => {
+  // Unanswered, they fail `pnpm install` and every `pnpm dev` after it — a scaffold that cannot start.
+  // esbuild comes with the framework (through tsx) and reaches every app; workerd comes with wrangler.
+  const settings = (combination) => plan(answers(combination), packageManager('pnpm', '11.9.0')).files.get('pnpm-workspace.yaml');
+  const node = settings({ deploy: 'node' });
+  assert.ok(node, 'a pnpm scaffold needs pnpm-workspace.yaml — pnpm 11 does not read these from package.json');
+  assert.match(node, /^allowBuilds:\n {2}esbuild: false$/m);
+  assert.doesNotMatch(node, /workerd/, 'a target that never installs wrangler has nothing to say about workerd');
+
+  const cloudflare = settings({ deploy: 'cloudflare' });
+  assert.match(cloudflare, /^allowBuilds:\n {2}esbuild: false\n {2}workerd: false$/m, 'the deploy feature should contribute its own');
+
+  for (const name of ['npm', 'yarn', 'bun']) {
+    assert.ok(!plan(answers(), packageManager(name)).files.has('pnpm-workspace.yaml'), `${name} has no use for pnpm's settings file`);
+  }
+});
+
 test('packageManager is written only when the environment gave an exact version', () => {
   const withVersion = JSON.parse(plan(answers(), packageManager('pnpm', '11.9.0')).files.get('package.json'));
   assert.equal(withVersion.packageManager, 'pnpm@11.9.0');

@@ -21,6 +21,12 @@ export interface Feature {
   scripts?: Record<string, string>;
   /** Appended to `.gitignore` under a heading naming the feature. */
   gitignore?: string[];
+  /**
+   * Install scripts this feature's dependencies bring with them, and whether the app should run them —
+   * pnpm's `allowBuilds`, which a pnpm scaffold cannot install without. `false` says the script is not
+   * needed, so say why in a comment beside the entry.
+   */
+  allowBuilds?: Record<string, boolean>;
   /** Extra lines for the closing "next steps" block, e.g. a platform's own login step. */
   notes?: string[];
 }

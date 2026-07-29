@@ -2,7 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, posix, sep } from 'node:path';
 import { selectFeatures, type Feature } from './features/index.js';
 import type { Answers } from './options.js';
-import { buildPackageJson } from './pkg.js';
+import { buildPackageJson, buildPnpmSettings } from './pkg.js';
 import type { PackageManager } from './pm.js';
 import { render, tokensFor } from './render.js';
 
@@ -92,6 +92,7 @@ export function plan(answers: Answers, pm: PackageManager): Plan {
   if (gitignore) files.set('.gitignore', appendGitignore(gitignore, features));
 
   files.set('package.json', buildPackageJson(answers, features, pm));
+  if (pm.name === 'pnpm') files.set('pnpm-workspace.yaml', buildPnpmSettings(features));
 
   return {
     // Sorted, so both the write order and a test's snapshot are stable.

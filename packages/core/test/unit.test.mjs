@@ -3,8 +3,9 @@
 // check that dist is importable from plain Node.
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { after, describe, test } from 'node:test';
 
 import { scanPageFiles } from '../dist/builder/page-files.js';
@@ -509,6 +510,32 @@ describe('the deploy seam', () => {
     });
     assert.equal(serverConfig.target, 'webworker', 'the preset reached the generated config');
     assert.equal(serverConfig.devtool, 'source-map', "the app's own hook ran after it");
+  });
+});
+
+describe('module resolution', () => {
+  /** The `node_modules` a package was resolved out of, symlinks already followed by `require.resolve`. */
+  const installedIn = (name) => {
+    let dir = dirname(createRequire(import.meta.url).resolve(name));
+    while (basename(dir) !== 'node_modules') dir = dirname(dir);
+    return dir;
+  };
+
+  test('app source can resolve the RSC runtime the transform injects into it', () => {
+    // Nothing in an app imports react-server-dom-rspack by hand — the RSC transform rewrites pages,
+    // client components and server actions into imports of it, resolved from the app's own src/. Only
+    // a hoisting package manager puts it within reach from there; pnpm installs the framework's
+    // dependencies beside the framework instead, so the directory it really lives in has to be on the
+    // search path or every pnpm install fails to build.
+    const configs = createConfigs({ rootDir: MINIMAL_APP_DIR, isDev: false, config: {}, preset: NODE_PRESET });
+    for (const config of configs) {
+      const dirs = config.resolve.modules;
+      assert.equal(dirs[0], 'node_modules', "an app's own dependencies still win");
+      assert.ok(
+        dirs.includes(installedIn('react-server-dom-rspack')),
+        `${config.name}: react-server-dom-rspack is not reachable from app source — searched ${dirs.join(', ')}`,
+      );
+    }
   });
 });
 

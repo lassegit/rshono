@@ -51,6 +51,7 @@ src/actions.ts          a 'use server' action, called from a form that works wit
 src/components/         layout, home, greet-form ('use client'), 404, 500
 src/lib/env.ts          both sides of the PUBLIC_ boundary in one place
 src/styles.css          element-level CSS, or the Tailwind entry
+pnpm-workspace.yaml     pnpm only: which dependency install scripts this app runs (none of them)
 ```
 
 Then, if the dependencies were installed, the scaffold is run through its own formatter — so a fresh
