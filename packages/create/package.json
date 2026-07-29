@@ -16,7 +16,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/rshono/rshono.git",
-    "directory": "packages/create-rshono"
+    "directory": "packages/create"
   },
   "bugs": {
     "url": "https://github.com/rshono/rshono/issues"

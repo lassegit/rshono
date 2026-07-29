@@ -106,7 +106,7 @@ jobs:
         if: failure()
         with:
           name: playwright-report
-          path: packages/rshono/playwright-report/
+          path: packages/core/playwright-report/
           retention-days: 7
 
   package:

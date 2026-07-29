@@ -187,9 +187,9 @@ test('every overlay a feature names exists on disk', () => {
 });
 
 test('the React pins are the ones the framework is tested against, not a copy that can drift', () => {
-  const framework = JSON.parse(readFileSync(join(PACKAGE_DIR, '..', 'rshono', 'package.json'), 'utf8'));
+  const framework = JSON.parse(readFileSync(join(PACKAGE_DIR, '..', 'core', 'package.json'), 'utf8'));
   for (const [name, range] of Object.entries(FRAMEWORK_DEPS)) {
-    assert.equal(range, framework.devDependencies[name], `${name} has drifted from packages/rshono — run \`pnpm --filter @rshono/create codegen\``);
+    assert.equal(range, framework.devDependencies[name], `${name} has drifted from packages/core — run \`pnpm --filter @rshono/create codegen\``);
   }
   // Exact, not caret: rshono's RSC internals are coupled across builds, and a generated app has no
   // workspace overrides to keep a single copy of React.

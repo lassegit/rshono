@@ -16,8 +16,8 @@
     "rootDir": "./src",
     "baseUrl": ".",
     "paths": {
-      "@rshono/core": ["./packages/rshono/src"],
-      "@rshono/create": ["./packages/create-rshono/src"]
+      "@rshono/core": ["./packages/core/src"],
+      "@rshono/create": ["./packages/create/src"]
     }
   },
   "exclude": ["node_modules", "dist", "**/templates/**"]

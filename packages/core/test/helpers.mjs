@@ -6,12 +6,12 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const ROOT = join(fileURLToPath(import.meta.url), '..', '..', '..', '..');
 export const EXAMPLE_DIR = join(ROOT, 'examples', 'rs-basic');
 export const EXAMPLE_DIST = join(EXAMPLE_DIR, 'dist');
-export const FIXTURES_DIR = join(ROOT, 'packages', 'rshono', 'test', 'fixtures');
+export const FIXTURES_DIR = join(ROOT, 'packages', 'core', 'test', 'fixtures');
 /** The smallest app the framework accepts: src/routes.ts and nothing else. */
 export const MINIMAL_APP_DIR = join(FIXTURES_DIR, 'minimal-app');
 /** An app whose CSS only compiles if the builder found its `postcss.config.mjs`. */
 export const POSTCSS_APP_DIR = join(FIXTURES_DIR, 'postcss-app');
-const CLI = join(ROOT, 'packages', 'rshono', 'bin', 'rshono.mjs');
+const CLI = join(ROOT, 'packages', 'core', 'bin', 'rshono.mjs');
 
 /** What each command prints once it is listening; the capture group is the port. */
 const READY = {

@@ -6,8 +6,8 @@
 npm create @rshono@latest my-app
 ```
 
-| Path                     | What it is                                               |
-| ------------------------ | -------------------------------------------------------- |
-| `packages/rshono`        | the framework — [README](packages/rshono#readme)         |
-| `packages/create-rshono` | the scaffolder — [README](packages/create-rshono#readme) |
-| `examples/rs-basic`      | a test app exercising the framework                      |
+| Path                | What it is                                        |
+| ------------------- | ------------------------------------------------- |
+| `packages/core`     | the framework — [README](packages/core#readme)    |
+| `packages/create`   | the scaffolder — [README](packages/create#readme) |
+| `examples/rs-basic` | a test app exercising the framework               |
