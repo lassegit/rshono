@@ -1,4 +1,4 @@
-// The production build of the example, served by `rshono start` and driven over HTTP. Everything the
+// The production build of the testbed, served by `rshono start` and driven over HTTP. Everything the
 // framework does that a browser is not required to observe is asserted here; what only exists once
 // the client runtime is running lives in test/browser, and anything that has to be switched on in
 // rshono.config.ts (CSP, the CSRF allowlist, the body cap, trustProxy) in prod-config.test.mjs.
@@ -7,13 +7,13 @@ import { readFileSync } from 'node:fs';
 import { Agent, request } from 'node:http';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
-import { actionFormData, APP_ENV, buildExample, clientChunks, EXAMPLE_DIST, startExample, stopServer } from './helpers.mjs';
+import { actionFormData, APP_ENV, buildTestbed, clientChunks, TESTBED_DIST, startTestbed, stopServer } from './helpers.mjs';
 
-buildExample();
-const { base, child, getOutput } = await startExample('start');
+buildTestbed();
+const { base, child, getOutput } = await startTestbed('start');
 after(() => stopServer(child));
 
-/** The id React assigned the example's `createUser` action, as the browser would call it. */
+/** The id React assigned the testbed's `createUser` action, as the browser would call it. */
 function createUserActionId() {
   for (const source of clientChunks()) {
     if (!source.includes('Add user')) continue;
@@ -377,7 +377,7 @@ test('<Boundary> contains a thrown error locally instead of failing the whole pa
 });
 
 test('the build writes both representations of a static route', () => {
-  const dir = join(EXAMPLE_DIST, 'ssg', 'docs', 'getting-started');
+  const dir = join(TESTBED_DIST, 'ssg', 'docs', 'getting-started');
   assert.match(readFileSync(join(dir, 'index.html'), 'utf8'), /pre-rendered at build time/);
   assert.match(readFileSync(join(dir, 'index.rsc'), 'utf8'), /Getting Started/);
 });
@@ -451,7 +451,7 @@ test('compressible responses are gzipped, and say so in Vary', async () => {
 
 test('conventional root files in public/ are served at the web root', async () => {
   assert.match(
-    readFileSync(join(EXAMPLE_DIST, 'public', 'robots.txt'), 'utf8'),
+    readFileSync(join(TESTBED_DIST, 'public', 'robots.txt'), 'utf8'),
     /User-agent/,
     'public/ is copied into dist, so the build is self-contained',
   );

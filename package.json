@@ -15,13 +15,13 @@
   "homepage": "https://github.com/rshono/rshono",
   "workspaces": [
     "packages/*",
-    "examples/*"
+    "apps/*"
   ],
   "scripts": {
     "dev": "pnpm --filter @rshono/core dev",
-    "build": "pnpm --filter \"./examples/*\" build",
-    "example:dev": "pnpm --filter rs-basic dev",
-    "clean": "rm -rf packages/*/dist packages/*/node_modules examples/*/node_modules node_modules",
+    "build": "pnpm --filter \"./apps/*\" build",
+    "testbed:dev": "pnpm --filter testbed dev",
+    "clean": "rm -rf packages/*/dist packages/*/node_modules apps/*/node_modules node_modules",
     "format": "prettier --write .",
     "uncomment": "prettier --plugin=prettier-plugin-uncomment --write ."
   },

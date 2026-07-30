@@ -4,8 +4,8 @@ import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = join(fileURLToPath(import.meta.url), '..', '..', '..', '..');
-export const EXAMPLE_DIR = join(ROOT, 'examples', 'rs-basic');
-export const EXAMPLE_DIST = join(EXAMPLE_DIR, 'dist');
+export const TESTBED_DIR = join(ROOT, 'apps', 'testbed');
+export const TESTBED_DIST = join(TESTBED_DIR, 'dist');
 export const FIXTURES_DIR = join(ROOT, 'packages', 'core', 'test', 'fixtures');
 /** The smallest app the framework accepts: src/routes.ts and nothing else. */
 export const MINIMAL_APP_DIR = join(FIXTURES_DIR, 'minimal-app');
@@ -20,7 +20,7 @@ const READY = {
 };
 
 /**
- * The environment the example is built and served with. It lives here rather than in the example's
+ * The environment the testbed is built and served with. It lives here rather than in the testbed's
  * `.env`, because `.env*` is gitignored: a suite that asserts on these values has to carry them
  * itself or it passes locally and fails on a fresh checkout. The real environment wins over a
  * `.env` file, so this also pins the values against whatever a contributor happens to have there.
@@ -50,8 +50,8 @@ export function buildApp(dir, { config, args = [] } = {}) {
   return result.stdout;
 }
 
-export function buildExample(config) {
-  return buildApp(EXAMPLE_DIR, { config });
+export function buildTestbed(config) {
+  return buildApp(TESTBED_DIR, { config });
 }
 
 /**
@@ -67,7 +67,7 @@ export function buildExample(config) {
  * is keyed by specifier, so importing twice without one hands back the previous build.
  */
 export function importServerBundle(cacheKey) {
-  return import(`${pathToFileURL(join(EXAMPLE_DIST, 'server', 'main.mjs')).href}?${cacheKey}`);
+  return import(`${pathToFileURL(join(TESTBED_DIST, 'server', 'main.mjs')).href}?${cacheKey}`);
 }
 
 /** Runs `rshono <command>` in `dir` and resolves once it reports the address it is listening on. */
@@ -105,8 +105,8 @@ export function startApp(dir, command, { env = {}, timeoutMs = 60_000 } = {}) {
   });
 }
 
-export function startExample(command, options) {
-  return startApp(EXAMPLE_DIR, command, options);
+export function startTestbed(command, options) {
+  return startApp(TESTBED_DIR, command, options);
 }
 
 export function stopServer(child) {
@@ -120,7 +120,7 @@ export function stopServer(child) {
 
 /** The built browser bundle's sources — the only way to assert what did, and did not, ship to it. */
 export function clientChunks() {
-  const dir = join(EXAMPLE_DIST, 'static', 'chunks');
+  const dir = join(TESTBED_DIST, 'static', 'chunks');
   return readdirSync(dir).map((file) => readFileSync(join(dir, file), 'utf8'));
 }
 

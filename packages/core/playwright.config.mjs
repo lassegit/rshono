@@ -1,7 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 import { fileURLToPath } from 'node:url';
 
-const exampleDir = fileURLToPath(new URL('../../examples/rs-basic', import.meta.url));
+const testbedDir = fileURLToPath(new URL('../../apps/testbed', import.meta.url));
 const cli = fileURLToPath(new URL('./bin/rshono.mjs', import.meta.url));
 const PORT = 3210;
 
@@ -10,7 +10,7 @@ const PORT = 3210;
 // executes. The node:test suite can only check that the code was shipped.
 export default defineConfig({
   testDir: './test/browser',
-  // One app, one server, shared state (the demo's user list is mutable): parallelism would make
+  // One app, one server, shared state (the testbed's user list is mutable): parallelism would make
   // these flaky for no gain — there are only a handful of them.
   workers: 1,
   fullyParallel: false,
@@ -24,7 +24,7 @@ export default defineConfig({
   projects: [{ name: 'chromium', use: devices['Desktop Chrome'] }],
   webServer: {
     command: `node "${cli}" build && node "${cli}" start`,
-    cwd: exampleDir,
+    cwd: testbedDir,
     url: `http://127.0.0.1:${PORT}/`,
     env: { PORT: String(PORT) },
     reuseExistingServer: !process.env.CI,

@@ -39,10 +39,10 @@ jobs:
       - name: Test
         run: pnpm --filter @rshono/core test
 
-      # The example is typechecked against the *built* declarations, which is the only check that
+      # The testbed is typechecked against the *built* declarations, which is the only check that
       # what gets published is usable by a consumer.
-      - name: Typecheck the example against the published types
-        run: pnpm --filter rs-basic typecheck
+      - name: Typecheck the testbed against the published types
+        run: pnpm --filter testbed typecheck
 
       # The scaffolder's own matrix: every combination of options it can produce, asserted in memory.
       # Cheap enough to run on every platform, and Windows is where its path handling would break.

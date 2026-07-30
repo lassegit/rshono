@@ -1,6 +1,8 @@
-# RSC-Basic
+# Testbed
 
-Test app for `packages/core` — exercises every framework feature:
+Test app for `packages/core` — exercises every framework feature. The core suites build and serve
+this app (`test/helpers.mjs`, `playwright.config.mjs`), so it carries deliberate failure routes and
+is not a starting point for your own app — `npm create @rshono@latest` generates that.
 
 | Route               | Demonstrates                                                                                  |
 | ------------------- | --------------------------------------------------------------------------------------------- |

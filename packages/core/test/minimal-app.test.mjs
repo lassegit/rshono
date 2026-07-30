@@ -1,6 +1,6 @@
 // Everything except `src/routes.ts` is optional — this app proves it by leaving all of it out: no
 // server.ts, no public/, no rshono.config, no notFound page, no error page, and the bare-array
-// `defineRoutes` shorthand. The rest of the suite runs against one richly-configured example, which
+// `defineRoutes` shorthand. The rest of the suite runs against one richly-configured testbed, which
 // is exactly the app that would never catch "the framework assumes X exists".
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';

@@ -3,9 +3,9 @@
 // directly, and dev is also where React's debug channel is live and can leak what prod never would.
 import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
-import { startExample, stopServer } from './helpers.mjs';
+import { startTestbed, stopServer } from './helpers.mjs';
 
-const { base, child, port } = await startExample('dev', { timeoutMs: 90_000 });
+const { base, child, port } = await startTestbed('dev', { timeoutMs: 90_000 });
 after(() => stopServer(child));
 
 test('dev serves both representations of a page through the worker proxy', async () => {

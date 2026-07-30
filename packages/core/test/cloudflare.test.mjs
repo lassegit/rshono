@@ -7,10 +7,10 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { after, before, describe, test } from 'node:test';
-import { APP_ENV, buildApp, EXAMPLE_DIR, EXAMPLE_DIST, importServerBundle } from './helpers.mjs';
+import { APP_ENV, buildApp, TESTBED_DIR, TESTBED_DIST, importServerBundle } from './helpers.mjs';
 
-const ASSETS_ROOT = join(EXAMPLE_DIST, 'cloudflare', 'assets');
-const WRANGLER_CONFIG = join(EXAMPLE_DIR, 'wrangler.jsonc');
+const ASSETS_ROOT = join(TESTBED_DIST, 'cloudflare', 'assets');
+const WRANGLER_CONFIG = join(TESTBED_DIR, 'wrangler.jsonc');
 const ORIGIN = 'https://rshono.example';
 
 /** Whether the project had a Wrangler config before the build, so the test only removes its own. */
@@ -50,7 +50,7 @@ function fetchWorker(path, init) {
 
 before(async () => {
   hadWranglerConfig = existsSync(WRANGLER_CONFIG);
-  buildApp(EXAMPLE_DIR, { args: ['--deploy', 'cloudflare'] });
+  buildApp(TESTBED_DIR, { args: ['--deploy', 'cloudflare'] });
   bundle = await importServerBundle('cloudflare');
   worker = bundle.default;
 });
@@ -62,11 +62,11 @@ after(() => {
 
 describe('the Workers build output', () => {
   test('is a single module — Wrangler cannot follow the computed specifier a split bundle imports by', () => {
-    assert.equal(existsSync(join(EXAMPLE_DIST, 'server', 'chunks')), false, 'async chunks must be inlined for this target');
+    assert.equal(existsSync(join(TESTBED_DIST, 'server', 'chunks')), false, 'async chunks must be inlined for this target');
   });
 
   test('leaves nothing external that workerd does not provide', () => {
-    const source = readFileSync(join(EXAMPLE_DIST, 'server', 'main.mjs'), 'utf8');
+    const source = readFileSync(join(TESTBED_DIST, 'server', 'main.mjs'), 'utf8');
     const imported = [...source.matchAll(/^import\s[^;]*?from\s*"([^"]+)"/gm)].map((m) => m[1]);
     const foreign = imported.filter((request) => !/^(?:\.|node:|cloudflare:)/.test(request));
     assert.deepEqual(foreign, [], 'a Worker resolves no node_modules at runtime, so everything else must be bundled');

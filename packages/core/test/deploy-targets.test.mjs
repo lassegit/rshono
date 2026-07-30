@@ -13,14 +13,14 @@ import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { before, describe, test } from 'node:test';
-import { buildApp, EXAMPLE_DIR, EXAMPLE_DIST, importServerBundle } from './helpers.mjs';
+import { buildApp, TESTBED_DIR, TESTBED_DIST, importServerBundle } from './helpers.mjs';
 
 const ORIGIN = 'https://rshono.example';
 const CLI = fileURLToPath(new URL('../bin/rshono.mjs', import.meta.url));
 
-/** Builds the example for one target and returns its bundle, freshly evaluated. */
+/** Builds the testbed for one target and returns its bundle, freshly evaluated. */
 async function buildFor(target) {
-  const stdout = buildApp(EXAMPLE_DIR, { args: ['--deploy', target] });
+  const stdout = buildApp(TESTBED_DIR, { args: ['--deploy', target] });
   // The target names the cache key, so each build is a distinct module rather than the previous one.
   const bundle = await importServerBundle(target);
   return { stdout, bundle };
@@ -28,7 +28,7 @@ async function buildFor(target) {
 
 /** What `rshono build` recorded about the build now on disk — what `rshono start` reads to refuse one. */
 function buildMarker() {
-  return JSON.parse(readFileSync(join(EXAMPLE_DIST, 'rshono-build.json'), 'utf8'));
+  return JSON.parse(readFileSync(join(TESTBED_DIST, 'rshono-build.json'), 'utf8'));
 }
 
 /** Drives a web-standard handler — the shape Vercel, Netlify and any `fetch`-based host invoke. */
@@ -66,7 +66,7 @@ describe('deno', () => {
 
 describe('vercel', () => {
   let bundle;
-  const output = join(EXAMPLE_DIR, '.vercel', 'output');
+  const output = join(TESTBED_DIR, '.vercel', 'output');
   const functionDir = join(output, 'functions', 'index.func');
 
   before(async () => ({ bundle } = await buildFor('vercel')));
@@ -108,8 +108,8 @@ describe('vercel', () => {
 
 describe('netlify', () => {
   let bundle;
-  const publishDir = join(EXAMPLE_DIR, '.netlify', 'publish');
-  const functionsDir = join(EXAMPLE_DIR, '.netlify', 'functions-internal');
+  const publishDir = join(TESTBED_DIR, '.netlify', 'publish');
+  const functionsDir = join(TESTBED_DIR, '.netlify', 'functions-internal');
 
   before(async () => ({ bundle } = await buildFor('netlify')));
 
@@ -157,7 +157,7 @@ describe('`rshono start` refuses what it cannot run', () => {
   const start = (cwd) => spawnSync(process.execPath, [CLI, 'start'], { cwd, encoding: 'utf8', timeout: 30_000 });
 
   test('a build made for a platform, which has no listener in it and would exit silently', () => {
-    const result = start(EXAMPLE_DIR);
+    const result = start(TESTBED_DIR);
     assert.equal(result.status, 1);
     assert.match(result.stderr, /targets aws-lambda/);
     assert.match(result.stderr, /--deploy node/, 'says how to get a build it can run');

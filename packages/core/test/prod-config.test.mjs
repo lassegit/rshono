@@ -6,14 +6,14 @@
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
-import { actionFormData, buildExample, FIXTURES_DIR, startExample, stopServer } from './helpers.mjs';
+import { actionFormData, buildTestbed, FIXTURES_DIR, startTestbed, stopServer } from './helpers.mjs';
 
-/** Builds the example against a fixture config and serves it for the enclosing suite. */
+/** Builds the testbed against a fixture config and serves it for the enclosing suite. */
 function serve(configFile) {
   const app = {};
   before(async () => {
-    buildExample(join(FIXTURES_DIR, configFile));
-    const server = await startExample('start');
+    buildTestbed(join(FIXTURES_DIR, configFile));
+    const server = await startTestbed('start');
     app.base = server.base;
     app.child = server.child;
   });
@@ -170,7 +170,7 @@ describe('checkOrigin: false', () => {
 // build fails while resolving the config, so it never writes over the `dist/` above.
 test('a malformed allowedOrigins entry fails the build instead of silently matching nothing', () => {
   assert.throws(
-    () => buildExample(join(FIXTURES_DIR, 'bad-origin.config.mjs')),
+    () => buildTestbed(join(FIXTURES_DIR, 'bad-origin.config.mjs')),
     /invalid allowedOrigins entry/,
     'an unparseable origin must fail the build — an inert allowlist entry looks like a working one',
   );
