@@ -52,8 +52,8 @@ const REASONS = [
     body: 'No file-system routing, so your directory tree is not a function of your URLs. Arrange src/ by domain, by feature, by team — routes are one explicit array, and moving a page is an edit to one line rather than a migration.',
   },
   {
-    title: 'Plain HTML, all the way down',
-    body: 'Navigation is an <a href>, upgraded to a soft navigation by a document-level listener. No <Link> component. So markdown, CMS output and third-party components navigate softly without knowing rshono exists — and still work with no JavaScript at all.',
+    title: 'HTML elements, not re-inventions',
+    body: 'No <Link>, no <Image>, no <Script>, no <Head>, no font loader. Links are <a href>, images are <img> pointing at a hashed URL, forms are <form action>. Every attribute you already know still works, and HTML from a CMS or rendered markdown behaves like the rest.',
   },
   {
     title: 'The request is a prop',

@@ -73,13 +73,14 @@ const MATRIX: Array<{ dimension: string; note?: string; cells: Record<(typeof FR
     },
   },
   {
-    dimension: 'In-app links',
+    dimension: 'HTML elements replaced by a component',
+    note: 'Counted from the components each package ships.',
     cells: {
-      rshono: '<a href> — intercepted at the document',
-      'Next.js': '<Link> from next/link',
-      'TanStack Start': '<Link> — typed against the route tree',
-      Waku: '<Link> from waku/router/client',
-      Astro: '<a href> — plain, no client router',
+      rshono: 'None — <a>, <img>, <form>, <script> stay themselves',
+      'Next.js': '<Link>, <Image>, <Script>, <Form> — plus next/font and next/dynamic',
+      'TanStack Start': '<Link>, <Scripts>, <HeadContent>, <Outlet>',
+      Waku: '<Link>, <Router>, <Slice>',
+      Astro: '<Image>, <Picture>, <Font>, <ClientRouter> — anchors stay native',
     },
   },
   {
@@ -285,13 +286,19 @@ function Install() {
 }
 
 const LINKS_SAMPLE = `
-// rshono — the platform's own element, made soft
-<a href="/docs/pages">Pages</a>
-<a href="/docs/pages" data-prefetch>Pages</a>   // warm it on hover
-<a href="/docs/pages" data-native>Pages</a>     // force a full load
+// rshono — the platform's own elements, met where they already are
+import hero from './hero.png';                   // a content-hashed URL
 
-// Everywhere else — a component, and its props, and its docs
+<a href="/docs/pages">Pages</a>                  // soft navigation
+<a href="/docs/pages" data-prefetch>Pages</a>    // warm it on hover
+<a href="/docs/pages" data-native>Pages</a>      // force a full load
+
+<img src={hero} alt="" loading="lazy" />         // attributes are just attributes
+<form action={createUser}>…</form>               // posts before hydration too
+
+// Elsewhere — a component each, with props of its own to learn
 <Link href="/docs/pages" prefetch>Pages</Link>
+<Image src={hero} alt="" width={1200} height={630} />
 `;
 
 const CONTEXT_SAMPLE = `
@@ -310,6 +317,53 @@ export default async function Page() {
   const theme = (await cookies()).get('theme')?.value ?? 'light';
 }
 `;
+
+/**
+ * Element by element, with Next.js as the single contrast column — it is the one a reader is most
+ * likely to be holding, and the full five-way spread is in {@link Matrix} already.
+ */
+const ELEMENTS: Array<{ want: string; rshono: string; next: string }> = [
+  { want: 'A link', rshono: '<a href>', next: '<Link> from next/link' },
+  { want: 'An image', rshono: '<img src={imported}>', next: '<Image> from next/image' },
+  { want: 'A form that posts', rshono: '<form action={serverFn}>', next: '<form action>, or <Form> to keep the client router' },
+  { want: 'A script tag', rshono: '<script>', next: '<Script> from next/script' },
+  { want: 'Page metadata', rshono: 'Tags in the page’s own <head>', next: 'An exported metadata object, or <Head>' },
+  { want: 'A web font', rshono: '@font-face on an imported .woff2', next: 'next/font/google, next/font/local' },
+  { want: 'A lazily-loaded component', rshono: 'React’s lazy() and <Suspense>', next: 'next/dynamic' },
+];
+
+function ElementTable() {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-zinc-200 dark:border-zinc-800">
+      <table className="w-full min-w-2xl border-collapse text-sm">
+        <thead>
+          <tr className="border-b border-zinc-200 bg-zinc-50 dark:border-zinc-800 dark:bg-zinc-900">
+            <th scope="col" className="px-4 py-2.5 text-left font-medium text-zinc-900 dark:text-white">
+              You want
+            </th>
+            <th scope="col" className="px-4 py-2.5 text-left font-medium text-sky-700 dark:text-sky-400">
+              rshono
+            </th>
+            <th scope="col" className="px-4 py-2.5 text-left font-medium text-zinc-900 dark:text-white">
+              Next.js
+            </th>
+          </tr>
+        </thead>
+        <tbody>
+          {ELEMENTS.map((row) => (
+            <tr key={row.want} className="border-b border-zinc-200 last:border-0 dark:border-zinc-800">
+              <th scope="row" className="px-4 py-2.5 text-left font-medium text-zinc-900 dark:text-white">
+                {row.want}
+              </th>
+              <td className="bg-sky-50/60 px-4 py-2.5 font-mono text-xs text-zinc-800 dark:bg-sky-950/20 dark:text-zinc-200">{row.rshono}</td>
+              <td className="px-4 py-2.5 font-mono text-xs text-zinc-600 dark:text-zinc-400">{row.next}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
 
 /** One heading per argument, in the order they matter to somebody deciding. */
 function Arguments({ linksHtml, contextHtml }: { linksHtml: string; contextHtml: string }) {
@@ -352,18 +406,52 @@ function Arguments({ linksHtml, contextHtml }: { linksHtml: string; contextHtml:
         </article>
 
         <article>
-          <h3 className="mb-3 text-lg font-medium text-zinc-900 dark:text-white">Web standards, not framework dialect</h3>
+          <h3 className="mb-3 text-lg font-medium text-zinc-900 dark:text-white">HTML elements, not framework re-inventions</h3>
           <p className="mb-4 text-zinc-600 dark:text-zinc-400">
-            Navigation is a plain <code>&lt;a href&gt;</code>. The client runtime listens for clicks on the document and upgrades same-origin ones to
-            a soft navigation; <code>data-prefetch</code> warms a page on hover and <code>data-native</code> opts out. So markdown links, third-party
-            components, a CMS field full of HTML and hand-written server output all navigate softly without knowing rshono exists — and every one of
-            them still works if the JavaScript never arrives.
+            Every other framework here reaches a point where an HTML element is no longer good enough and gets replaced by a component of its own. An
+            anchor becomes <code>&lt;Link&gt;</code>. An image becomes <code>&lt;Image&gt;</code>. Then <code>&lt;Script&gt;</code>,{' '}
+            <code>&lt;Form&gt;</code>, <code>&lt;Head&gt;</code>, a font loader, a lazy-import helper. Each one is a new set of props to learn, a new
+            page of documentation, a new way to hold it wrong — and a component that only means anything inside that framework.
+          </p>
+          <p className="mb-4 text-zinc-600 dark:text-zinc-400">
+            rshono replaces none of them. The elements do their own jobs; the framework works on the outside of them.
+          </p>
+
+          <ElementTable />
+
+          <p className="mt-6 mb-4 text-zinc-600 dark:text-zinc-400">
+            The mechanism, in each case, is that the build or the runtime meets the element where it already is. Soft navigation is a single{' '}
+            <code>click</code> listener on the document that upgrades same-origin anchors, so <code>data-prefetch</code> and <code>data-native</code>
+            are attributes rather than props:
           </p>
           <div className="prose mb-4" dangerouslySetInnerHTML={{ __html: linksHtml }} />
+          <p className="mb-4 text-zinc-600 dark:text-zinc-400">
+            Assets work the same way round. Importing a <code>.png</code> or a <code>.woff2</code> hands you a content-hashed URL from Rspack&rsquo;s
+            asset pipeline, which you put in an ordinary <code>src</code> or <code>@font-face</code>. The server bundle resolves the same import to
+            the same URL without emitting the file twice, so a server component can reference an asset as freely as a client one. Nothing wraps the{' '}
+            <code>&lt;img&gt;</code>.
+          </p>
+          <p className="mb-4 text-zinc-600 dark:text-zinc-400">
+            And a page renders the whole document — <code>&lt;html&gt;</code>, <code>&lt;head&gt;</code>, <code>&lt;title&gt;</code>,{' '}
+            <code>&lt;meta&gt;</code> — with the build attaching that page&rsquo;s own script and stylesheet tags. So there is no{' '}
+            <code>&lt;Head&gt;</code> to import and no <code>&lt;Scripts&gt;</code> to remember to render: metadata is just tags in the head, where
+            they have always been.
+          </p>
+
+          <p className="mb-4 text-zinc-600 dark:text-zinc-400">
+            What that buys is not purity. It is that the knowledge transfers — <code>target</code>, <code>rel</code>, <code>download</code>,{' '}
+            <code>loading="lazy"</code>, <code>srcset</code>, <code>fetchpriority</code>, <code>enctype</code> and every other attribute work because
+            nothing is intercepting them. HTML from outside your components — rendered markdown, a CMS field, a third-party widget, a server-rendered
+            email preview — navigates softly and lazy-loads correctly without knowing rshono exists. And all of it degrades to working HTML when the
+            JavaScript fails to arrive, because that is what it was.
+          </p>
           <p className="text-zinc-600 dark:text-zinc-400">
-            The same instinct runs through the rest: forms are <code>&lt;form action&gt;</code> and post before hydration, the URL is a real{' '}
-            <code>URL</code>, cookies and headers are the Fetch API&rsquo;s. Credit where due — Astro takes plain anchors further than we do, by not
-            shipping a client router at all.
+            Two caveats, since this section is the one most likely to oversell. rshono does export three components — <code>Boundary</code>,{' '}
+            <code>ErrorBoundary</code> and <code>NavigationProgress</code> — but none replaces an element: the first two wrap React primitives that
+            have no HTML equivalent, and the third is optional chrome you can delete. And the honest cost of no <code>&lt;Image&gt;</code> is that you
+            get no resizing, no format negotiation and no blur placeholder either. Next.js and Astro give you those; rshono gives you an{' '}
+            <code>&lt;img&gt;</code> and expects you to point it at a CDN that does it. Astro, for its part, takes the plain-anchor idea further than
+            we do, by shipping no client router at all.
           </p>
         </article>
 
