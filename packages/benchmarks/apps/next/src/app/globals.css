@@ -1,0 +1,177 @@
+/* Byte-identical in all three apps — see APP_SPEC.md rule 7. */
+:root {
+  --fg: #16181d;
+  --muted: #5b6472;
+  --bg: #ffffff;
+  --line: #e3e7ed;
+  --accent: #2f6feb;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    Segoe UI,
+    Roboto,
+    sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+  line-height: 1.55;
+}
+
+header {
+  border-bottom: 1px solid var(--line);
+}
+
+nav {
+  display: flex;
+  gap: 1.25rem;
+  align-items: center;
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 0.875rem 1.25rem;
+}
+
+nav strong {
+  margin-right: auto;
+}
+
+nav a {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+nav a:hover {
+  color: var(--accent);
+}
+
+main {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+h1 {
+  font-size: 2rem;
+  margin: 0 0 0.25rem;
+  letter-spacing: -0.02em;
+}
+
+h2 {
+  font-size: 1.125rem;
+  margin: 0 0 0.5rem;
+}
+
+.subtitle {
+  color: var(--muted);
+  margin: 0 0 2rem;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1rem;
+}
+
+.card {
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 1rem 1.125rem;
+}
+
+.card p {
+  color: var(--muted);
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.summary {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  margin: 0 0 1.5rem;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9375rem;
+}
+
+th,
+td {
+  text-align: left;
+  padding: 0.4375rem 0.625rem;
+  border-bottom: 1px solid var(--line);
+}
+
+th {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+section {
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 1.125rem;
+  margin-bottom: 1.25rem;
+}
+
+button {
+  font: inherit;
+  padding: 0.4375rem 0.875rem;
+  border: 1px solid var(--line);
+  border-radius: 0.375rem;
+  background: var(--bg);
+  cursor: pointer;
+}
+
+button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+input {
+  font: inherit;
+  padding: 0.4375rem 0.625rem;
+  border: 1px solid var(--line);
+  border-radius: 0.375rem;
+  min-width: 12rem;
+}
+
+.row {
+  display: flex;
+  gap: 0.625rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.matches {
+  margin: 0.875rem 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+
+footer {
+  border-top: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+
+footer p {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: 1.25rem;
+}

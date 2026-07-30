@@ -1,0 +1,254 @@
+/**
+ * Renders results/latest.json as markdown. Reads whatever sections are present, so it is useful
+ * after a single runner as well as after a full `run.mjs`.
+ */
+import { writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { load } from './lib/results.mjs';
+import { RESULTS_DIR, ROUTES, TARGETS } from './lib/targets.mjs';
+import { ms, bytes, num } from './lib/stats.mjs';
+
+const results = await load();
+const md = render(results);
+const outFile = path.join(RESULTS_DIR, 'latest.md');
+await writeFile(outFile, md);
+process.stdout.write(md);
+console.error(`\n(wrote ${path.relative(process.cwd(), outFile)})`);
+
+function render(r) {
+  const ids = TARGETS.map((t) => t.id).filter((id) => Object.values(r.sections).some((s) => sectionHas(s, id)));
+  const labels = ids.map((id) => TARGETS.find((t) => t.id === id).label);
+  const lines = [];
+
+  lines.push('# Benchmark results', '');
+  lines.push(`Generated ${r.env.at} — see [../README.md](../README.md) for what each number means and what it does not.`, '');
+
+  lines.push('## Environment', '');
+  lines.push(
+    table(
+      ['Property', 'Value'],
+      [
+        ['Machine', `${r.env.cpu} · ${r.env.cores} cores · ${r.env.totalMemGB} GB`],
+        ['Platform', r.env.platform],
+        ['Node', r.env.node],
+        ['CI', r.env.ci ? 'yes' : 'no — laptop numbers, treat spreads under ~10% as noise'],
+      ],
+    ),
+  );
+  lines.push('');
+
+  lines.push('### Versions', '');
+  lines.push(
+    'React version skew across the three is unavoidable — Next vendors its own copy — so it is reported rather than hidden. A render-path difference of a few percent is more likely this than the framework.',
+    '',
+  );
+  const allPkgs = [...new Set(ids.flatMap((id) => Object.keys(r.env.versions[id] ?? {}).filter((k) => k !== 'installed')))];
+  lines.push(
+    table(
+      ['Package', ...labels],
+      allPkgs.map((pkg) => [`\`${pkg}\``, ...ids.map((id) => r.env.versions[id]?.[pkg] ?? '—')]),
+    ),
+  );
+  lines.push('');
+
+  if (r.sections.payload) lines.push(...payloadSection(r.sections.payload, ids, labels));
+  if (r.sections.build) lines.push(...buildSection(r.sections.build, ids, labels));
+  if (r.sections.coldstart) lines.push(...coldstartSection(r.sections.coldstart, ids, labels));
+  if (r.sections.load) lines.push(...loadSection(r.sections.load, ids, labels));
+  if (r.sections.devstart) lines.push(...devstartSection(r.sections.devstart, ids, labels));
+  if (r.sections.footprint) lines.push(...footprintSection(r.sections.footprint, ids, labels));
+
+  return `${lines.join('\n')}\n`;
+}
+
+function payloadSection(section, ids, labels) {
+  const lines = ['## Initial-load payload', ''];
+  lines.push(
+    'Brotli-compressed bytes the browser is committed to fetching before the route is interactive: the document, the inline flight payload, and every statically referenced script and stylesheet. Compression is applied by the harness, identically for all three.',
+    '',
+  );
+
+  for (const route of ROUTES) {
+    lines.push(`### \`${route.path}\` — ${route.kind}`, '');
+    const rows = [
+      ['Document (br)', (t) => bytes(t?.document?.brotli)],
+      ['Inline script (raw)', (t) => bytes(t?.inlineScriptBytes)],
+      ['External JS (br)', (t) => (t?.js ? `${bytes(t.js.brotli)} · ${t.js.count} file${t.js.count === 1 ? '' : 's'}` : '—')],
+      ['CSS (br)', (t) => (t?.css ? `${bytes(t.css.brotli)} · ${t.css.count}` : '—')],
+      ['**Total (br)**', (t) => `**${bytes(t?.total?.brotli)}**`],
+      ['Total (raw)', (t) => bytes(t?.total?.raw)],
+      ['Requests', (t) => num(t?.requests)],
+      ['Spec checks', (t) => checkMark(t)],
+    ];
+    lines.push(
+      table(
+        ['Metric', ...labels],
+        rows.map(([name, get]) => [name, ...ids.map((id) => cell(section[id], route.id, get))]),
+      ),
+    );
+    lines.push('');
+  }
+  return lines;
+}
+
+function cell(target, routeId, get) {
+  if (!target) return '—';
+  if (target.error) return '✗ failed';
+  const route = target.routes?.[routeId];
+  if (!route) return '—';
+  if (route.error) return `✗ ${route.error}`;
+  return get(route);
+}
+
+function checkMark(route) {
+  if (!route?.checks) return '—';
+  const failed = route.checks.filter((c) => !c.found);
+  return failed.length ? `⚠ missing ${failed.map((c) => `\`${c.text}\``).join(', ')}` : '✓';
+}
+
+function buildSection(section, ids, labels) {
+  const lines = ['## Build', ''];
+  lines.push(
+    `Median of ${section[ids[0]]?.trials ?? '?'} trials. Cold clears the framework's cache directory first; warm keeps it and touches one source file the interactive route imports.`,
+    '',
+  );
+  lines.push(
+    table(
+      ['Metric', ...labels],
+      [
+        ['Cold build', ...ids.map((id) => withSpread(section[id]?.coldMs))],
+        ['Warm rebuild', ...ids.map((id) => withSpread(section[id]?.warmMs))],
+        ['Build output', ...ids.map((id) => bytes(section[id]?.artifacts?.totalBytes))],
+        ['Output files', ...ids.map((id) => num(section[id]?.artifacts?.files))],
+        ['Server bundle', ...ids.map((id) => bytes(section[id]?.artifacts?.serverBundleBytes))],
+      ],
+    ),
+  );
+  lines.push('');
+  return lines;
+}
+
+function withSpread(entry) {
+  if (!entry || entry.median === null) return '—';
+  const spread = entry.rsdPct === null ? '' : ` ±${entry.rsdPct.toFixed(0)}%`;
+  return `${ms(entry.median)}${spread}`;
+}
+
+function coldstartSection(section, ids, labels) {
+  const lines = ['## Cold start', ''];
+  lines.push(
+    'Process spawn to first answered request, fresh process each trial. Not a real serverless cold start — no container, no network — it isolates the JavaScript the framework has to parse and run before it can respond.',
+    '',
+  );
+  lines.push(
+    table(
+      ['Metric', ...labels],
+      [
+        ['Spawn → first response', ...ids.map((id) => withSpread(section[id]?.readyMs))],
+        ['Server bundle', ...ids.map((id) => bytes(section[id]?.serverBundleBytes))],
+      ],
+    ),
+  );
+  lines.push('');
+  return lines;
+}
+
+function loadSection(section, ids, labels) {
+  const s = section.settings ?? {};
+  const lines = ['## Throughput', ''];
+  lines.push(
+    `${s.connections} connections, ${(s.durationMs ?? 0) / 1000}s per route after a ${(s.warmupMs ?? 0) / 1000}s warmup, driven by the harness's own Node load generator.`,
+    '',
+    '**Read this as a floor check, not a headline.** All three render through the same React and stream through the same react-dom, so a large gap would mean an HTTP layer is pathological rather than that one framework renders faster. The in-process driver is identically handicapping for all three, and its absolute rps is a lower bound. `/api/health` is the informative row: no React on the path, so it is router and response construction alone.',
+    '',
+  );
+
+  for (const route of ROUTES) {
+    const rows = [
+      ['Requests/sec', (x) => num(x?.rps)],
+      ['p50', (x) => ms(x?.latencyMs?.p50)],
+      ['p99', (x) => ms(x?.latencyMs?.p99)],
+      ['Errors', (x) => (x?.ok === false ? `⚠ ${x.problem}` : '0')],
+    ];
+    lines.push(`### \`${route.path}\``, '');
+    lines.push(
+      table(
+        ['Metric', ...labels],
+        rows.map(([name, get]) => [
+          name,
+          ...ids.map((id) => (section.targets?.[id]?.error ? '✗ failed' : get(section.targets?.[id]?.routes?.[route.id]))),
+        ]),
+      ),
+    );
+    const warning = section.targets?._warnings?.[route.id];
+    if (warning) lines.push('', `> ⚠ ${warning}`);
+    lines.push('');
+  }
+
+  lines.push('### Memory', '');
+  lines.push(
+    table(
+      ['Metric', ...labels],
+      [
+        ['RSS idle', ...ids.map((id) => rssCell(section.targets?.[id]?.rssIdle))],
+        ['RSS after load', ...ids.map((id) => rssCell(section.targets?.[id]?.rssLoaded))],
+      ],
+    ),
+  );
+  lines.push('');
+  return lines;
+}
+
+function rssCell(rss) {
+  return rss ? `${bytes(rss.bytes)}${rss.processes > 1 ? ` (${rss.processes} procs)` : ''}` : '—';
+}
+
+function devstartSection(section, ids, labels) {
+  const lines = ['## Dev server startup', ''];
+  lines.push(
+    '`dev` command to a served `/interactive` — which every one of these compiles lazily, so it includes compiling a route with three client components rather than just binding a socket. Cold clears the dev cache first.',
+    '',
+    'HMR round-trip is the other number worth having here and is not measured: it needs a browser driving the page to assert the patch arrived.',
+    '',
+  );
+  lines.push(
+    table(
+      ['Metric', ...labels],
+      [
+        ['Cold dev start', ...ids.map((id) => withSpread(section[id]?.coldMs))],
+        ['Warm dev start', ...ids.map((id) => withSpread(section[id]?.warmMs))],
+      ],
+    ),
+  );
+  lines.push('');
+  return lines;
+}
+
+function footprintSection(section, ids, labels) {
+  const lines = ['## Footprint', ''];
+  lines.push('A production-only install (`--omit=dev`) into a throwaway directory, and the application code the spec took to express.', '');
+  lines.push(
+    table(
+      ['Metric', ...labels],
+      [
+        ['Prod install size', ...ids.map((id) => bytes(section[id]?.install?.bytes))],
+        ['Packages installed', ...ids.map((id) => num(section[id]?.install?.packages))],
+        ['Direct dependencies', ...ids.map((id) => num(section[id]?.install?.dependencies))],
+        ['App source files', ...ids.map((id) => num(section[id]?.source?.files))],
+        ['App source lines', ...ids.map((id) => num(section[id]?.source?.lines))],
+      ],
+    ),
+  );
+  lines.push('');
+  return lines;
+}
+
+function sectionHas(section, id) {
+  return Boolean(section?.[id] ?? section?.targets?.[id]);
+}
+
+function table(header, rows) {
+  const widths = header.map((h, i) => Math.max(String(h).length, ...rows.map((row) => String(row[i] ?? '').length)));
+  const line = (cells) => `| ${cells.map((c, i) => String(c ?? '').padEnd(widths[i])).join(' | ')} |`;
+  return [line(header), `| ${widths.map((w) => '-'.repeat(w)).join(' | ')} |`, ...rows.map(line)].join('\n');
+}

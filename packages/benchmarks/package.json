@@ -1,0 +1,22 @@
+{
+  "name": "@rshono/benchmarks",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Framework-cost benchmark: rshono vs Next.js vs TanStack Start",
+  "scripts": {
+    "//": "Script names must not collide with a pnpm built-in command: `pnpm --filter <pkg> <name>` resolves the built-in first, and --filter then fails as 'Unknown option: recursive'. `setup` and `clean` are both taken, hence the :apps suffixes.",
+    "setup:apps": "node harness/install.mjs",
+    "bench": "node harness/run.mjs",
+    "bench:build": "node harness/build.mjs",
+    "bench:payload": "node harness/payload.mjs",
+    "bench:load": "node harness/load.mjs",
+    "bench:coldstart": "node harness/coldstart.mjs",
+    "bench:devstart": "node harness/devstart.mjs",
+    "bench:footprint": "node harness/footprint.mjs",
+    "report": "node harness/report.mjs",
+    "site:publish": "node harness/publish-site.mjs",
+    "fixtures": "node fixtures/generate.mjs",
+    "clean:apps": "node harness/clean.mjs"
+  }
+}

@@ -6,9 +6,10 @@ import { Layout } from './layout';
  * `/comparison` — how rshono differs from the frameworks people arrive here already using.
  *
  * Every number on this page is measured rather than asserted, and the method is written down at the
- * bottom so a reader can re-run it. That constraint is why the page holds no benchmarks: request
- * throughput depends far more on what a page does than on whose framework wrapped it, and a chart of
- * our own making would prove nothing a reader should believe.
+ * bottom so a reader can re-run it. This page stays on the differences that have no unit — API surface,
+ * routing model, platform support. The ones that do are on [`/benchmarks`](./benchmarks.tsx), which runs
+ * one app built three ways; throughput is a floor check there rather than a headline, for the reason
+ * given in {@link Method}.
  *
  * The honest counterpart is {@link Tradeoffs} — the section that says where the others are ahead. It is
  * on the page for the same reason the [limitations](/docs/limitations) doc exists: a comparison with no
@@ -625,8 +626,13 @@ function Method() {
           and it gets corrected.
         </p>
         <p>
-          There are no performance benchmarks on this page on purpose. Request throughput is dominated by what a page does, not by whose framework
-          wrapped it, and a chart we produced ourselves would tell you about our fixture rather than about your app.
+          There are no performance numbers on this page on purpose — the table above is about design choices, which don&rsquo;t have a unit. What can
+          be measured honestly is what the framework costs: bytes to the browser, build time, cold start, install size. That is a separate page,{' '}
+          <a href="/benchmarks" data-prefetch>
+            benchmarks
+          </a>
+          , with one app built three ways and the method and caveats next to the numbers. Request throughput is barely in it, and deliberately so: all
+          three render through the same React, so a throughput chart of our own making would tell you about our fixture rather than about your app.
         </p>
       </div>
 

@@ -3,7 +3,7 @@ import { DOCS } from '../content/docs';
 import { origin } from './llms';
 
 /** Every page a crawler should know about, in the order a reader would meet them. */
-const PATHS = ['/', '/comparison', '/docs', ...DOCS.map((doc) => doc.href)];
+const PATHS = ['/', '/comparison', '/benchmarks', '/docs', ...DOCS.map((doc) => doc.href)];
 
 /**
  * `/sitemap.xml` — referenced by `public/robots.txt`.
