@@ -6,4 +6,4 @@
 # Only `PUBLIC_`-prefixed variables are compiled into the browser bundle. Anything else is server-only:
 # a stray read of it in client code compiles to `undefined` rather than shipping.
 
-PUBLIC_APP_NAME="__PROJECT_NAME__"
+PUBLIC_APP_NAME="{{PROJECT_NAME}}"

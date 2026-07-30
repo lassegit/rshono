@@ -26,10 +26,10 @@ Six, each with a default, and each answerable by a flag instead:
 | Install dependencies? | yes                | `--no-install`                                                      |
 | Initialize git?       | yes, unless nested | `--no-git`                                                          |
 
-Plus `--formatter` and `--linter` to set either half of the quality preset on its own, `--force` to
-scaffold into a directory that is not empty, `--dry-run` to see the file list and write nothing, and `-y`
-to take the defaults for everything not given. **A non-interactive terminal implies `-y`**, so this is one
-command in CI or from an agent:
+Plus `--formatter` and `--linter` to set either half of the quality preset on its own, `--pm` to override
+the package manager that was detected, `--force` to scaffold into a directory that is not empty,
+`--dry-run` to see the file list and write nothing, and `-y` to take the defaults for everything not
+given. **A non-interactive terminal implies `-y`**, so this is one command in CI or from an agent:
 
 ```bash
 npm create @rshono@latest my-app -y --deploy cloudflare --tailwind --quality biome
@@ -104,9 +104,14 @@ delete to go back to plain CSS.
 
 ```bash
 pnpm --filter @rshono/create build       # codegen, then one bundled dist/cli.mjs with no runtime deps
-pnpm --filter @rshono/create test        # the plan matrix — fast, no I/O
+pnpm --filter @rshono/create test        # builds, then the plan matrix and the CLI — seconds, no installs
 CREATE_RSHONO_E2E=1 pnpm --filter @rshono/create test   # also: pack, install and build real apps
 ```
+
+`plan.test.mjs` is the fast one — the whole matrix of answers in memory, no directory touched.
+`cli.test.mjs` spawns the real bin against temp directories, which is where argument parsing and the
+refusal to overwrite somebody's files are checked. `e2e.test.mjs` is the opt-in one, and the only one that
+installs anything.
 
 `@clack/prompts` (MIT) is bundled rather than depended on, so `npm create` downloads one tarball before it
 can ask its first question.

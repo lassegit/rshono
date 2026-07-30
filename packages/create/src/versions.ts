@@ -1,6 +1,7 @@
-import { FRAMEWORK_DEPS, RSHONO_VERSION } from './generated/framework.js';
+import { FRAMEWORK_DEPS, NODE_ENGINE, RSHONO_VERSION } from './generated/framework.js';
 
-export { FRAMEWORK_DEPS };
+/** Passed straight through, so everything generated from the framework reaches the rest of the package here. */
+export { FRAMEWORK_DEPS, NODE_ENGINE, RSHONO_VERSION };
 
 /** The framework range a scaffolded app gets. The two packages are released together, so this is ours. */
 export const RSHONO_RANGE = `^${RSHONO_VERSION}`;

@@ -4,6 +4,9 @@ import { parseArgs } from 'node:util';
 import { hasGit, initRepo, isInsideRepo } from './git.js';
 import {
   DEPLOY_TARGET_NAMES,
+  FORMATTER_NAMES,
+  LINTER_NAMES,
+  PACKAGE_MANAGERS,
   QUALITY_PRESETS,
   isValidPackageName,
   toPackageName,
@@ -11,17 +14,18 @@ import {
   type DeployTargetName,
   type Formatter,
   type Linter,
-  type PackageManagerName,
   type QualityPreset,
   type Styling,
 } from './options.js';
 import { plan as buildPlan } from './plan.js';
 import { detectPackageManager, packageManager, runInstall, runScript } from './pm.js';
 import { nextSteps, summary, unwrap } from './ui.js';
-import { inspectTarget, writePlan } from './write.js';
+import { RSHONO_VERSION } from './versions.js';
+import { conflictingEntries, writePlan } from './write.js';
 
 const DEFAULT_DIRECTORY = 'my-rshono-app';
 
+/** Every accepted name comes from `options.ts`, so the help cannot promise one the validation refuses. */
 const HELP = `create-rshono — scaffold a new rshono app
 
 Usage:
@@ -32,9 +36,9 @@ Options:
   -d, --deploy <target>    ${DEPLOY_TARGET_NAMES.join(' | ')}
       --tailwind           Tailwind CSS (--no-tailwind for plain CSS)
       --quality <preset>   ${QUALITY_PRESETS.map((preset) => preset.id).join(' | ')}
-      --formatter <name>   prettier | biome | oxfmt | none      (overrides --quality)
-      --linter <name>      oxlint | eslint | biome | none       (overrides --quality; eslint pins TypeScript 6)
-      --pm <name>          npm | pnpm | yarn | bun              (default: whatever ran this)
+      --formatter <name>   ${FORMATTER_NAMES.join(' | ')}      (overrides --quality)
+      --linter <name>      ${LINTER_NAMES.join(' | ')}       (overrides --quality; eslint pins TypeScript 6)
+      --pm <name>          ${PACKAGE_MANAGERS.join(' | ')}              (default: whatever ran this)
       --no-install         write the files and stop
       --no-git             do not initialize a repository
       --force              scaffold into a directory that is not empty
@@ -68,41 +72,58 @@ function tristate(on: boolean | undefined, off: boolean | undefined, flag: strin
   return undefined;
 }
 
+/**
+ * `parseArgs` rejects an unknown flag with a message that names it but nothing else — so a mistyped
+ * `--tailwnid` reads as a wall of text about positional arguments. Pointing at `--help` is the whole
+ * addition.
+ */
+function parse() {
+  try {
+    return parseArgs({
+      options: {
+        yes: { type: 'boolean', short: 'y' },
+        deploy: { type: 'string', short: 'd' },
+        tailwind: { type: 'boolean' },
+        'no-tailwind': { type: 'boolean' },
+        quality: { type: 'string' },
+        formatter: { type: 'string' },
+        linter: { type: 'string' },
+        pm: { type: 'string' },
+        install: { type: 'boolean' },
+        'no-install': { type: 'boolean' },
+        git: { type: 'boolean' },
+        'no-git': { type: 'boolean' },
+        force: { type: 'boolean' },
+        'dry-run': { type: 'boolean' },
+        help: { type: 'boolean', short: 'h' },
+        version: { type: 'boolean', short: 'v' },
+      },
+      allowPositionals: true,
+    });
+  } catch (error) {
+    fail(`${error instanceof Error ? error.message : String(error)}\n\nRun with --help to see the options.`);
+  }
+}
+
 async function main(): Promise<void> {
-  const { values, positionals } = parseArgs({
-    options: {
-      yes: { type: 'boolean', short: 'y' },
-      deploy: { type: 'string', short: 'd' },
-      tailwind: { type: 'boolean' },
-      'no-tailwind': { type: 'boolean' },
-      quality: { type: 'string' },
-      formatter: { type: 'string' },
-      linter: { type: 'string' },
-      pm: { type: 'string' },
-      install: { type: 'boolean' },
-      'no-install': { type: 'boolean' },
-      git: { type: 'boolean' },
-      'no-git': { type: 'boolean' },
-      force: { type: 'boolean' },
-      'dry-run': { type: 'boolean' },
-      help: { type: 'boolean', short: 'h' },
-      version: { type: 'boolean', short: 'v' },
-    },
-    allowPositionals: true,
-  });
+  const { values, positionals } = parse();
 
   if (values.help) return console.log(HELP);
   if (values.version) return console.log(__CREATE_RSHONO_VERSION__);
 
-  // A pipe, a CI job or an agent gets the defaults rather than a prompt nothing can answer.
-  const interactive = Boolean(process.stdout.isTTY) && !values.yes;
+  /*
+   * A pipe, a CI job or an agent gets the defaults rather than a prompt nothing can answer. Both streams
+   * have to be a terminal: the prompts draw on stdout but *read from stdin*, so `echo | npm create` with
+   * stdout still attached would otherwise ask a question with nothing behind the keyboard.
+   */
+  const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY) && !values.yes;
 
-  const pmFlag = oneOf(values.pm, ['npm', 'pnpm', 'yarn', 'bun'] as const, 'pm');
+  const pmFlag = oneOf(values.pm, PACKAGE_MANAGERS, 'pm');
   const pm = pmFlag ? packageManager(pmFlag) : detectPackageManager();
 
-  const deployFlag = oneOf(values.deploy, DEPLOY_TARGET_NAMES as DeployTargetName[], 'deploy');
-  const formatterFlag = oneOf(values.formatter, ['prettier', 'biome', 'oxfmt', 'none'] as const, 'formatter');
-  const linterFlag = oneOf(values.linter, ['oxlint', 'eslint', 'biome', 'none'] as const, 'linter');
+  const deployFlag = oneOf(values.deploy, DEPLOY_TARGET_NAMES, 'deploy');
+  const formatterFlag = oneOf(values.formatter, FORMATTER_NAMES, 'formatter');
+  const linterFlag = oneOf(values.linter, LINTER_NAMES, 'linter');
   const qualityFlag = oneOf(
     values.quality,
     QUALITY_PRESETS.map((preset) => preset.id),
@@ -112,7 +133,9 @@ async function main(): Promise<void> {
   const installFlag = tristate(values.install, values['no-install'], 'install');
   const gitFlag = tristate(values.git, values['no-git'], 'git');
 
-  prompts.intro(`create-rshono  ·  rshono ${__CREATE_RSHONO_VERSION__}`);
+  // The framework version, not this package's: it is the one the app will be pinned to, and the one
+  // worth reading here. `--version` reports create-rshono's own.
+  prompts.intro(`create-rshono  ·  rshono ${RSHONO_VERSION}`);
 
   // ── Where ───────────────────────────────────────────────────────────────────────────────────────
   let directory = positionals[0];
@@ -133,7 +156,7 @@ async function main(): Promise<void> {
   const packageName = toPackageName(directory === '.' ? basename(targetDir) : directory);
   if (!packageName || !isValidPackageName(packageName)) fail(`"${directory}" does not give a usable npm package name.`);
 
-  const conflicts = inspectTarget(targetDir).conflicts;
+  const conflicts = conflictingEntries(targetDir);
   if (conflicts.length > 0 && !values.force) {
     const where = directory === '.' ? 'this directory' : `"${directory}"`;
     const listed = `${conflicts.slice(0, 3).join(', ')}${conflicts.length > 3 ? ', …' : ''}`;
@@ -158,7 +181,7 @@ async function main(): Promise<void> {
     );
   }
 
-  let styling: Styling = tailwindFlag === undefined ? 'css' : tailwindFlag ? 'tailwind' : 'css';
+  let styling: Styling = tailwindFlag ? 'tailwind' : 'css';
   if (tailwindFlag === undefined && interactive) {
     styling = unwrap(
       await prompts.select({
@@ -202,9 +225,10 @@ async function main(): Promise<void> {
     install = unwrap(await prompts.confirm({ message: `Install dependencies with ${pm.name}?`, initialValue: true }));
   }
 
-  let git = gitFlag ?? !isInsideRepo(process.cwd());
+  // Asked once, not once per use: this shells out to `git rev-parse`.
+  const nested = isInsideRepo(process.cwd());
+  let git = gitFlag ?? !nested;
   if (gitFlag === undefined && interactive) {
-    const nested = isInsideRepo(process.cwd());
     git = unwrap(
       await prompts.confirm({
         message: nested ? 'Initialize a git repository? (this is already inside one)' : 'Initialize a git repository?',
@@ -213,17 +237,7 @@ async function main(): Promise<void> {
     );
   }
 
-  const answers: Answers = {
-    packageName,
-    targetDir,
-    deploy,
-    styling,
-    formatter,
-    linter,
-    packageManager: pm.name as PackageManagerName,
-    install,
-    git,
-  };
+  const answers: Answers = { packageName, deploy, styling, formatter, linter };
 
   // ── Plan, then write ────────────────────────────────────────────────────────────────────────────
   const plan = buildPlan(answers, pm);
@@ -241,16 +255,19 @@ async function main(): Promise<void> {
   if (install) {
     prompts.log.step(`Installing dependencies with ${pm.name}…`);
     installed = runInstall(pm, targetDir);
-    if (!installed) prompts.log.warn(`${pm.name} install failed — run it yourself and the rest will work.`);
+    if (!installed) prompts.log.warn(`${pm.name} install failed — the files are all written, so run it yourself in the project.`);
   }
 
   /*
    * Format the scaffold with the tool it was scaffolded with, so a fresh project passes its own
    * `format:check` instead of reporting a diff nobody made. Needs the install, since the formatter is a
    * devDependency — hence the skip, rather than a failure, when there is none.
+   *
+   * Whether there is a `format` script is the plan's answer, not the formatter answer's: `--formatter
+   * none --linter biome` has no formatter and a `format` script all the same, because Biome brings one.
    */
-  if (installed && formatter !== 'none') {
-    if (!runScript(pm, 'format', targetDir)) prompts.log.warn(`\`${pm.run} format\` failed — the files are fine, the formatter is not.`);
+  if (installed && plan.features.some((feature) => feature.scripts?.format)) {
+    if (!runScript(pm, 'format', targetDir)) prompts.log.warn(`\`${pm.run} format\` failed — the scaffold is written, just not formatted.`);
   }
 
   if (git) {

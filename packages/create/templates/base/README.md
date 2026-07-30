@@ -1,11 +1,11 @@
-# **PROJECT_NAME**
+# {{PROJECT_NAME}}
 
 A [rshono](https://github.com/rshono/rshono) app — [Hono](https://hono.dev) + [Rspack](https://rspack.rs) + [React Server Components](https://react.dev/reference/rsc/server-components).
 
 ```bash
-__PM_RUN__ dev        # dev server with HMR, http://localhost:3000
-__PM_RUN__ build      # production build for __DEPLOY_TARGET__
-__PM_RUN__ typecheck  # tsc --noEmit
+{{PM_RUN}} dev        # dev server with HMR, http://localhost:3000
+{{PM_RUN}} build      # production build for {{DEPLOY_TARGET}}
+{{PM_RUN}} typecheck  # tsc --noEmit
 ```
 
 `package.json` has the rest, including whatever your formatter and linter added.
@@ -35,7 +35,7 @@ compiles to `undefined` rather than shipping. `src/lib/env.ts` is where both sid
 
 ## Deploying
 
-This app is built for `__DEPLOY_TARGET__`: after `__PM_RUN__ build`, **DEPLOY_HINT**.
+This app is built for `{{DEPLOY_TARGET}}`: after `{{PM_RUN}} build`, {{DEPLOY_HINT}}.
 
 Change `deploy` in `rshono.config.ts` to target somewhere else, or build for one place without editing the
 file: `rshono build --deploy vercel`, or `RSHONO_DEPLOY=vercel` in CI. `dev` always runs the Node dev

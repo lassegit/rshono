@@ -7,8 +7,10 @@ import type { Feature } from './types.js';
  * deduplicates by `id`, so `formatter: 'biome', linter: 'biome'` contributes one set of files, one
  * dependency and one pair of scripts.
  *
- * Each tool brings its own `check` script alongside `format`/`lint`, because the writing half and the
- * CI half want different exit-code behaviour: `format` rewrites files, `check` fails instead.
+ * A formatter brings `format:check` beside `format`, because the writing half and the CI half want
+ * different exit-code behaviour: `format` rewrites files, `format:check` fails instead. A linter brings
+ * `lint:fix` beside `lint`, for the same reason in the other direction — `lint` is already the failing
+ * one. Biome adds a `check` of its own, which is the pair of them in a single pass.
  */
 const PRETTIER: Feature = {
   id: 'prettier',

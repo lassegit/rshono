@@ -9,8 +9,11 @@ import type { Feature } from './types.js';
  * Deliberately thin. The framework already knows how to arrange its own output for every platform, and
  * `rshono build` writes the one platform config that has to exist (`wrangler.jsonc`, with the
  * `compatibility_date` of the day it ran) if the project has none. Generating a second copy here would
- * be a copy that goes stale. So a target contributes a `deploy` script, the CLI it needs locally, and
- * the build artefacts its platform leaves in the project.
+ * be a copy that goes stale.
+ *
+ * So a target contributes only what is true of it: the command that runs or ships the build, the CLI
+ * that command needs installed locally, the directories its platform leaves behind for `.gitignore`, and
+ * a note for the step no command covers. Several contribute just one of those.
  */
 const DEPLOY_FEATURES: Record<DeployTargetName, Feature> = {
   // Where a Node build goes from here is a Dockerfile or a process manager, neither of which this can

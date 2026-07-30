@@ -9,7 +9,7 @@
 
 /** Safe anywhere: `PUBLIC_` variables are the ones compiled into the browser bundle. */
 export const publicEnv = {
-  appName: process.env.PUBLIC_APP_NAME ?? '__PROJECT_NAME__',
+  appName: process.env.PUBLIC_APP_NAME ?? '{{PROJECT_NAME}}',
 };
 
 /**

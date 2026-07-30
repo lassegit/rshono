@@ -1,11 +1,12 @@
 import type { Feature } from './features/index.js';
 import type { Answers } from './options.js';
 import type { PackageManager } from './pm.js';
-import { FRAMEWORK_DEPS, RSHONO_RANGE } from './versions.js';
+import { FRAMEWORK_DEPS, NODE_ENGINE, RSHONO_RANGE } from './versions.js';
 
 /**
- * The scripts every app gets. `start` is not among them: it is the *Node* launcher, and the deploy
- * features each contribute the command their own platform runs what was built with.
+ * The scripts every app gets. `start` is not among them, because it means something different per
+ * platform: the three targets that run the build themselves — node, bun, deno — each contribute their
+ * own, and a platform target contributes a `deploy` instead, where its platform has one command to give.
  */
 const BASE_SCRIPTS: Record<string, string> = {
   dev: 'rshono dev',
@@ -86,9 +87,8 @@ export function buildPackageJson(answers: Answers, features: Feature[], pm: Pack
     version: '0.1.0',
     private: true,
     type: 'module',
-    // The floor the framework declares. Stated here too so a CI image or a contributor on an older
-    // Node finds out from their package manager rather than from a stack trace.
-    engines: { node: '>=22.1.0' },
+    // Generated from the framework's own manifest, so the app's floor cannot drift below rshono's.
+    engines: { node: NODE_ENGINE },
     scripts,
     dependencies: sorted(dependencies),
     devDependencies: sorted(devDependencies),

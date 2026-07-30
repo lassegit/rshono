@@ -1,9 +1,14 @@
 node_modules/
-dist/
 pnpm-lock.yaml
 package-lock.json
 yarn.lock
 bun.lock
+
+# Build output: `rshono build`'s own, and whatever the deploy target assembles beside it.
+dist/
+.wrangler/
+.vercel/
+.netlify/
 
 # Written by `rshono build` for the Cloudflare target, in the shape the build decided. Yours to edit —
 # just not the formatter's to reflow on every build.

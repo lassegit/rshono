@@ -3,5 +3,5 @@
   "categories": {
     "correctness": "error"
   },
-  "ignorePatterns": ["dist"]
+  "ignorePatterns": ["dist", ".wrangler", ".vercel", ".netlify"]
 }

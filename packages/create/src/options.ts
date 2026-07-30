@@ -3,36 +3,41 @@ import { DEPLOY_TARGETS, type DeployTargetName } from './generated/framework.js'
 export type { DeployTargetName };
 
 export type Styling = 'css' | 'tailwind';
-export type Formatter = 'prettier' | 'biome' | 'oxfmt' | 'none';
+
+/*
+ * The names each option accepts, spelled once. The types below are derived from them, the CLI validates
+ * its flags against them and prints them in `--help`, and `pm.ts` recognises a package manager by them
+ * — so a name added here reaches all three without a second list to remember.
+ */
+export const FORMATTER_NAMES = ['prettier', 'biome', 'oxfmt', 'none'] as const;
+export const LINTER_NAMES = ['oxlint', 'eslint', 'biome', 'none'] as const;
+export const PACKAGE_MANAGERS = ['npm', 'pnpm', 'yarn', 'bun'] as const;
+
+export type Formatter = (typeof FORMATTER_NAMES)[number];
 /** ESLint comes with a TypeScript pin the others do not — see {@link QUALITY_PRESETS}. */
-export type Linter = 'oxlint' | 'eslint' | 'biome' | 'none';
-export type PackageManagerName = 'npm' | 'pnpm' | 'yarn' | 'bun';
+export type Linter = (typeof LINTER_NAMES)[number];
+export type PackageManagerName = (typeof PACKAGE_MANAGERS)[number];
 
-export const PACKAGE_MANAGERS: readonly PackageManagerName[] = ['npm', 'pnpm', 'yarn', 'bun'];
-
-/** Everything the generator needs to know. One prompt or flag per field, and every field has a default. */
+/**
+ * Everything the generator needs to know. One prompt or flag per field, and every field has a default.
+ *
+ * Which package manager the app is for is *not* here: it reaches the generator as `plan`'s second
+ * argument, because the same value also drives the install and the printed commands. One copy, so the
+ * two cannot disagree.
+ */
 export interface Answers {
   /** An npm-safe package name, written into `package.json`. */
   packageName: string;
-  /** Absolute path of the directory to create the app in. */
-  targetDir: string;
   deploy: DeployTargetName;
   styling: Styling;
   formatter: Formatter;
   linter: Linter;
-  packageManager: PackageManagerName;
-  install: boolean;
-  git: boolean;
 }
 
-export const DEPLOY_TARGET_NAMES = DEPLOY_TARGETS.map((target) => target.name);
+export const DEPLOY_TARGET_NAMES: readonly DeployTargetName[] = DEPLOY_TARGETS.map((target) => target.name);
 
 export function deployHint(name: DeployTargetName): string {
   return DEPLOY_TARGETS.find((target) => target.name === name)?.hint ?? '';
-}
-
-export function isDeployTarget(value: string): value is DeployTargetName {
-  return DEPLOY_TARGET_NAMES.includes(value as DeployTargetName);
 }
 
 /**
@@ -58,7 +63,7 @@ export interface QualityPreset {
   linter: Linter;
 }
 
-export const QUALITY_PRESETS: QualityPreset[] = [
+export const QUALITY_PRESETS: readonly QualityPreset[] = [
   {
     id: 'prettier-oxlint',
     label: 'Prettier + oxlint',

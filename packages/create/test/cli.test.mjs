@@ -50,6 +50,32 @@ test('contradicting flags are refused rather than silently ordered', () => {
   assert.match(result.output, /contradict/);
 });
 
+test('a mistyped flag says so and points at --help', () => {
+  const result = create(['app', '-y', '--tailwnid']);
+  assert.equal(result.status, 1);
+  assert.match(result.output, /--tailwnid/, 'the message should name the flag that was not understood');
+  assert.match(result.output, /--help/, "and where to find the ones that are — parseArgs' own message does not");
+});
+
+test('a target that exists and is not a directory is refused before anything is written', () => {
+  writeFileSync(join(workspace, 'taken.txt'), 'mine\n');
+  const result = create(['taken.txt', '-y', '--no-install', '--no-git']);
+  assert.equal(result.status, 1);
+  assert.match(result.output, /not a directory/, 'and not with a raw ENOTDIR from mkdir');
+  assert.equal(readFileSync(join(workspace, 'taken.txt'), 'utf8'), 'mine\n');
+});
+
+test('--formatter and --linter each override half of --quality', () => {
+  const result = create(['halves', '-y', '--quality', 'biome', '--linter', 'oxlint', '--no-install', '--no-git']);
+  assert.equal(result.status, 0);
+
+  const target = join(workspace, 'halves');
+  const manifest = JSON.parse(readFileSync(join(target, 'package.json'), 'utf8'));
+  assert.equal(manifest.scripts.format, 'biome format --write .', 'the preset still chose the formatter');
+  assert.equal(manifest.scripts.lint, 'oxlint', 'and the flag replaced only the linter');
+  assert.ok(existsSync(join(target, '.oxlintrc.json')) && existsSync(join(target, 'biome.json')));
+});
+
 test('--dry-run lists the files and writes none of them', () => {
   const result = create(['dry-app', '-y', '--dry-run']);
   assert.equal(result.status, 0);

@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import type { PackageManagerName } from './options.js';
+import { PACKAGE_MANAGERS, type PackageManagerName } from './options.js';
 
 export interface PackageManager {
   name: PackageManagerName;
@@ -26,7 +26,7 @@ const RUN: Record<PackageManagerName, string> = {
 };
 
 function isKnown(name: string): name is PackageManagerName {
-  return name === 'npm' || name === 'pnpm' || name === 'yarn' || name === 'bun';
+  return PACKAGE_MANAGERS.includes(name as PackageManagerName);
 }
 
 export function packageManager(name: PackageManagerName, version?: string): PackageManager {

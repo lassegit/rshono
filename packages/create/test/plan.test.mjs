@@ -26,18 +26,7 @@ const pm = packageManager('pnpm', '11.9.0');
 
 /** The answers a `--yes` run produces, with whatever the case under test overrides. */
 function answers(overrides = {}) {
-  return {
-    packageName: 'my-app',
-    targetDir: '/tmp/my-app',
-    deploy: 'node',
-    styling: 'css',
-    formatter: 'prettier',
-    linter: 'oxlint',
-    packageManager: 'pnpm',
-    install: false,
-    git: false,
-    ...overrides,
-  };
+  return { packageName: 'my-app', deploy: 'node', styling: 'css', formatter: 'prettier', linter: 'oxlint', ...overrides };
 }
 
 /** Every combination the prompts can produce: 7 targets × 2 stylings × 5 presets. */
@@ -69,10 +58,29 @@ test('every combination produces a complete, parseable project', () => {
     assert.equal(manifest.dependencies['@rshono/core'], RSHONO_RANGE, label);
     assert.ok(manifest.scripts.dev && manifest.scripts.build && manifest.scripts.typecheck, `${label} is missing a base script`);
 
-    // A stray `__TOKEN__` in any file means a template referenced something `tokensFor` does not supply.
+    // A stray `{{TOKEN}}` in any file means a template referenced something `tokensFor` does not supply.
     for (const [path, contents] of result.files) {
-      assert.doesNotMatch(contents, /__[A-Z][A-Z\d_]*__/, `${label}: unsubstituted token in ${path}`);
+      assert.doesNotMatch(contents, /\{\{[A-Z][A-Z\d_]*\}\}/, `${label}: unsubstituted token in ${path}`);
     }
+  }
+});
+
+/*
+ * The failure this exists for: a token that no longer *looks* like one. The tokens used to be `__NAME__`,
+ * which in markdown is strong emphasis — so the repo's own `prettier --write .` rewrote the scaffolded
+ * README's title to `**PROJECT_NAME**`, and every app created after that got a literal bold
+ * "PROJECT_NAME" as its heading. Nothing above catches it: there is no token left to find unsubstituted.
+ *
+ * So this asserts on the substituted *values* instead, which is the only check a mangled delimiter cannot
+ * pass. The delimiter is `{{…}}` now, which no formatter of any of these file types reinterprets.
+ */
+test('the scaffolded README is about the app, not about the template', () => {
+  for (const deploy of DEPLOY_TARGET_NAMES) {
+    const readme = plan(answers({ packageName: 'my-app', deploy }), pm).files.get('README.md');
+    assert.match(readme, /^# my-app$/m, 'the title should be the project name');
+    assert.match(readme, new RegExp('after `pnpm build`, .+\\.$', 'm'), `${deploy}: the deploy hint should be a sentence, not a token`);
+    // The names of the tokens themselves, in any wrapping — `**PROJECT_NAME**` is how this last broke.
+    assert.doesNotMatch(readme, /PROJECT_NAME|DEPLOY_TARGET|DEPLOY_HINT|PM_RUN/, `${deploy}: a token name survived into the README`);
   }
 });
 
@@ -192,6 +200,29 @@ test('"none" leaves the app without a formatter, a linter, or scripts for either
   const manifest = JSON.parse(plan(answers({ formatter: 'none', linter: 'none' }), pm).files.get('package.json'));
   assert.deepEqual(Object.keys(manifest.scripts), ['dev', 'build', 'typecheck', 'start']);
   assert.deepEqual(Object.keys(manifest.devDependencies), ['@types/node', '@types/react', 'typescript']);
+});
+
+/*
+ * The half-answer the two axes make possible, and the reason the CLI decides whether to format from the
+ * plan rather than from `formatter`: `--formatter none --linter biome` has no formatter and a `format`
+ * script all the same, because Biome is one tool and brings both halves whichever slot selected it.
+ */
+test('a linter that also formats still contributes its format script', () => {
+  const result = plan(answers({ formatter: 'none', linter: 'biome' }), pm);
+  assert.ok(JSON.parse(result.files.get('package.json')).scripts.format, 'Biome brings a format script through the linter slot');
+  assert.ok(
+    result.features.some((feature) => feature.scripts?.format),
+    'and the plan says so, which is what the CLI runs the formatter on',
+  );
+
+  const neither = plan(answers({ formatter: 'none', linter: 'oxlint' }), pm);
+  assert.ok(!neither.features.some((feature) => feature.scripts?.format), 'a linter that only lints contributes none');
+});
+
+test('the Node floor is the framework’s, not a copy of it', () => {
+  const framework = JSON.parse(readFileSync(join(PACKAGE_DIR, '..', 'core', 'package.json'), 'utf8'));
+  const manifest = JSON.parse(plan(answers(), pm).files.get('package.json'));
+  assert.equal(manifest.engines.node, framework.engines.node, 'run `pnpm --filter @rshono/create codegen`');
 });
 
 test('a feature contributing gitignore lines gets them, under a heading naming it', () => {

@@ -19,7 +19,7 @@ const TEMPLATES_DIR = join(import.meta.dirname, '..', 'templates');
  */
 export interface Plan {
   files: Map<string, string>;
-  /** The features that produced it, for the closing summary. */
+  /** The features that produced it — what the CLI asks whether the app has a `format` script to run. */
   features: Feature[];
   /** Lines for the "next steps" block, contributed by features. */
   notes: string[];

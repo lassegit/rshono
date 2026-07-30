@@ -8,21 +8,26 @@ import type { PackageManager } from './pm.js';
  */
 export type Tokens = Record<string, string>;
 
-const TOKEN_PATTERN = /__[A-Z][A-Z\d_]*__/g;
+/**
+ * `{{NAME}}`, and not the `__NAME__` this used to be. A template is a real file that real tools run
+ * over, and in markdown `__NAME__` *is* strong emphasis — Prettier rewrites it to `**NAME**`, which
+ * turns a token into literal text that no substitution will ever match again. `{{…}}` means nothing to
+ * any of the formats these templates are written in.
+ */
+const TOKEN_PATTERN = /\{\{[A-Z][A-Z\d_]*\}\}/g;
 
 export function tokensFor(answers: Answers, pm: PackageManager): Tokens {
   return {
-    __PROJECT_NAME__: answers.packageName,
-    __DEPLOY_TARGET__: answers.deploy,
-    __DEPLOY_HINT__: deployHint(answers.deploy),
-    __PM__: pm.name,
-    __PM_RUN__: pm.run,
+    '{{PROJECT_NAME}}': answers.packageName,
+    '{{DEPLOY_TARGET}}': answers.deploy,
+    '{{DEPLOY_HINT}}': deployHint(answers.deploy),
+    '{{PM_RUN}}': pm.run,
   };
 }
 
 /**
  * Substitutes tokens, and throws on one it doesn't know — a typo in a template would otherwise ship a
- * literal `__PORJECT_NAME__` into somebody's new app, which no test of the generator's logic would
+ * literal `{{PORJECT_NAME}}` into somebody's new app, which no test of the generator's logic would
  * catch.
  */
 export function render(contents: string, tokens: Tokens, source: string): string {

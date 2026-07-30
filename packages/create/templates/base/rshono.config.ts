@@ -10,7 +10,7 @@ import { defineConfig } from '@rshono/core';
  */
 export default defineConfig({
   /** Where `build` targets. Overridable per build with `--deploy` or `RSHONO_DEPLOY`. */
-  deploy: '__DEPLOY_TARGET__',
+  deploy: '{{DEPLOY_TARGET}}',
 
   // The public origin, baked into prerendered pages' absolute URLs. Set it if you use `render: 'static'`
   // and build canonical tags, `og:url` or absolute links — there is no request to read a Host from.
