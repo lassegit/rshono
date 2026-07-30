@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { NavigationProgress } from '@rshono/core/client';
+import { Logo } from './logo';
 import '../styles.css';
 
 export function Layout({ title = 'rshono', description, children }: { title?: string; description?: string; children: ReactNode }) {
@@ -17,6 +18,7 @@ export function Layout({ title = 'rshono', description, children }: { title?: st
         <header>
           <nav>
             <a href="/" className="logo">
+              <Logo />
               <strong>rshono</strong>
             </a>
             <div className="nav-links">

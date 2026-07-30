@@ -1,6 +1,15 @@
-# Rshono: minimalist web framework
+<p align="center">
+  <img src="logo.svg" alt="" width="80" height="80" />
+</p>
 
-[Hono](https://hono.dev) + [Rspack](https://rspack.rs) + [React Server Components](https://react.dev/reference/rsc/server-components).
+<h1 align="center">Rshono</h1>
+
+<p align="center">
+  Minimalist web framework —
+  <a href="https://hono.dev">Hono</a> +
+  <a href="https://rspack.rs">Rspack</a> +
+  <a href="https://react.dev/reference/rsc/server-components">React Server Components</a>.
+</p>
 
 ```bash
 npm create @rshono@latest my-app

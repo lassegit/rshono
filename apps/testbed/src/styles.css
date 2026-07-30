@@ -56,9 +56,17 @@ nav {
 }
 
 .logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   text-decoration: none;
   color: var(--color-text);
   font-size: 1.1rem;
+}
+
+.logo svg {
+  display: block;
+  flex: none;
 }
 
 .nav-links {

@@ -1,6 +1,12 @@
-# @rshono/create
+<p align="center">
+  <img src="https://raw.githubusercontent.com/rshono/rshono/main/logo.svg" alt="" width="72" height="72" />
+</p>
 
-Scaffolds a new [rshono](https://github.com/rshono/rshono) app — Hono + Rspack + React Server Components.
+<h1 align="center">@rshono/create</h1>
+
+<p align="center">
+  Scaffolds a new <a href="https://github.com/rshono/rshono">rshono</a> app — Hono + Rspack + React Server Components.
+</p>
 
 ```bash
 npm  create @rshono@latest my-app

@@ -1,4 +1,4 @@
-# Testbed
+# <img src="../../logo.svg" alt="" width="26" height="26" align="top" /> Testbed
 
 Test app for `packages/core` — exercises every framework feature. The core suites build and serve
 this app (`test/helpers.mjs`, `playwright.config.mjs`), so it carries deliberate failure routes and
