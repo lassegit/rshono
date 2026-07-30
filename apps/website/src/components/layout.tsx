@@ -93,6 +93,9 @@ function SiteHeader() {
           >
             Docs
           </a>
+          <a href="/comparison" data-prefetch className="text-zinc-600 no-underline hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white">
+            Compare
+          </a>
           <a href={GITHUB_URL} data-native className="text-zinc-600 no-underline hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white">
             GitHub
           </a>

@@ -17,6 +17,11 @@ export const routes = defineRoutes({
       component: () => import('./components/home'),
     },
     {
+      path: '/comparison',
+      render: 'static',
+      component: () => import('./components/comparison'),
+    },
+    {
       path: '/docs',
       render: 'static',
       component: () => import('./components/docs-index'),

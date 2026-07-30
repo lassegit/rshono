@@ -9,6 +9,8 @@ import { MARKDOWN_HEADERS, origin, SUMMARY } from './llms';
 export const handler: Handler = (c) => {
   const base = origin(c.req.url);
 
+  console.log(c.req);
+
   const sections = DOC_SECTIONS.map((section) => {
     const links = section.docs.map((doc) => `- [${doc.title}](${base}${doc.markdownHref}): ${doc.description}`).join('\n');
     return `## ${section.title}\n\n${links}`;

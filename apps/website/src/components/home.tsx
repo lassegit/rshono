@@ -34,6 +34,57 @@ export default async function Profile({ params, ctx }: PageProps<'/profile/:id'>
 }
 `;
 
+/**
+ * The case for the framework, as opposed to the list of what it does.
+ *
+ * Every number in here is measured rather than claimed, and the [comparison page](/comparison) shows the
+ * working — which is why these read as flatly as they do. `eleven exports` and `seventeen packages` are
+ * checkable in a minute, and that is the whole argument: nothing on this page needs to be taken on
+ * trust.
+ */
+const REASONS = [
+  {
+    title: 'An API you can finish reading',
+    body: 'Eleven exported values across three import paths. defineRoutes, getContext, useNavigation and eight more — that is the framework. No second router to learn later, no unstable_ tier, nothing that behaves differently depending on which directory you called it from.',
+  },
+  {
+    title: 'Your architecture, not the router’s',
+    body: 'No file-system routing, so your directory tree is not a function of your URLs. Arrange src/ by domain, by feature, by team — routes are one explicit array, and moving a page is an edit to one line rather than a migration.',
+  },
+  {
+    title: 'Plain HTML, all the way down',
+    body: 'Navigation is an <a href>, upgraded to a soft navigation by a document-level listener. No <Link> component. So markdown, CMS output and third-party components navigate softly without knowing rshono exists — and still work with no JavaScript at all.',
+  },
+  {
+    title: 'The request is a prop',
+    body: 'A page is handed { url, params, ctx } and awaits your database directly. No async accessor to import, no rule about which call makes a route dynamic, no cache to reason about. Client components import ‘use server’ functions and call them — no route handler in between.',
+  },
+  {
+    title: 'A dependency tree you could audit',
+    body: 'Seventeen packages install, seven of them direct. That is Hono, Rspack, React’s RSC bindings and little else — every one nameable, versionable and auditable, because none of it is vendored out of sight.',
+  },
+  {
+    title: 'One bundler, dev and build',
+    body: 'Both commands build the same pair of Rspack configs from the same function, and dev runs the real production server bundle in a worker thread. Rspack and the RSC bindings are pinned exactly, so an install cannot hand you a bundler this release never saw.',
+  },
+  {
+    title: 'The parts are named, not renamed',
+    body: 'The server is a Hono app and you get the whole thing. The build is an Rspack config and the config hook hands it to you. Rendering is React Server Components, unrenamed. Their documentation is your documentation, and what you learn here transfers out.',
+  },
+  {
+    title: 'No platform, and no legacy',
+    body: 'Seven deploy targets behind one interface the build resolves — one flag, not an adapter package each. And one router with one rendering model: there is no earlier generation of rshono still in the API for compatibility’s sake.',
+  },
+];
+
+/** The four numbers behind the copy above, for a reader who scans before they read. */
+const NUMBERS = [
+  { value: '11', label: 'exported functions and components' },
+  { value: '3', label: 'public import paths' },
+  { value: '17', label: 'packages in a production install' },
+  { value: '1', label: 'required file' },
+];
+
 const FEATURES = [
   {
     title: 'Two files, no conventions',
@@ -79,13 +130,11 @@ export default async function Home({ url }: PageProps<'/'>) {
   const [routesHtml, pageHtml] = await Promise.all([highlightCode(ROUTES_SAMPLE, 'ts'), highlightCode(PAGE_SAMPLE, 'tsx')]);
 
   return (
-    <Layout
-      description="Minimalist web framework — Hono + Rspack + React Server Components. One required file, streaming SSR, server actions, prerendering and hard secret safety."
-      canonical={url.href}
-      wide
-    >
+    <Layout description="Minimalist web framework — Hono + Rspack + React Server Components." canonical={url.href} wide>
       <Hero />
+      <Numbers />
       <Samples routesHtml={routesHtml} pageHtml={pageHtml} />
+      <Reasons />
       <Features />
       <Deployment />
       <ClosingCta />
@@ -98,14 +147,14 @@ function Hero() {
     <section className="mx-auto w-full max-w-7xl px-6 pt-20 pb-16 text-center">
       <p className="mb-6 inline-flex items-center gap-2 rounded-full border border-zinc-200 px-3 py-1 text-xs text-zinc-600 dark:border-zinc-800 dark:text-zinc-400">
         <span className="inline-block size-1.5 rounded-full bg-amber-500" aria-hidden="true" />
-        Alpha — built on Rspack&rsquo;s experimental RSC support
+        Alpha — built on Rspack&rsquo;s RSC support
       </p>
 
       <h1 className="mx-auto max-w-3xl text-5xl font-semibold tracking-tight text-balance text-zinc-900 sm:text-6xl dark:text-white">
         A minimalist framework for React Server Components
       </h1>
 
-      <p className="mx-auto mt-6 max-w-2xl text-lg text-pretty text-zinc-600 dark:text-zinc-400">
+      <h2 className="mx-auto mt-6 max-w-2xl text-lg text-pretty text-zinc-600 dark:text-zinc-400">
         <a href="https://hono.dev" data-native>
           Hono
         </a>{' '}
@@ -118,7 +167,9 @@ function Hero() {
           React Server Components
         </a>{' '}
         for the rendering. One required file, and no conventions to learn around it.
-      </p>
+      </h2>
+
+      <p className="mx-auto mt-4 max-w-2xl text-pretty text-zinc-600 dark:text-zinc-400"></p>
 
       <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
         <a
@@ -129,9 +180,16 @@ function Hero() {
           Get started
         </a>
         <a
+          href="/comparison"
+          data-prefetch
+          className="rounded-lg border border-zinc-300 px-5 py-2.5 font-medium text-zinc-900 no-underline hover:bg-zinc-50 dark:border-zinc-700 dark:text-white dark:hover:bg-zinc-900"
+        >
+          Why not Next.js?
+        </a>
+        <a
           href="https://github.com/rshono/rshono"
           data-native
-          className="rounded-lg border border-zinc-300 px-5 py-2.5 font-medium text-zinc-900 no-underline hover:bg-zinc-50 dark:border-zinc-700 dark:text-white dark:hover:bg-zinc-900"
+          className="rounded-lg px-5 py-2.5 font-medium text-zinc-600 no-underline hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
         >
           GitHub
         </a>
@@ -152,6 +210,51 @@ function Hero() {
         <li aria-hidden="true">·</li>
         <li>Build-time prerendering</li>
       </ul>
+    </section>
+  );
+}
+
+/** The scannable version of {@link Reasons}, sitting directly under the hero. */
+function Numbers() {
+  return (
+    <section className="mx-auto w-full max-w-7xl px-6 pb-4">
+      <ul className="grid gap-px overflow-hidden rounded-xl border border-zinc-200 bg-zinc-200 sm:grid-cols-4 dark:border-zinc-800 dark:bg-zinc-800">
+        {NUMBERS.map((item) => (
+          <li key={item.label} className="bg-white p-6 text-center dark:bg-zinc-950">
+            <p className="text-3xl font-semibold tracking-tight tabular-nums text-zinc-900 dark:text-white">{item.value}</p>
+            <p className="mt-1 text-sm text-zinc-600 dark:text-zinc-400">{item.label}</p>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function Reasons() {
+  return (
+    <section className="mx-auto w-full max-w-7xl px-6 py-16">
+      <div className="mb-10 max-w-3xl">
+        <h2 className="mb-3 text-2xl font-semibold tracking-tight text-zinc-900 dark:text-white">Why this one</h2>
+        <p className="text-zinc-600 dark:text-zinc-400">
+          Not because the others are bad — three of them are more mature than this one. Because a framework should be small enough to hold in your
+          head, honest about what it is built on, and quiet about how you arrange your own code.
+        </p>
+      </div>
+
+      <ul className="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
+        {REASONS.map((reason) => (
+          <li key={reason.title}>
+            <h3 className="mb-2 font-medium text-zinc-900 dark:text-white">{reason.title}</h3>
+            <p className="text-sm text-zinc-600 dark:text-zinc-400">{reason.body}</p>
+          </li>
+        ))}
+      </ul>
+
+      <p className="mt-10">
+        <a href="/comparison" data-prefetch>
+          See it next to Next.js, TanStack Start, Waku and Astro — including where they win →
+        </a>
+      </p>
     </section>
   );
 }
