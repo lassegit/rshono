@@ -8,10 +8,10 @@
   },
   "scripts": {
     "dev": "rshono dev",
-    "build": "rshono build",
+    "build": "pnpm --filter @rshono/core build && rshono build",
     "typecheck": "tsc --noEmit",
     "start": "rshono start",
-    "deploy": "rshono build && wrangler deploy",
+    "deploy": "pnpm run build && wrangler deploy",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"
   },

@@ -1,9 +1,31 @@
 name: CI
 
+# Every job here builds and exercises the two published packages, so a change that cannot reach them
+# — the website, the root README, the release script — has nothing to prove and does not start a run.
+# The two lists below must stay identical; Actions does not support YAML anchors.
 on:
   push:
     branches: [main]
+    paths:
+      - 'packages/**'
+      # A README is not shipped code. Listed after the glob above, so it wins.
+      - '!packages/*/README.md'
+      # `test` typechecks the testbed against the built declarations — the only check that what gets
+      # published is usable by a consumer. Drop this to filter on the packages alone.
+      - 'apps/testbed/**'
+      # The RSC internals are coupled across builds and pinned by `overrides`, so a resolution change
+      # breaks the framework without touching a line of it.
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/ci.yml'
   pull_request:
+    paths:
+      - 'packages/**'
+      - '!packages/*/README.md'
+      - 'apps/testbed/**'
+      - 'pnpm-lock.yaml'
+      - 'pnpm-workspace.yaml'
+      - '.github/workflows/ci.yml'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
