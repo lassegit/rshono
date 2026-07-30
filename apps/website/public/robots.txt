@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://www.rshono.com/sitemap.xml
+
+# Every documentation page is also served as its own Markdown source at <page>.md,
+# indexed at /llms.txt — see https://llmstxt.org

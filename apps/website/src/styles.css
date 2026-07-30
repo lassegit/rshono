@@ -1,0 +1,161 @@
+@import 'tailwindcss';
+
+/*
+ * Dark mode follows the OS. There is no toggle, so there is no client JavaScript for it and no
+ * flash-of-wrong-theme to guard against — `prefers-color-scheme` is resolved before the first paint.
+ */
+
+@layer base {
+  html {
+    /* The sticky header is 3.5rem; without this an anchor jump lands a heading underneath it. */
+    scroll-padding-top: 4.5rem;
+  }
+
+  a {
+    @apply text-sky-700 underline decoration-1 underline-offset-2 hover:text-sky-600 dark:text-sky-400 dark:hover:text-sky-300;
+  }
+
+  code {
+    @apply font-mono text-[0.9em];
+  }
+
+  /* Inline code only — Shiki's blocks bring their own colours, and this would fight them. */
+  :not(pre) > code {
+    @apply rounded border border-zinc-200 bg-zinc-50 px-1 py-0.5 text-zinc-800 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-200;
+  }
+}
+
+/*
+ * Documentation prose.
+ *
+ * Written out rather than pulled from @tailwindcss/typography: the content is markdown this site
+ * renders itself, so the element set is small and known, and the code blocks need rules that plugin
+ * would have to be talked out of anyway.
+ */
+@layer components {
+  .prose {
+    @apply text-[0.9375rem]/7 text-zinc-700 dark:text-zinc-300;
+  }
+
+  .prose > * + * {
+    @apply mt-5;
+  }
+
+  .prose h2 {
+    @apply mt-12 scroll-mt-20 border-t border-zinc-200 pt-8 text-xl font-semibold tracking-tight text-zinc-900 dark:border-zinc-800 dark:text-white;
+  }
+
+  .prose h3 {
+    @apply mt-8 scroll-mt-20 text-base font-semibold text-zinc-900 dark:text-white;
+  }
+
+  /* Revealed on hover or keyboard focus, so the heading itself stays clean. */
+  .prose .heading-anchor {
+    @apply ml-2 text-zinc-300 no-underline opacity-0 transition-opacity dark:text-zinc-700;
+  }
+
+  .prose :is(h2, h3):hover .heading-anchor,
+  .prose .heading-anchor:focus {
+    @apply opacity-100;
+  }
+
+  .prose ul {
+    @apply list-disc space-y-2 pl-6;
+  }
+
+  .prose ol {
+    @apply list-decimal space-y-2 pl-6;
+  }
+
+  .prose li > ul,
+  .prose li > ol {
+    @apply mt-2;
+  }
+
+  .prose blockquote {
+    @apply rounded-r border-l-2 border-amber-400 bg-amber-50/60 py-3 pr-4 pl-4 text-zinc-700 dark:border-amber-500/60 dark:bg-amber-500/5 dark:text-zinc-300;
+  }
+
+  .prose blockquote > * + * {
+    @apply mt-3;
+  }
+
+  .prose hr {
+    @apply my-10 border-zinc-200 dark:border-zinc-800;
+  }
+
+  .prose strong {
+    @apply font-semibold text-zinc-900 dark:text-white;
+  }
+
+  /* Wide tables scroll on their own rather than pushing the page sideways. */
+  .prose table {
+    @apply block w-full overflow-x-auto text-sm md:table;
+  }
+
+  .prose thead {
+    @apply border-b border-zinc-300 dark:border-zinc-700;
+  }
+
+  .prose th {
+    @apply px-3 py-2 text-left font-semibold whitespace-nowrap text-zinc-900 dark:text-white;
+  }
+
+  .prose td {
+    @apply border-b border-zinc-200 px-3 py-2 align-top dark:border-zinc-800;
+  }
+
+  .prose td code {
+    @apply whitespace-nowrap;
+  }
+}
+
+/*
+ * Shiki.
+ *
+ * Highlighting runs at build time with `defaultColor: false`, so every token carries both themes as
+ * custom properties and these rules pick one. One build, both themes, no second stylesheet.
+ */
+@layer components {
+  .prose pre.shiki {
+    @apply relative overflow-x-auto rounded-lg border border-zinc-200 p-4 text-[0.8125rem]/6 dark:border-zinc-800;
+  }
+
+  .shiki,
+  .shiki span {
+    color: var(--shiki-light);
+    background-color: var(--shiki-light-bg);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .shiki,
+    .shiki span {
+      color: var(--shiki-dark);
+      background-color: var(--shiki-dark-bg);
+    }
+  }
+
+  /*
+   * Appended by the copy-button island, so it is styled here rather than in the component — there is
+   * no React element to hang a className off.
+   */
+  .code-copy {
+    @apply absolute top-2 right-2 cursor-pointer rounded-md border border-zinc-200 bg-white/90 px-2 py-1 text-xs text-zinc-600 opacity-0 transition-opacity;
+    @apply hover:text-zinc-900 focus-visible:opacity-100 dark:border-zinc-700 dark:bg-zinc-800/90 dark:text-zinc-300 dark:hover:text-white;
+  }
+
+  pre.shiki:hover .code-copy {
+    @apply opacity-100;
+  }
+
+  .code-copy[data-copied] {
+    @apply border-emerald-500/50 text-emerald-700 opacity-100 dark:text-emerald-400;
+  }
+
+  /* A touch device has no hover, so the button would never appear. */
+  @media (hover: none) {
+    .code-copy {
+      @apply opacity-100;
+    }
+  }
+}

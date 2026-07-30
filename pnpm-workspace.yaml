@@ -14,5 +14,8 @@ overrides:
   '@rspack/core': 2.1.5
 allowBuilds:
   esbuild: false
+  # wrangler brings workerd, whose install script only picks the platform binary out of the optional
+  # dependency that already carries it — `workerd --version` answers without it having run.
+  workerd: false
 minimumReleaseAgeExclude:
   - prettier-plugin-uncomment@1.0.0 || 1.0.1 || 1.0.2

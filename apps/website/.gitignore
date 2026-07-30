@@ -1,0 +1,11 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+
+# Cloudflare
+.wrangler/
+
+# Secrets. `.env` is committed with defaults; `.env.local` overrides it and stays out of git.
+.env.local
+.env.*.local

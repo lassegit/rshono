@@ -1,0 +1,45 @@
+{
+  "name": "website",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.1.0"
+  },
+  "scripts": {
+    "dev": "rshono dev",
+    "build": "rshono build",
+    "typecheck": "tsc --noEmit",
+    "start": "rshono start",
+    "deploy": "rshono build && wrangler deploy",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix"
+  },
+  "dependencies": {
+    "@rshono/core": "workspace:*",
+    "@shikijs/langs": "^4.3.1",
+    "@shikijs/themes": "^4.3.1",
+    "gray-matter": "^4.0.3",
+    "hono": "^4.12.31",
+    "markdown-it": "^14.3.0",
+    "markdown-it-anchor": "^9.2.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "shiki": "^4.3.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^26.1.1",
+    "@types/react": "^19.2.17",
+    "eslint": "^10.8.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "postcss": "^8.5.23",
+    "postcss-loader": "^8.2.1",
+    "tailwindcss": "^4.3.3",
+    "typescript": "~6.0.3",
+    "typescript-eslint": "^8.65.0",
+    "wrangler": "^4.115.0"
+  }
+}

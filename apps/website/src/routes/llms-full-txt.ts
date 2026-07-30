@@ -1,0 +1,15 @@
+import type { Handler } from '@rshono/core';
+import { DOCS } from '../content/docs';
+import { MARKDOWN_HEADERS, origin, SUMMARY } from './llms';
+
+/**
+ * `/llms-full.txt` — every page concatenated, in reading order.
+ *
+ * The companion to the index: one request instead of fifteen, for a reader that wants the whole thing.
+ */
+export const handler: Handler = (c) => {
+  const base = origin(c.req.url);
+  const pages = DOCS.map((doc) => `<!-- source: ${base}${doc.markdownHref} -->\n\n${doc.source.trim()}`).join('\n\n---\n\n');
+
+  return c.body(`# rshono — full documentation\n\n> ${SUMMARY}\n\n---\n\n${pages}\n`, 200, MARKDOWN_HEADERS);
+};

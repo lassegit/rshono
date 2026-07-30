@@ -23,8 +23,9 @@
 npx @rshono/create@latest my-app
 ```
 
-| Path              | What it is                                        |
-| ----------------- | ------------------------------------------------- |
-| `packages/core`   | the framework — [README](packages/core#readme)    |
-| `packages/create` | the scaffolder — [README](packages/create#readme) |
-| `apps/testbed`    | a test app exercising the framework               |
+| Path              | What it is                                                              |
+| ----------------- | ----------------------------------------------------------------------- |
+| `packages/core`   | the framework — [README](packages/core#readme)                          |
+| `packages/create` | the scaffolder — [README](packages/create#readme)                       |
+| `apps/website`    | the website and docs — [README](apps/website#readme), built with rshono |
+| `apps/testbed`    | a test app exercising the framework                                     |
