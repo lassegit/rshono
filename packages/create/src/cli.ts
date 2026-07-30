@@ -29,7 +29,7 @@ const DEFAULT_DIRECTORY = 'my-rshono-app';
 const HELP = `create-rshono — scaffold a new rshono app
 
 Usage:
-  npm create @rshono@latest [directory] [options]
+  npx @rshono/create@latest [directory] [options]
 
 Options:
   -y, --yes                accept the default for every question not given as a flag
@@ -49,7 +49,7 @@ Options:
 Every question can be answered by a flag, and a non-interactive terminal implies --yes — so one command
 scaffolds without prompting:
 
-  npm create @rshono@latest my-app -y --deploy cloudflare --tailwind --quality biome
+  npx @rshono/create@latest my-app -y --deploy cloudflare --tailwind --quality biome
 `;
 
 function fail(message: string): never {
@@ -113,8 +113,8 @@ async function main(): Promise<void> {
 
   /*
    * A pipe, a CI job or an agent gets the defaults rather than a prompt nothing can answer. Both streams
-   * have to be a terminal: the prompts draw on stdout but *read from stdin*, so `echo | npm create` with
-   * stdout still attached would otherwise ask a question with nothing behind the keyboard.
+   * have to be a terminal: the prompts draw on stdout but *read from stdin*, so `echo | npx @rshono/create`
+   * with stdout still attached would otherwise ask a question with nothing behind the keyboard.
    */
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY) && !values.yes;
 

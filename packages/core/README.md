@@ -10,7 +10,7 @@ Minimalist web framework — [Hono](https://hono.dev) + [Rspack](https://rspack.
 One required file (`src/routes.ts`), one optional file (`src/server.ts`), and you get a dev server with HMR, streaming SSR with RSC hydration, server actions with progressive enhancement, soft navigation, build-time prerendering, and hard env/secret safety.
 
 ```bash
-npm create @rshono@latest my-app   # scaffold one, with a deploy target and tooling of your choosing
+npx @rshono/create@latest my-app   # scaffold one, with a deploy target and tooling of your choosing
 ```
 
 ```bash
@@ -132,7 +132,7 @@ Call them directly from client code (typed args and result), or wire them to `<f
   @import 'tailwindcss';
   ```
 
-  Keep `type: 'css/auto'` rather than `'css'`, or `*.module.css` stops being a CSS module. `npm create @rshono@latest --tailwind` writes all four of these for you.
+  Keep `type: 'css/auto'` rather than `'css'`, or `*.module.css` stops being a CSS module. `npx @rshono/create@latest --tailwind` writes all four of these for you.
 
 ## Static files
 

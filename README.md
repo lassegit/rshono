@@ -20,7 +20,7 @@
 </p>
 
 ```bash
-npm create @rshono@latest my-app
+npx @rshono/create@latest my-app
 ```
 
 | Path              | What it is                                        |

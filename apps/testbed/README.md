@@ -2,7 +2,7 @@
 
 Test app for `packages/core` — exercises every framework feature. The core suites build and serve
 this app (`test/helpers.mjs`, `playwright.config.mjs`), so it carries deliberate failure routes and
-is not a starting point for your own app — `npm create @rshono@latest` generates that.
+is not a starting point for your own app — `npx @rshono/create@latest` generates that.
 
 | Route               | Demonstrates                                                                                  |
 | ------------------- | --------------------------------------------------------------------------------------------- |

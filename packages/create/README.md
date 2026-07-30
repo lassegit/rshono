@@ -9,15 +9,18 @@
 </p>
 
 ```bash
-npm  create @rshono@latest my-app
-pnpm create @rshono my-app
+npx  @rshono/create@latest my-app
+pnx  @rshono/create my-app
+bunx @rshono/create my-app
 yarn create @rshono my-app
-bun  create @rshono my-app
 ```
 
-The package manager that ran it is the one the project gets: it is read from `npm_config_user_agent`, used
-for the install, written into `packageManager` for Corepack, and used in every command the closing summary
-prints. Nothing asks you which one you meant.
+The package manager that ran it is the one the project gets: it is read from `npm_config_user_agent`, which
+every one of these runners sets, and it is used for the install, written into `packageManager` for Corepack,
+and used in every command the closing summary prints. Nothing asks you which one you meant.
+
+Yarn is the odd row out because `yarn dlx` is Berry-only, while `yarn create` works in either — and `pnx`
+arrived in pnpm 10.16, before which it is `pnpm dlx`.
 
 ## The questions
 
@@ -38,7 +41,7 @@ the package manager that was detected, `--force` to scaffold into a directory th
 given. **A non-interactive terminal implies `-y`**, so this is one command in CI or from an agent:
 
 ```bash
-npm create @rshono@latest my-app -y --deploy cloudflare --tailwind --quality biome
+npx @rshono/create@latest my-app -y --deploy cloudflare --tailwind --quality biome
 ```
 
 The deploy targets, and the deploy command each one prints, are generated from the framework's own
@@ -119,5 +122,5 @@ CREATE_RSHONO_E2E=1 pnpm --filter @rshono/create test   # also: pack, install an
 refusal to overwrite somebody's files are checked. `e2e.test.mjs` is the opt-in one, and the only one that
 installs anything.
 
-`@clack/prompts` (MIT) is bundled rather than depended on, so `npm create` downloads one tarball before it
-can ask its first question.
+`@clack/prompts` (MIT) is bundled rather than depended on, so `npx @rshono/create` downloads one tarball
+before it can ask its first question.
