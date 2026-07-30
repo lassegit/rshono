@@ -11,6 +11,14 @@
   <a href="https://react.dev/reference/rsc/server-components">React Server Components</a>.
 </p>
 
+<p align="center">
+  <a href="https://github.com/rshono/rshono/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/rshono/rshono/ci.yml?branch=main&label=CI" alt="CI status" /></a>
+  <a href="https://www.npmjs.com/package/@rshono/core"><img src="https://img.shields.io/npm/v/@rshono/core?label=%40rshono%2Fcore" alt="@rshono/core on npm" /></a>
+  <a href="https://www.npmjs.com/package/@rshono/create"><img src="https://img.shields.io/npm/v/@rshono/create?label=%40rshono%2Fcreate" alt="@rshono/create on npm" /></a>
+  <a href="https://nodejs.org"><img src="https://img.shields.io/node/v/@rshono/core" alt="Supported Node versions" /></a>
+  <img src="https://img.shields.io/badge/license-ISC-blue" alt="ISC license" />
+</p>
+
 ```bash
 npm create @rshono@latest my-app
 ```
