@@ -83,30 +83,26 @@ function SkipLink() {
 function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-zinc-200 bg-white/85 backdrop-blur-sm dark:border-zinc-800 dark:bg-zinc-950/85">
-      <div className="mx-auto flex h-14 w-full max-w-7xl items-center gap-6 px-6">
+      {/*
+        Three groups on one row wherever there is room for them, which on a phone there is not — the
+        wordmark, three page links and two marks come to well over 400px. A flex row does not wrap on its
+        own, it just grows, and a header wider than the viewport is what puts a horizontal scrollbar under
+        the whole document. So below `sm` the row wraps and the nav takes a line of its own
+        (`order-last w-full`), which is why the height is a minimum here and fixed only from `sm` up.
+      */}
+      <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-6 gap-y-1 px-6 py-2 sm:h-14 sm:flex-nowrap sm:py-0">
         <a href="/" className="flex shrink-0 items-center gap-2 font-semibold tracking-tight text-zinc-900 no-underline dark:text-white">
           <Logo />
           rshono
         </a>
 
-        <nav className="flex items-center gap-5 text-sm" aria-label="Main">
-          {/* `data-prefetch` warms a page on hover; `data-native` opts a link out of soft navigation. */}
-          <a
-            href="/docs/getting-started"
-            data-prefetch
-            className="text-zinc-600 no-underline hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
-          >
-            Docs
-          </a>
-          <a href="/comparison" data-prefetch className="text-zinc-600 no-underline hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white">
-            Compare
-          </a>
-          <a href="/benchmarks" data-prefetch className="text-zinc-600 no-underline hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white">
-            Benchmarks
-          </a>
+        <nav className="order-last flex w-full items-center gap-5 text-sm sm:order-none sm:w-auto" aria-label="Main">
+          <HeaderLink href="/docs/getting-started">Docs</HeaderLink>
+          <HeaderLink href="/comparison">Compare</HeaderLink>
+          <HeaderLink href="/benchmarks">Benchmarks</HeaderLink>
         </nav>
 
-        {/* Everything from here sits against the right edge. */}
+        {/* Everything from here sits against the right edge — of its own line, once the row wraps. */}
         <div className="ml-auto flex items-center gap-4">
           {/* No tab strip at this size — it follows whatever the reader picked on a page that has one. */}
           <InlineCommand
@@ -146,6 +142,22 @@ function SiteHeader() {
         </div>
       </div>
     </header>
+  );
+}
+
+/**
+ * One page link in the header.
+ *
+ * `data-prefetch` warms the page on hover or focus; the off-site links below carry `data-native` instead,
+ * which opts a link out of soft navigation. The vertical padding is there for the row's own line on a
+ * phone, where a 20px-tall link is a poor thing to aim a thumb at; from `sm` up the row is 56px tall and
+ * the padding would only stretch it.
+ */
+function HeaderLink({ href, children }: { href: string; children: ReactNode }) {
+  return (
+    <a href={href} data-prefetch className="py-1.5 text-zinc-600 no-underline hover:text-zinc-900 sm:py-0 dark:text-zinc-400 dark:hover:text-white">
+      {children}
+    </a>
   );
 }
 

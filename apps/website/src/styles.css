@@ -7,8 +7,16 @@
 
 @layer base {
   html {
-    /* The sticky header is 3.5rem; without this an anchor jump lands a heading underneath it. */
-    scroll-padding-top: 4.5rem;
+    /*
+     * Without this an anchor jump lands a heading underneath the sticky header. The header is 3.5rem
+     * tall, except below `sm`, where its nav wraps onto a second line and it is about 5.5rem — so this
+     * follows the same breakpoint rather than clearing only the shorter of the two.
+     */
+    scroll-padding-top: 6.5rem;
+
+    @media (width >= 40rem) {
+      scroll-padding-top: 4.5rem;
+    }
   }
 
   a {
