@@ -32,4 +32,6 @@ website on its own.
 `apps/website` documents the framework, so a change to `packages/core`'s behaviour usually means a
 change to `apps/website/content/docs/`. Pages are markdown listed explicitly in
 `src/content/docs.ts`; everything (parse, Shiki highlight, table of contents) runs at build time,
-because every route is `render: 'static'`.
+because every route is `render: 'static'`. Write install commands **once, in npm form** — a shell block
+that is nothing but `npx …`/`npm i …` lines becomes a four-way package manager selector at build time
+(`src/content/package-managers.ts`), and anything it cannot translate exactly is left as a plain block.

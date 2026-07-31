@@ -1,5 +1,6 @@
 import type { PageProps } from '@rshono/core';
 import { highlightCode } from '../content/markdown';
+import { CommandTabs, SCAFFOLD_COMMAND } from './command-tabs';
 import { Layout } from './layout';
 import { Logo } from './logo';
 
@@ -186,20 +187,11 @@ function Hero() {
         >
           Why not Next.js?
         </a>
-        <a
-          href="https://github.com/rshono/rshono"
-          data-native
-          className="rounded-lg px-5 py-2.5 font-medium text-zinc-600 no-underline hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
-        >
-          GitHub
-        </a>
       </div>
 
-      <p className="mt-8">
-        <code className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-2 text-sm text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
-          npx @rshono/create@latest my-app
-        </code>
-      </p>
+      <div className="mt-8">
+        <CommandTabs id="pm-hero" command={SCAFFOLD_COMMAND} />
+      </div>
 
       <ul className="mt-12 flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-zinc-500 dark:text-zinc-400">
         <li>Streaming SSR + RSC hydration</li>
@@ -344,11 +336,7 @@ function ClosingCta() {
       <p className="mx-auto mb-8 max-w-xl text-zinc-600 dark:text-zinc-400">
         Pick a deploy target, a styling choice and a formatter, and get a working app. Every question is also a flag.
       </p>
-      <p>
-        <code className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-2 text-sm text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
-          npx @rshono/create@latest my-app
-        </code>
-      </p>
+      <CommandTabs id="pm-cta" command={SCAFFOLD_COMMAND} />
     </section>
   );
 }

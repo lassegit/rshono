@@ -159,3 +159,52 @@
     }
   }
 }
+
+/*
+ * The package manager selector.
+ *
+ * Every variant of the command is in the markup, and which one shows is decided here rather than in
+ * JavaScript: the tabs are real radios, and `:has()` reads the checked one. So the control works before
+ * hydration and with scripting off — the island only remembers the choice between selectors and pages.
+ *
+ * The radios are hidden the accessible way (`sr-only`, not `display: none`) so they keep their focus and
+ * arrow-key behaviour; the labels carry the appearance, including the focus ring.
+ */
+@layer components {
+  .pm-legend,
+  .pm-input {
+    @apply sr-only;
+  }
+
+  .pm-strip {
+    @apply mb-2 inline-flex items-center gap-0.5 rounded-lg border border-zinc-200 p-1 dark:border-zinc-800;
+  }
+
+  .pm-tab {
+    @apply cursor-pointer rounded-md px-2.5 py-1 font-mono text-xs text-zinc-600 select-none hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white;
+  }
+
+  .pm-input:checked + .pm-tab {
+    @apply bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-white;
+  }
+
+  .pm-input:focus-visible + .pm-tab {
+    @apply outline-2 outline-offset-2 outline-sky-500;
+  }
+
+  .pm-panel {
+    display: none;
+  }
+
+  [data-pm-tabs]:has(input[value='npm']:checked) > [data-pm-panel='npm'],
+  [data-pm-tabs]:has(input[value='pnpm']:checked) > [data-pm-panel='pnpm'],
+  [data-pm-tabs]:has(input[value='yarn']:checked) > [data-pm-panel='yarn'],
+  [data-pm-tabs]:has(input[value='bun']:checked) > [data-pm-panel='bun'] {
+    display: block;
+  }
+
+  /* The compact presentation: one bordered command, for a page that is not prose. */
+  .pm-pill {
+    @apply inline-block rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-2 text-sm text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300;
+  }
+}

@@ -21,6 +21,12 @@ build-time prerendering, and hard env/secret safety.
 npx @rshono/create@latest my-app
 ```
 
+Which runner you use is also how the scaffolder learns which package manager you use: every one of them
+sets `npm_config_user_agent`, so `pnpm dlx` writes a pnpm project — its lockfile, its `pnpm-workspace.yaml`,
+and a `packageManager` field pinned to the version that ran. `--pm npm|pnpm|yarn|bun` overrides the guess,
+which is what Yarn Classic users want, since `yarn dlx` needs Yarn 2 or newer. (`pnpx` and `pnx` are the
+same command as `pnpm dlx`.)
+
 The scaffolder asks for a deploy target, a styling choice and a formatter/linter preset, then writes a
 working app. Every question is also a flag, and a non-interactive terminal implies `--yes` — so one
 command can answer all of them:

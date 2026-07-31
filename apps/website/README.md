@@ -34,16 +34,18 @@ src/
   content/
     docs.ts         the page list, in sidebar order — an import and a line per page
     markdown.ts     markdown → HTML + table of contents, with Shiki highlighting
+    package-managers.ts  one npm command → all four, at build time
   routes/           endpoint handlers: /docs/:slug.md, /llms.txt, /llms-full.txt
   components/       pages and components
-  styles.css        Tailwind, plus the prose and Shiki rules
+  styles.css        Tailwind, plus the prose, Shiki and selector rules
 ```
 
 ## Everything runs at build time
 
 Every page is `render: 'static'`, so the markdown parse, the Shiki highlight and the table of contents
 all happen once during `rshono build`. A documentation page is finished HTML by the time a browser sees
-it, and the only client JavaScript it ships is a ~1 KB island that adds copy buttons to code blocks.
+it, and the only client JavaScript it ships is two islands of well under 1 KB each: copy buttons on code
+blocks, and the package manager choice below.
 
 That is also why no page reads `ctx`: a prerendered page has no request to read one from. `url` is the
 build-time URL, which is the right canonical only because `siteUrl` is set in `rshono.config.ts`.
@@ -59,6 +61,23 @@ Three steps, no codegen:
 
 Frontmatter is YAML, so a `description` that starts with a quote needs quoting:
 `description: "'use server' functions …"`.
+
+## Package manager selectors
+
+Write the command **once, in npm form**. A fenced shell block whose every line is an `npx …` or
+`npm i …` command is replaced at build time with a four-tab selector — npm, pnpm, yarn, bun — carrying
+every variant, and nothing in the markdown says so. A block with a line that has no exact counterpart
+(`rshono dev`, `pnpm --filter …`) does not match and renders as an ordinary code block, which is the
+lever for opting out: say it in a way that is not translatable.
+
+`src/content/package-managers.ts` owns the table, the two translatable command shapes and the markup.
+Handwritten pages get the same control from `<CommandTabs>`, and `<InlineCommand>` is the header chip:
+no tab strip, just the variants as `data-*` attributes.
+
+The tabs are radios switched by `:has()` in CSS, so they work before hydration and with scripting off.
+The island only does what CSS cannot — remember the choice in `localStorage` and apply it to every other
+selector on the page and the next one. A remembered choice therefore lands on hydration, not on first
+paint; the alternative is a blocking script in `<head>` on every page.
 
 ## Markdown as a first-class output
 

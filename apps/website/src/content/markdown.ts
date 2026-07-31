@@ -24,6 +24,7 @@ import MarkdownIt from 'markdown-it';
 import anchor from 'markdown-it-anchor';
 import { createHighlighterCore, type HighlighterCore } from 'shiki/core';
 import { createJavaScriptRegexEngine } from 'shiki/engine/javascript';
+import { renderCommandTabs } from './package-managers.js';
 
 /** One heading in the on-page table of contents. Only `h2` and `h3` are collected. */
 export interface TocEntry {
@@ -84,6 +85,37 @@ function getHighlighter(): Promise<HighlighterCore> {
 }
 
 /**
+ * The one call every code block on this site goes through.
+ *
+ * `defaultColor: false` is what makes one build serve both themes: instead of baking one theme's colours
+ * in, every token carries `--shiki-light` and `--shiki-dark` custom properties and `styles.css` picks
+ * between them. No flash, no second stylesheet, no client JS.
+ */
+function highlightWith(highlighter: HighlighterCore, code: string, lang: string): string {
+  return highlighter.codeToHtml(code, {
+    lang: KNOWN_LANGS.has(lang) ? lang : 'text',
+    themes: { light: 'github-light', dark: 'github-dark' },
+    defaultColor: false,
+  });
+}
+
+/**
+ * Every name a fence can open a shell block under, taken from the grammar rather than listed — `bash`,
+ * `sh`, `shell`, `zsh` are all one Shiki language.
+ *
+ * A block in one of these is a candidate for a [package manager selector](./package-managers.ts).
+ * `renderCommandTabs` is what decides, and it only says yes to a block whose every line is an
+ * `npx`/`npm i` command it can translate exactly.
+ */
+const [shellGrammar] = langBash;
+const SHELL_LANGS = new Set([shellGrammar.name, ...(shellGrammar.aliases ?? [])]);
+
+/** Per-document counter, so the radio groups on one page get names that cannot collide. */
+interface RenderEnv {
+  commandTabs?: number;
+}
+
+/**
  * `#`-anchored headings, with the text kept clickable.
  *
  * The heading renders its own text plus a trailing link rather than wrapping the text in one, so a
@@ -128,6 +160,7 @@ let mdPromise: Promise<MarkdownIt> | undefined;
 async function getMarkdownIt(): Promise<MarkdownIt> {
   mdPromise ??= (async () => {
     const highlighter = await getHighlighter();
+    const highlight = (code: string, lang: string) => highlightWith(highlighter, code, lang);
 
     const md = new MarkdownIt({
       html: true,
@@ -136,20 +169,34 @@ async function getMarkdownIt(): Promise<MarkdownIt> {
       /**
        * Shiki emits the whole `<pre class="shiki">…</pre>`, so this returns finished HTML and
        * markdown-it wraps it in nothing further.
-       *
-       * `defaultColor: false` is what makes one build serve both themes: instead of baking one
-       * theme's colours in, every token carries `--shiki-light` and `--shiki-dark` custom properties
-       * and `styles.css` picks between them. No flash, no second stylesheet, no client JS.
        */
-      highlight: (code, lang) =>
-        highlighter.codeToHtml(code, {
-          lang: KNOWN_LANGS.has(lang) ? lang : 'text',
-          themes: { light: 'github-light', dark: 'github-dark' },
-          defaultColor: false,
-        }),
+      highlight,
     });
 
     md.use(anchor, anchorOptions);
+
+    /**
+     * A shell block that is nothing but package manager commands becomes a selector instead.
+     *
+     * Detected rather than marked up, so the markdown stays markdown: `content/docs/*.md` is served
+     * verbatim at `/docs/:slug.md` and quoted in `llms-full.txt`, and neither should carry a fence
+     * attribute that only means something to this site. A block that does not translate falls through
+     * to the ordinary renderer, which is what every other fence in the docs does.
+     */
+    const renderFence = md.renderer.rules.fence!;
+    md.renderer.rules.fence = (tokens, index, options, env: RenderEnv, self) => {
+      const token = tokens[index];
+      const lang = token.info.trim().split(/\s+/)[0] ?? '';
+
+      if (SHELL_LANGS.has(lang)) {
+        const group = (env.commandTabs = (env.commandTabs ?? 0) + 1);
+        const tabs = renderCommandTabs({ id: `pm-${group}`, command: token.content, variant: 'block', highlight });
+        if (tabs) return tabs;
+      }
+
+      return renderFence(tokens, index, options, env, self);
+    };
+
     return md;
   })();
 
@@ -182,7 +229,7 @@ export async function renderDoc(source: string): Promise<RenderedDoc> {
   const frontmatter = data as DocFrontmatter;
   const md = await getMarkdownIt();
 
-  const env = {};
+  const env: RenderEnv = {};
   const tokens = md.parse(content, env);
 
   return {
@@ -201,11 +248,7 @@ export async function renderDoc(source: string): Promise<RenderedDoc> {
  */
 export async function highlightCode(code: string, lang: string): Promise<string> {
   const highlighter = await getHighlighter();
-  return highlighter.codeToHtml(code.trim(), {
-    lang: KNOWN_LANGS.has(lang) ? lang : 'text',
-    themes: { light: 'github-light', dark: 'github-dark' },
-    defaultColor: false,
-  });
+  return highlightWith(highlighter, code.trim(), lang);
 }
 
 /** The frontmatter alone, without paying for a render — used to build nav and index listings. */

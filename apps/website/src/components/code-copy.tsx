@@ -5,7 +5,8 @@ import { useEffect } from 'react';
 /**
  * Adds a copy button to every code block on the page.
  *
- * The only client JavaScript a documentation page ships. It has to work this way round — imperatively,
+ * One of the two islands a documentation page ships, the other being the [package manager
+ * choice](./package-manager-choice.tsx). It has to work this way round — imperatively,
  * against the DOM — because the prose is finished HTML injected with `dangerouslySetInnerHTML`, so
  * there are no React elements for the code blocks to hang a button off.
  *

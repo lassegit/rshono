@@ -12,7 +12,8 @@ import { Layout } from './layout';
  *
  * `render: 'static'` in `routes.ts`, so everything below — parsing the markdown, running Shiki over
  * every fenced block, building the table of contents — happens once at build time. What a browser gets
- * is finished HTML plus one small [copy-button island](./code-copy.tsx).
+ * is finished HTML plus two small islands: the [copy buttons](./code-copy.tsx), and the [package manager
+ * choice](./package-manager-choice.tsx) the layout mounts.
  *
  * That also means no `ctx`: a prerendered page has no request to read one from. `url` is the build-time
  * URL, which is the right canonical only because `siteUrl` is set in `rshono.config.ts`.

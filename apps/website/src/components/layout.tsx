@@ -1,7 +1,9 @@
 import { NavigationProgress } from '@rshono/core/client';
 import type { ReactNode } from 'react';
 import '../styles.css';
+import { InlineCommand, SCAFFOLD_COMMAND } from './command-tabs';
 import { Logo } from './logo';
+import { PackageManagerChoice } from './package-manager-choice';
 
 const GITHUB_URL = 'https://github.com/rshono/rshono';
 const NPM_URL = 'https://www.npmjs.com/package/@rshono/core';
@@ -56,6 +58,8 @@ export function Layout({
           {children}
         </main>
         <SiteFooter />
+        {/* Carries the reader's package manager across every selector on the page, and to the next one. */}
+        <PackageManagerChoice page={canonical ?? ''} />
       </body>
     </html>
   );
@@ -104,9 +108,11 @@ function SiteHeader() {
 
         {/* Everything from here sits against the right edge. */}
         <div className="ml-auto flex items-center gap-4">
-          <code className="hidden rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs text-zinc-600 md:block dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
-            npx @rshono/create@latest my-app
-          </code>
+          {/* No tab strip at this size — it follows whatever the reader picked on a page that has one. */}
+          <InlineCommand
+            command={SCAFFOLD_COMMAND}
+            className="hidden rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs text-zinc-600 md:block dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400"
+          />
 
           {/*
             Off-site links, as marks rather than words — they are the two logos every reader already
