@@ -56,3 +56,4 @@ property of the build, not of developing.
 - [Project layout](/docs/project-layout) — what the framework knows about, and what is yours to arrange.
 - [Routing](/docs/routing) — the one required file.
 - [Pages](/docs/pages) — how a server component becomes a page.
+- [API reference](/docs/api) — every export, and which entry point it comes from.

@@ -11,6 +11,11 @@
      * Without this an anchor jump lands a heading underneath the sticky header. The header is 3.5rem
      * tall, except below `sm`, where its nav wraps onto a second line and it is about 5.5rem — so this
      * follows the same breakpoint rather than clearing only the shorter of the two.
+     *
+     * It is also the *only* place that offset is applied. A `scroll-margin-top` on the headings
+     * themselves adds to this one rather than overriding it, and the two together pushed a clicked
+     * heading 9.5rem down the viewport — far enough that near the end of a long table of contents the
+     * document is already scrolled as far as it goes and the heading appears not to move at all.
      */
     scroll-padding-top: 6.5rem;
 
@@ -50,11 +55,11 @@
   }
 
   .prose h2 {
-    @apply mt-12 scroll-mt-20 border-t border-zinc-200 pt-8 text-xl font-semibold tracking-tight text-zinc-900 dark:border-zinc-800 dark:text-white;
+    @apply mt-12 border-t border-zinc-200 pt-8 text-xl font-semibold tracking-tight text-zinc-900 dark:border-zinc-800 dark:text-white;
   }
 
   .prose h3 {
-    @apply mt-8 scroll-mt-20 text-base font-semibold text-zinc-900 dark:text-white;
+    @apply mt-8 text-base font-semibold text-zinc-900 dark:text-white;
   }
 
   /* Revealed on hover or keyboard focus, so the heading itself stays clean. */
@@ -96,9 +101,16 @@
     @apply font-semibold text-zinc-900 dark:text-white;
   }
 
-  /* Wide tables scroll on their own rather than pushing the page sideways. */
+  /*
+   * Wide tables scroll on their own rather than pushing the page sideways. The scroll container is the
+   * wrapper `content/markdown.ts` puts around every table — see there for why it cannot be the table.
+   */
+  .prose .table-scroll {
+    @apply overflow-x-auto;
+  }
+
   .prose table {
-    @apply block w-full overflow-x-auto text-sm md:table;
+    @apply w-full text-sm;
   }
 
   .prose thead {

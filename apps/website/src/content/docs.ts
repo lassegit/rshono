@@ -10,6 +10,7 @@
  * with no filesystem — and it means `staticPaths` needs no I/O at build time either.
  */
 
+import sourceApi from '../../content/docs/api.md';
 import sourceConfiguration from '../../content/docs/configuration.md';
 import sourceDeployment from '../../content/docs/deployment.md';
 import sourceEnvironment from '../../content/docs/environment.md';
@@ -89,6 +90,10 @@ const SECTIONS: Array<{ title: string; pages: Array<{ slug: string; source: stri
       { slug: 'how-it-works', source: sourceHowItWorks },
       { slug: 'limitations', source: sourceLimitations },
     ],
+  },
+  {
+    title: 'Reference',
+    pages: [{ slug: 'api', source: sourceApi }],
   },
 ];
 

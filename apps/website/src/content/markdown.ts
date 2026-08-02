@@ -183,6 +183,20 @@ async function getMarkdownIt(): Promise<MarkdownIt> {
      * attribute that only means something to this site. A block that does not translate falls through
      * to the ordinary renderer, which is what every other fence in the docs does.
      */
+    /**
+     * Every table gets a scroll container around it.
+     *
+     * It has to be a wrapper element rather than a rule on the table: `overflow-x` on a `display:
+     * table` box does not make it a scroll container, and a table whose min-content width beats the
+     * column it sits in widens past `width: 100%` whatever you set — so a wide one pushed the whole
+     * article sideways instead of scrolling. Done here rather than in the markdown for the same reason
+     * the command tabs are: `content/docs/*.md` is served verbatim at `/docs/:slug.md`, and a `<div>`
+     * that only means something to this site does not belong in it.
+     */
+    md.renderer.rules.table_open = (tokens, index, options, env, self) =>
+      `<div class="table-scroll">${self.renderToken(tokens, index, options)}`;
+    md.renderer.rules.table_close = (tokens, index, options, env, self) => `${self.renderToken(tokens, index, options)}</div>`;
+
     const renderFence = md.renderer.rules.fence!;
     md.renderer.rules.fence = (tokens, index, options, env: RenderEnv, self) => {
       const token = tokens[index];
