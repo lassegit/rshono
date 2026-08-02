@@ -450,3 +450,11 @@ footer a {
   background: #fef2f2;
   color: #991b1b;
 }
+
+/*
+ * Tall enough that a jump to one of them is a measurable scroll — these sections exist so the
+ * browser tests can tell "landed on the heading" from "landed at the top".
+ */
+.doc-section {
+  min-height: 90vh;
+}

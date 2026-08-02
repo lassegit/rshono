@@ -33,6 +33,38 @@ export default async function Documentation({ params, url }: PageProps<'/docs/:s
             <p className="meta">
               This page is <code>kind: "static"</code> — pre-rendered at build time.
             </p>
+
+            {/*
+              Two kinds of fragment link, and the runtime treats them differently on purpose: the
+              contents below point at this page, so the browser handles them with no round-trip,
+              while the cross-page one soft-navigates and then lands on the heading.
+            */}
+            <nav aria-label="On this page">
+              <ul>
+                {doc.sections.map((section) => (
+                  <li key={section.id}>
+                    <a href={`#${section.id}`}>{section.title}</a>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+
+            {docs
+              .filter((d) => d.slug !== doc.slug)
+              .map((other) => (
+                <p key={other.slug}>
+                  <a href={`/docs/${other.slug}#${other.sections[2]!.id}`}>
+                    {other.title}: {other.sections[2]!.title}
+                  </a>
+                </p>
+              ))}
+
+            {doc.sections.map((section) => (
+              <section key={section.id} className="doc-section">
+                <h2 id={section.id}>{section.title}</h2>
+                <p className="description">{doc.body}</p>
+              </section>
+            ))}
           </>
         ) : (
           <>

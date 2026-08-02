@@ -216,22 +216,23 @@ async function main() {
       startNav = (run) => startTransition(run);
     }, [startTransition]);
 
-    React.useEffect(
-      () =>
-        listenNavigation(
-          (restoreScroll) =>
-            startNav(async () => {
-              try {
-                await fetchRscPayload();
-                restoreScroll();
-              } catch {
-                window.location.reload();
-              }
-            }),
-          warmPayload,
-        ),
-      [],
-    );
+    React.useEffect(() => {
+      const stopNavigating = listenNavigation((restoreScroll) =>
+        startNav(async () => {
+          try {
+            await fetchRscPayload();
+            restoreScroll();
+          } catch {
+            window.location.reload();
+          }
+        }),
+      );
+      const stopUpgradingLinks = listenLinks(warmPayload);
+      return () => {
+        stopUpgradingLinks();
+        stopNavigating();
+      };
+    }, []);
 
     const router = React.useMemo<Router>(() => ({ push, replace, back, forward, refresh, pending }), [pending]);
 
@@ -304,6 +305,67 @@ type NavigationType = 'push' | 'replace' | 'pop';
 /** Hover/focus dwell time before a `data-prefetch` link warms its payload. */
 const PREFETCH_DELAY_MS = 120;
 
+/**
+ * Frames to wait for a fragment's target to turn up before giving up and going to the top.
+ *
+ * A soft navigation restores scroll as soon as the new payload is *set*, and React commits it a tick
+ * or more later — so the element a `#hash` names does not exist yet on the first frame.
+ */
+const MAX_HASH_SCROLL_FRAMES = 10;
+
+/**
+ * The element the current URL's fragment points at, or null.
+ *
+ * `location.hash` comes back percent-encoded while the `id` in the DOM is literal, so a heading like
+ * `#créer` only matches once decoded — and the raw form is tried too, for the ids that genuinely
+ * contain a `%`.
+ */
+function hashTarget(): HTMLElement | null {
+  const raw = location.hash.slice(1);
+  if (!raw) return null;
+  let decoded = raw;
+  try {
+    decoded = decodeURIComponent(raw);
+  } catch {}
+  return document.getElementById(decoded) ?? document.getElementById(raw);
+}
+
+/**
+ * Defers `run` to the next frame.
+ *
+ * Every scroll change here goes through this. A navigation restores scroll the moment the new
+ * payload is *set*, which is before React has committed it — so the layout being scrolled is still
+ * the outgoing one until a frame has passed.
+ */
+function nextFrame(run: () => void): void {
+  requestAnimationFrame(run);
+}
+
+/**
+ * `nextFrame`, retried once per frame until `find` turns something up or `frames` have gone by.
+ * `use` then gets what was found, or null if nothing ever was.
+ */
+function whenFound<T>(find: () => T | null, frames: number, use: (found: T | null) => void): void {
+  let waited = 0;
+  nextFrame(function attempt() {
+    const found = find();
+    if (found !== null) use(found);
+    else if (++waited < frames) nextFrame(attempt);
+    else use(null);
+  });
+}
+
+/**
+ * Runs teardown in reverse and empties the list, so a second call is a no-op.
+ *
+ * Collecting these as setup goes keeps each undo next to the thing it undoes: a listener added
+ * without one is visible on the spot, rather than as a leak found later against a teardown block
+ * that drifted out of sync.
+ */
+function disposeAll(undo: Array<() => void>): void {
+  for (const dispose of undo.splice(0).reverse()) dispose();
+}
+
 // An `<a>` we intercept for soft navigation: same-origin, same tab, not a download,
 // and not explicitly opted out with `data-native` (which forces a full browser navigation).
 function isRouterLink(link: HTMLAnchorElement): boolean {
@@ -316,7 +378,63 @@ function isRouterLink(link: HTMLAnchorElement): boolean {
   );
 }
 
-function listenNavigation(onNavigation: (restoreScroll: () => void) => void, prefetch: (href: string) => void): () => void {
+/**
+ * Upgrades the app's anchors: a plain left-click becomes a soft navigation, and `data-prefetch`
+ * warms the payload on hover or focus.
+ *
+ * Kept apart from `listenNavigation` because the two share no state. A click here only calls
+ * `history.pushState` — which is where that function picks the navigation up — so the whole contract
+ * between them is one global the browser already provides.
+ */
+function listenLinks(prefetch: (href: string) => void): () => void {
+  const undo: Array<() => void> = [];
+
+  function onClick(e: MouseEvent) {
+    const link = (e.target as Element).closest('a');
+    if (
+      link &&
+      link instanceof HTMLAnchorElement &&
+      isRouterLink(link) &&
+      e.button === 0 &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey &&
+      !e.shiftKey &&
+      !e.defaultPrevented
+    ) {
+      if (link.hash && link.pathname === location.pathname && link.search === location.search) return;
+      e.preventDefault();
+      history.pushState(null, '', link.href);
+    }
+  }
+  document.addEventListener('click', onClick);
+  undo.push(() => document.removeEventListener('click', onClick));
+
+  // A prefetch is a full server render, so it waits out a short dwell time on one shared timer:
+  // sweeping the cursor across a list of prefetch links costs one request (for the link the pointer
+  // settled on), not one per link.
+  let prefetchTimer: ReturnType<typeof setTimeout> | undefined;
+  function onPrefetch(e: Event) {
+    const target = e.target;
+    if (!(target instanceof Element)) return;
+    const link = target.closest('a[data-prefetch]');
+    if (!(link instanceof HTMLAnchorElement) || !isRouterLink(link)) return;
+    const { href } = link;
+    clearTimeout(prefetchTimer);
+    prefetchTimer = setTimeout(() => prefetch(href), PREFETCH_DELAY_MS);
+  }
+  undo.push(() => clearTimeout(prefetchTimer));
+  document.addEventListener('pointerover', onPrefetch);
+  undo.push(() => document.removeEventListener('pointerover', onPrefetch));
+  document.addEventListener('focusin', onPrefetch);
+  undo.push(() => document.removeEventListener('focusin', onPrefetch));
+
+  return () => disposeAll(undo);
+}
+
+function listenNavigation(onNavigation: (restoreScroll: () => void) => void): () => void {
+  const undo: Array<() => void> = [];
+
   // Scroll restoration. We tag each history entry with a stable numeric key in its
   // `history.state` and remember scrollY per key, so back/forward restores the exact
   // position while push scrolls to the top. `manual` hands restoration to us.
@@ -326,6 +444,11 @@ function listenNavigation(onNavigation: (restoreScroll: () => void) => void, pre
   try {
     window.history.scrollRestoration = 'manual';
   } catch {}
+  undo.push(() => {
+    try {
+      window.history.scrollRestoration = prevRestoration;
+    } catch {}
+  });
 
   const keyOf = (): number | null => {
     const state = window.history.state as { __rshonoScroll?: unknown } | null;
@@ -347,19 +470,54 @@ function listenNavigation(onNavigation: (restoreScroll: () => void) => void, pre
     });
   };
   window.addEventListener('scroll', onScroll, { passive: true });
+  undo.push(() => window.removeEventListener('scroll', onScroll));
 
   const restoreScrollFor = (type: NavigationType) => () => {
     if (type === 'replace') return;
     const key = keyOf();
-    requestAnimationFrame(() => {
-      const y = type === 'pop' && key !== null ? (scrollByKey.get(key) ?? 0) : 0;
-      window.scrollTo(0, y);
-    });
+    const remembered = type === 'pop' && key !== null ? scrollByKey.get(key) : undefined;
+    if (remembered !== undefined) {
+      nextFrame(() => window.scrollTo(0, remembered));
+      return;
+    }
+
+    // Nothing remembered: a fresh push, or a traversal onto an entry the browser made itself — a
+    // same-page anchor never goes through our patched `pushState`, so it was never tagged. In both
+    // cases a `#hash` is the stated destination, and the top of the page is only the fallback.
+    if (!location.hash) {
+      nextFrame(() => window.scrollTo(0, 0));
+      return;
+    }
+    whenFound(hashTarget, MAX_HASH_SCROLL_FRAMES, (target) => (target ? target.scrollIntoView() : window.scrollTo(0, 0)));
   };
-  const notify = (type: NavigationType) => onNavigation(restoreScrollFor(type));
+
+  const documentUrl = () => location.pathname + location.search;
+
+  // What the payload on screen was rendered for. Only the document part: the server never sees the
+  // fragment, so two URLs differing by one render identically.
+  let renderedUrl = documentUrl();
+
+  /**
+   * A navigation that moves only the fragment — `#a` → `#b`, or back out of a same-page anchor —
+   * leaves the document unchanged, so the payload already on screen is the right one. Fetching
+   * another would be a wasted round-trip that re-renders the page out from under the jump.
+   *
+   * `router.refresh()` is unaffected: it drives the re-fetch directly rather than through here, and
+   * remains the way to ask for fresh data at an unchanged URL.
+   */
+  const notify = (type: NavigationType) => {
+    const restoreScroll = restoreScrollFor(type);
+    if (documentUrl() === renderedUrl) {
+      restoreScroll();
+      return;
+    }
+    renderedUrl = documentUrl();
+    onNavigation(restoreScroll);
+  };
 
   const onPopState = () => notify('pop');
   window.addEventListener('popstate', onPopState);
+  undo.push(() => window.removeEventListener('popstate', onPopState));
 
   const oldPushState = window.history.pushState;
   window.history.pushState = function (state, unused, url) {
@@ -367,6 +525,9 @@ function listenNavigation(onNavigation: (restoreScroll: () => void) => void, pre
     notify('push');
     return res;
   };
+  undo.push(() => {
+    window.history.pushState = oldPushState;
+  });
 
   const oldReplaceState = window.history.replaceState;
   window.history.replaceState = function (state, unused, url) {
@@ -374,56 +535,11 @@ function listenNavigation(onNavigation: (restoreScroll: () => void) => void, pre
     notify('replace');
     return res;
   };
-
-  function onClick(e: MouseEvent) {
-    const link = (e.target as Element).closest('a');
-    if (
-      link &&
-      link instanceof HTMLAnchorElement &&
-      isRouterLink(link) &&
-      e.button === 0 &&
-      !e.metaKey &&
-      !e.ctrlKey &&
-      !e.altKey &&
-      !e.shiftKey &&
-      !e.defaultPrevented
-    ) {
-      if (link.hash && link.pathname === location.pathname && link.search === location.search) return;
-      e.preventDefault();
-      history.pushState(null, '', link.href);
-    }
-  }
-  document.addEventListener('click', onClick);
-
-  // A prefetch is a full server render, so it waits out a short dwell time on one shared timer:
-  // sweeping the cursor across a list of prefetch links costs one request (for the link the pointer
-  // settled on), not one per link.
-  let prefetchTimer: ReturnType<typeof setTimeout> | undefined;
-  function onPrefetch(e: Event) {
-    const target = e.target;
-    if (!(target instanceof Element)) return;
-    const link = target.closest('a[data-prefetch]');
-    if (!(link instanceof HTMLAnchorElement) || !isRouterLink(link)) return;
-    const { href } = link;
-    clearTimeout(prefetchTimer);
-    prefetchTimer = setTimeout(() => prefetch(href), PREFETCH_DELAY_MS);
-  }
-  document.addEventListener('pointerover', onPrefetch);
-  document.addEventListener('focusin', onPrefetch);
-
-  return () => {
-    clearTimeout(prefetchTimer);
-    document.removeEventListener('click', onClick);
-    document.removeEventListener('pointerover', onPrefetch);
-    document.removeEventListener('focusin', onPrefetch);
-    window.removeEventListener('popstate', onPopState);
-    window.removeEventListener('scroll', onScroll);
-    window.history.pushState = oldPushState;
+  undo.push(() => {
     window.history.replaceState = oldReplaceState;
-    try {
-      window.history.scrollRestoration = prevRestoration;
-    } catch {}
-  };
+  });
+
+  return () => disposeAll(undo);
 }
 
 /**

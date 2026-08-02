@@ -26,11 +26,31 @@ export interface Doc {
   slug: string;
   title: string;
   body: string;
+  /** Anchored headings. These are what the on-page contents links at, and what `/docs/x#y` lands on. */
+  sections: Array<{ id: string; title: string }>;
 }
 
 const docs: Doc[] = [
-  { slug: 'getting-started', title: 'Getting Started', body: 'Install, create routes.ts, run the dev server.' },
-  { slug: 'deployment', title: 'Deployment', body: 'Run `rs-hono build`, then `rs-hono start` on your server.' },
+  {
+    slug: 'getting-started',
+    title: 'Getting Started',
+    body: 'Install, create routes.ts, run the dev server.',
+    sections: [
+      { id: 'install', title: 'Install' },
+      { id: 'routes', title: 'Routes' },
+      { id: 'dev-server', title: 'Dev server' },
+    ],
+  },
+  {
+    slug: 'deployment',
+    title: 'Deployment',
+    body: 'Run `rs-hono build`, then `rs-hono start` on your server.',
+    sections: [
+      { id: 'build', title: 'Build' },
+      { id: 'serve', title: 'Serve' },
+      { id: 'targets', title: 'Targets' },
+    ],
+  },
 ];
 
 export const fakeDB = {

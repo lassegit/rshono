@@ -180,6 +180,64 @@ test.describe('scroll restoration', () => {
   });
 });
 
+test.describe('fragment links', () => {
+  /** How far the top of `#id` sits from the top of the viewport. ~0 means the jump landed on it. */
+  const headingOffset = (page, id) => page.evaluate((anchor) => document.getElementById(anchor)?.getBoundingClientRect().top ?? null, id);
+
+  test('a same-page anchor is left to the browser — no payload fetch, no reload', async ({ page }) => {
+    await page.setViewportSize({ width: 500, height: 400 });
+    await page.goto('/docs/getting-started');
+    const id = await markDocument(page);
+
+    const payloadRequests = [];
+    page.on('request', (request) => {
+      if (request.headers()['accept']?.includes('text/x-component')) payloadRequests.push(request.url());
+    });
+
+    await page.getByRole('navigation', { name: 'On this page' }).getByRole('link', { name: 'Dev server' }).click();
+
+    await expect(page).toHaveURL('/docs/getting-started#dev-server');
+    await expect.poll(() => headingOffset(page, 'dev-server')).toBeLessThan(2);
+    expect(await documentId(page), 'the document should not have reloaded').toBe(id);
+    expect(payloadRequests, 'a same-page anchor needs nothing from the server').toEqual([]);
+  });
+
+  test('a cross-page anchor soft-navigates and still lands on the heading', async ({ page }) => {
+    await page.setViewportSize({ width: 500, height: 400 });
+    await page.goto('/docs/getting-started');
+    const id = await markDocument(page);
+
+    await page.getByRole('link', { name: 'Deployment: Targets' }).click();
+
+    await expect(page).toHaveURL('/docs/deployment#targets');
+    // The heading only exists after the new payload commits, so the scroll has to wait it out —
+    // without that, this lands at the top of the page with the fragment ignored.
+    await expect.poll(() => headingOffset(page, 'targets'), { message: 'the fragment should survive the navigation' }).toBeLessThan(2);
+    expect(await documentId(page), 'it should still be a soft navigation').toBe(id);
+  });
+
+  test('back out of an anchor restores scroll without re-fetching the page', async ({ page }) => {
+    await page.setViewportSize({ width: 500, height: 400 });
+    await page.goto('/docs/getting-started');
+
+    await page.evaluate(() => window.scrollTo(0, 250));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
+
+    await page.getByRole('navigation', { name: 'On this page' }).getByRole('link', { name: 'Routes' }).click();
+    await expect(page).toHaveURL('/docs/getting-started#routes');
+
+    const payloadRequests = [];
+    page.on('request', (request) => {
+      if (request.headers()['accept']?.includes('text/x-component')) payloadRequests.push(request.url());
+    });
+
+    await page.goBack();
+    await expect(page).toHaveURL('/docs/getting-started');
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
+    expect(payloadRequests, 'the document did not change, so nothing needed re-rendering').toEqual([]);
+  });
+});
+
 test.describe('no blank screens', () => {
   test('a broken bootstrap payload paints the fatal overlay instead of a dead page', async ({ page }) => {
     // Corrupt the inlined flight payload so the client runtime cannot start. Without the overlay
