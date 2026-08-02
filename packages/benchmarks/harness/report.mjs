@@ -161,6 +161,8 @@ function loadSection(section, ids, labels) {
     '',
     '**Read this as a floor check, not a headline.** All three render through the same React and stream through the same react-dom, so a large gap would mean an HTTP layer is pathological rather than that one framework renders faster. The in-process driver is identically handicapping for all three, and its absolute rps is a lower bound. `/api/health` is the informative row: no React on the path, so it is router and response construction alone.',
     '',
+    'All three put React server components on the request path for `/ssr` and `/interactive` (APP_SPEC.md rule 8), so those two rows compare implementations of one architecture. They are not a perfect match: rshono and Next encode and decode the whole document, TanStack Start only the route body its RSC helpers wrap — its shell and nav stay on the cheaper non-RSC path. The flight round trip dominates both rows; on `/ssr` it is roughly 85% of the request.',
+    '',
   );
 
   for (const route of ROUTES) {
@@ -187,11 +189,22 @@ function loadSection(section, ids, labels) {
 
   lines.push('### Memory', '');
   lines.push(
+    'Resident memory of the whole process tree, and of the single largest process in it — which is the server itself in all three. The tree total carries whatever `npm run start` left running and double-counts pages the processes share, so the **server** row is the one to compare.',
+    '',
+  );
+  lines.push(
     table(
       ['Metric', ...labels],
       [
-        ['RSS idle', ...ids.map((id) => rssCell(section.targets?.[id]?.rssIdle))],
-        ['RSS after load', ...ids.map((id) => rssCell(section.targets?.[id]?.rssLoaded))],
+        ['RSS idle — tree', ...ids.map((id) => rssCell(section.targets?.[id]?.rssIdle))],
+        ['RSS idle — server', ...ids.map((id) => rssCell(section.targets?.[id]?.rssIdle, true))],
+        ['RSS after load — tree', ...ids.map((id) => rssCell(section.targets?.[id]?.rssLoaded))],
+        ['RSS after load — server', ...ids.map((id) => rssCell(section.targets?.[id]?.rssLoaded, true))],
+        ['Requests served', ...ids.map((id) => requestsServed(section.targets?.[id]))],
+        // Growth per unit of work, because the load runs for a fixed *time*: a server that answers
+        // five times as many requests in those eight seconds allocates five times as much, and the
+        // raw after-load figure would read that as five times worse.
+        ['Growth per 1k requests', ...ids.map((id) => growthPerThousand(section.targets?.[id]))],
       ],
     ),
   );
@@ -199,8 +212,28 @@ function loadSection(section, ids, labels) {
   return lines;
 }
 
-function rssCell(rss) {
-  return rss ? `${bytes(rss.bytes)}${rss.processes > 1 ? ` (${rss.processes} procs)` : ''}` : '—';
+function rssCell(rss, serverOnly = false) {
+  if (!rss) return '—';
+  if (serverOnly) return rss.largest ? bytes(rss.largest) : '—';
+  return `${bytes(rss.bytes)}${rss.processes > 1 ? ` (${rss.processes} procs)` : ''}`;
+}
+
+function totalRequests(target) {
+  const routes = target?.routes;
+  return routes ? Object.values(routes).reduce((sum, r) => sum + (r?.requests ?? 0), 0) : 0;
+}
+
+function requestsServed(target) {
+  const n = totalRequests(target);
+  return n ? num(n) : '—';
+}
+
+function growthPerThousand(target) {
+  const n = totalRequests(target);
+  const idle = target?.rssIdle?.largest;
+  const loaded = target?.rssLoaded?.largest;
+  if (!n || !idle || !loaded) return '—';
+  return `${bytes(Math.max(0, ((loaded - idle) / n) * 1000))}`;
 }
 
 function devstartSection(section, ids, labels) {

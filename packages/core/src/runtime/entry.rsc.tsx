@@ -195,14 +195,31 @@ interface RenderDeadline {
  *
  * One deadline covers the whole request — server action included, not just the render — so a
  * hung action can't pin a socket open indefinitely either.
+ *
+ * The request signal is forwarded into our own controller by hand rather than combined with
+ * `AbortSignal.any([requestSignal, controller.signal])`, which reads better but leaks the entire
+ * render. A signal that `AbortSignal.any()` produced is *composite*, and Node holds every composite
+ * signal carrying an `abort` listener in a process-lifetime set (`gcPersistentSignals`) until it
+ * either aborts or loses its last listener. Both React renderers add an `abort` listener to whatever
+ * signal they are handed and only remove it if the abort actually fires — so on the happy path the
+ * signal is never collected, and through those listeners it pins the flight request, the Fizz
+ * request and the whole rendered tree. ~200 kB per request, for the life of the process. A plain
+ * controller's signal is not composite and is never registered, so the graph dies with the request.
  */
 function createRenderDeadline(requestSignal: AbortSignal, ms: number): RenderDeadline {
   const controller = new AbortController();
+  const signal = controller.signal;
   const timer = setTimeout(() => controller.abort(new Error(`[rshono] request exceeded ${ms}ms`)), ms);
   timer.unref?.();
-  const signal = AbortSignal.any([requestSignal, controller.signal]);
-  const clear = () => clearTimeout(timer);
+  const onRequestAbort = () => controller.abort(requestSignal.reason);
+  const clear = () => {
+    clearTimeout(timer);
+    requestSignal.removeEventListener('abort', onRequestAbort);
+  };
   signal.addEventListener('abort', clear, { once: true });
+  // Registered after `clear`, so an already-aborted request still releases the timer it just made.
+  if (requestSignal.aborted) controller.abort(requestSignal.reason);
+  else requestSignal.addEventListener('abort', onRequestAbort, { once: true });
   return {
     signal,
     clear,

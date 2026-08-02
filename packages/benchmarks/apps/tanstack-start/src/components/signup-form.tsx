@@ -1,3 +1,5 @@
+'use client';
+
 import { useState } from 'react';
 import { signup, type SignupResult } from '../server-fns';
 

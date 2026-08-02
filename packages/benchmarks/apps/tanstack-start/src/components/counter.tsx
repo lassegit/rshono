@@ -1,3 +1,5 @@
+'use client';
+
 import { useState } from 'react';
 
 /** The minimal hydration unit: one piece of state, one handler. Identical in all three apps. */

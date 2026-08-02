@@ -26,6 +26,27 @@ Three implementations live in `../apps/`: `rshono`, `next`, `tanstack-start`.
 6. **Single process, no clustering.** Production mode, one Node process per app, default GC flags.
 7. **No images, no web fonts, no third-party anything.** One stylesheet, inline SVG only. Network
    waterfalls are not what is being measured.
+8. **Server components on both dynamic routes, in all three.** `/ssr` and `/interactive` put React's
+   flight encode/decode round trip on the request path everywhere, so the throughput rows compare
+   three implementations of one architecture rather than two architectures. See below for the part
+   this does *not* equalise.
+
+## Server components
+
+rshono and Next render the **whole document** as a server component tree: layout, route and every
+host element in it are encoded to a flight payload and decoded again on each request.
+
+TanStack Start's RSC support is **opt-in per boundary** — the router, root route and shell stay
+client components rendered by Fizz, and only what you wrap goes through flight. The two dynamic
+routes wrap their entire body (`renderServerComponent` for `/ssr`, `createCompositeComponent` for
+`/interactive`), which is as close to whole-document as its model allows, but the shell and nav
+still do not cross the boundary. Its flight payload is therefore a little smaller than the other
+two's for the same visible output, and a little of its render stays on the cheaper path.
+
+Read the throughput rows with that in mind: they are no longer RSC vs no-RSC, but they are not a
+perfect match either. Enabling it is what `rsc: { enabled: true }` plus the `@vitejs/plugin-rsc`
+plugin in `apps/tanstack-start/vite.config.ts` does; reverting those two and restoring the plain
+route components turns the app back into the non-RSC datapoint, which is worth having on its own.
 
 ## Fixtures
 
@@ -68,7 +89,8 @@ Must be re-rendered per request:
 
 - rshono: `render: 'dynamic'` (the default) and reads `ctx` so it cannot be hoisted
 - Next: `export const dynamic = 'force-dynamic'`
-- TanStack Start: default SSR, excluded from `prerender`
+- TanStack Start: excluded from `prerender`; the table is a server component rendered through
+  `renderServerComponent` in the route's `createServerFn` (see **Server components**, below)
 
 Contains **no client component**. Isolates server render cost + the streaming path.
 
@@ -87,6 +109,10 @@ A server-rendered shell that passes fixture data into three client components:
 
 The server function validates `{ name, email }` and returns `{ ok: true, id }` or
 `{ ok: false, error }`. It does not mutate the fixture — a benchmark run must be idempotent.
+
+The shell is a server component in all three. TanStack Start builds it with
+`createCompositeComponent` and slots the three in as **component props** — the only one of its three
+slot kinds through which the server can hand data across the boundary, which `Filter` needs.
 
 Text-content checks: `Counter`, `Filter`, `Sign up`, `Ada Lovelace`.
 

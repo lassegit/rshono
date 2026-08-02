@@ -31,7 +31,13 @@ for (const target of targets) {
       if (mode === 'cold') await removeAll(target.dir, target.cacheDirs);
       let server;
       try {
-        server = await startServer({ ...target, start: target.dev }, { readyPath: '/interactive', timeoutMs: 180_000 });
+        // `startServer` defaults to NODE_ENV=production, which is right for every other section and
+        // wrong for this one — these are dev servers. Next warns ("non-standard NODE_ENV value")
+        // and each of the three is free to behave differently under an env its dev mode never sees.
+        server = await startServer(
+          { ...target, start: target.dev },
+          { env: { NODE_ENV: 'development' }, readyPath: '/interactive', timeoutMs: 180_000 },
+        );
       } catch (e) {
         error = e.message;
         break;

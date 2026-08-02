@@ -61,6 +61,13 @@ function Intro({ title, description }: { title: string; description: string }) {
           version skew as framework design.
         </p>
         <p>
+          Both dynamic routes put React server components on the request path in all three apps, so <code>/ssr</code> and <code>/interactive</code>{' '}
+          compare three implementations of one architecture rather than two architectures. Those rows cluster, and they should: profiling{' '}
+          <code>/ssr</code> puts roughly 85% of the request in the flight round trip, and about three quarters of that is inside React itself —
+          encoding the tree, then parsing it back. Every RSC framework pays it the same way. <code>/api/health</code> is the row where the frameworks
+          themselves are visible: no React on the path at all, and it spreads more than 6×.
+        </p>
+        <p>
           Throughput is therefore in here as a floor check and nothing more. What the tables are actually about is the cost the framework decides:{' '}
           <strong className="font-medium text-zinc-900 dark:text-white">how many bytes reach the browser</strong>, how long a build takes, how much
           JavaScript has to be parsed before the first response, and how big the dependency is.
@@ -235,8 +242,17 @@ function HowToRead() {
           their own production servers.
         </li>
         <li>
-          <strong className="font-medium">TanStack Start is client-router-first.</strong> Its loader data is serialized into the document for the
-          client router to hydrate, which an RSC framework does not pay. That is an architectural difference, not a defect.
+          <strong className="font-medium">All three run server components — not the same way.</strong> rshono and Next encode and decode the whole
+          document through React&rsquo;s flight protocol on every dynamic request. TanStack Start&rsquo;s support is opt-in per boundary, so its two
+          dynamic routes wrap their entire body but the shell and nav stay on the cheaper non-RSC path, and its flight payload is a little smaller for
+          the same visible output. Close enough that the rows compare; not close enough to call identical.
+        </li>
+        <li>
+          <strong className="font-medium">The memory row rewards being slow.</strong> Each route is driven for a fixed eight seconds, so a server that
+          answers five times as many requests in that window allocates five times as much garbage and V8 sizes the heap to match. rshono serves the
+          most requests of the three by a wide margin, which is why its total is the largest; per request served it grows the least. The figure is
+          also a sum over the whole process tree — <code>npm</code> and a shell included — so it is not the server&rsquo;s working set. Under a forced
+          full collection the heap comes back down; there is no leak in it.
         </li>
         <li>
           <strong className="font-medium">The summary above is a highlights reel; the tables are the result set.</strong> It shows the metrics rshono

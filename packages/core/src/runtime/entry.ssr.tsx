@@ -2,8 +2,8 @@ import React from 'react';
 import type { ReactFormState } from 'react-dom/client';
 import { renderToReadableStream } from 'react-dom/server';
 import { createFromReadableStream } from 'react-server-dom-rspack/client';
-import { injectRSCPayload } from 'rsc-html-stream/server';
 import { isControlDigest } from './control.js';
+import { forkFlightStream, injectFlightPayload } from './flight-inject.js';
 import type { RscPayload } from './entry.rsc.js';
 
 export interface RenderHTMLOptions {
@@ -80,7 +80,7 @@ function SsrFailureDocument({ error }: { error: unknown }) {
 
 export async function renderHTML(rscStream: ReadableStream<Uint8Array>, options: RenderHTMLOptions) {
   // One copy is rendered to HTML here; the other rides along in that HTML for the client to hydrate from.
-  const [rscForSsr, rscForClient] = rscStream.tee();
+  const [rscForSsr, rscForClient] = forkFlightStream(rscStream);
 
   let payload: Promise<RscPayload>;
   function SsrRoot() {
@@ -124,7 +124,7 @@ export async function renderHTML(rscStream: ReadableStream<Uint8Array>, options:
     htmlStream = await renderToReadableStream(<SsrFailureDocument error={error} />, { nonce: options.nonce });
   }
 
-  const responseStream = htmlStream.pipeThrough(injectRSCPayload(rscForClient, options.nonce ? { nonce: options.nonce } : undefined));
+  const responseStream = htmlStream.pipeThrough(injectFlightPayload(rscForClient, { nonce: options.nonce }));
 
   return { stream: responseStream, status };
 }

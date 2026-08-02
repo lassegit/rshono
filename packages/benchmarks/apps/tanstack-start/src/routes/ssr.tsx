@@ -1,44 +1,25 @@
 import { createFileRoute } from '@tanstack/react-router';
-import { getUsers } from '../server-fns';
+import { createServerFn } from '@tanstack/react-start';
+import { renderServerComponent } from '@tanstack/react-start/rsc';
 
-/** APP_SPEC.md `/ssr`: dynamic, 100 rows. Excluded from prerendering in vite.config.ts. */
+/**
+ * APP_SPEC.md `/ssr`: dynamic, 100 rows. Excluded from prerendering in vite.config.ts.
+ *
+ * The table is a server component rather than route markup, so this route pays the same flight
+ * encode/decode round trip per request that rshono and Next pay. `renderServerComponent` rather
+ * than `createCompositeComponent` because the page has no client components to slot in.
+ */
+const getUsersTable = createServerFn().handler(async () => {
+  const [{ users, summary }, { UsersTable }] = await Promise.all([import('../data'), import('../components/users-table')]);
+  return { Table: await renderServerComponent(<UsersTable users={users} summary={summary} />) };
+});
+
 export const Route = createFileRoute('/ssr')({
-  loader: () => getUsers(),
+  loader: () => getUsersTable(),
   component: Ssr,
 });
 
 function Ssr() {
-  const { users, summary } = Route.useLoaderData();
-
-  return (
-    <>
-      <h1>Users</h1>
-      <p className="summary">
-        {summary.count} users · {summary.totalScore.toLocaleString('en-US')} total score · {summary.admins} admins
-      </p>
-      <table>
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Name</th>
-            <th>Email</th>
-            <th>Role</th>
-            <th className="num">Score</th>
-          </tr>
-        </thead>
-        <tbody>
-          {users.map((user) => (
-            <tr key={user.id}>
-              <td className="num">{user.id}</td>
-              <td>{user.name}</td>
-              <td>{user.email}</td>
-              <td>{user.role}</td>
-              <td className="num">{user.score}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      <p className="summary">Rendered per request.</p>
-    </>
-  );
+  const { Table } = Route.useLoaderData();
+  return <>{Table}</>;
 }

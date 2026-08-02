@@ -66,7 +66,12 @@ for (const target of targets) {
   }
 
   out.targets[target.id] = { label: target.label, routes, rssIdle, rssLoaded, startupMs: server.readyMs };
-  if (rssIdle) console.log(`  rss idle ${bytes(rssIdle.bytes)} (${rssIdle.processes} proc) → loaded ${bytes(rssLoaded?.bytes)}`);
+  if (rssIdle) {
+    console.log(`  rss idle ${bytes(rssIdle.bytes)} (${rssIdle.processes} proc) → loaded ${bytes(rssLoaded?.bytes)}`);
+    // The tree total on its own invites the wrong conclusion — most of it is usually `npm` and a
+    // shell sitting idle. Print who holds what so the number is attributable.
+    for (const p of rssLoaded?.breakdown ?? []) console.log(`    ${bytes(p.bytes).padStart(10)}  ${p.comm} (pid ${p.pid})`);
+  }
 }
 
 for (const route of ROUTES) {
