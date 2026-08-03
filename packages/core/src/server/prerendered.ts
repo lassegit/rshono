@@ -47,6 +47,66 @@ export function prerenderedRelPath(requestPath: string, variant: PrerenderVarian
   return ssgFilePath(requestPath, variant);
 }
 
+/**
+ * A bounded, insertion-ordered cache of prerendered pages.
+ *
+ * Bounded so a site with thousands of prerendered pages keeps a working set rather than the whole build
+ * in memory. Only *hits* are ever stored: caching misses would let anyone mint entries by requesting
+ * paths that don't exist. The files are written at build time and never change while the server is up,
+ * so an entry never needs invalidating.
+ *
+ * Shared because both targets need exactly this and had a hand-rolled copy of it, down to the same
+ * eviction line. (The client runtime's warmed-payload cache is deliberately not this: it evicts on
+ * *read*, because a prefetch is used at most once.)
+ */
+export function createPageCache(max = 128): { get(key: string): PrerenderedPage | undefined; set(key: string, page: PrerenderedPage): void } {
+  const pages = new Map<string, PrerenderedPage>();
+  return {
+    get: (key) => pages.get(key),
+    set(key, page) {
+      pages.set(key, page);
+      // Insertion-ordered, so the first key is the oldest. One entry in means at most one out.
+      if (pages.size > max) pages.delete(pages.keys().next().value!);
+    },
+  };
+}
+
+/**
+ * A weak `ETag` for a page body.
+ *
+ * Web Crypto rather than `node:crypto`, so the one implementation serves both a Node server and
+ * `workerd` — the Cloudflare runtime used to carry its own copy of this, with its own base64url
+ * conversion, purely because the other one reached for a Node builtin.
+ *
+ * Deliberately **weak**: the bytes on the wire depend on whether the client took gzip, and a strong
+ * validator would have to differ between those two — so the 200 and the 304 that revalidates it would
+ * disagree, and a cache would treat them as different pages. A weak tag says "the same
+ * representation", which is exactly what is true across content codings.
+ */
+export async function weakEtag(body: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(body));
+  const base64url = btoa(String.fromCharCode(...new Uint8Array(digest)))
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+  return `W/"${base64url.slice(0, 22)}"`;
+}
+
+/**
+ * Assembles a {@link PrerenderedPage} from a body just read out of the build.
+ *
+ * `storeEtag` is the validator the store supplied, where it has one — it already describes these exact
+ * bytes, so it is preferred over hashing them again, and only weakened. Both call sites went through
+ * their own copy of this before, with two different digest implementations.
+ */
+export async function toPrerenderedPage(body: string, storeEtag?: string | null): Promise<PrerenderedPage> {
+  return {
+    body,
+    contentLength: String(new TextEncoder().encode(body).byteLength),
+    etag: storeEtag ? storeEtag.replace(/^(?!W\/)/, 'W/') : await weakEtag(body),
+  };
+}
+
 /** A prerendered page, ready to serve: its body and a validator derived from those exact bytes. */
 export interface PrerenderedPage {
   /** The document or the flight payload, depending on which {@link PrerenderVariant} was read. */

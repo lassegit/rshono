@@ -5,8 +5,8 @@ import { FRAMEWORK_DEPS, NODE_ENGINE, RSHONO_RANGE } from './versions.js';
 
 /**
  * The scripts every app gets. `start` is not among them, because it means something different per
- * platform: the three targets that run the build themselves — node, bun, deno — each contribute their
- * own, and a platform target contributes a `deploy` instead, where its platform has one command to give.
+ * platform: `node` is the one target that runs the build itself, so it contributes its own, and a
+ * platform target contributes a `deploy` instead, where its platform has one command to give.
  */
 const BASE_SCRIPTS: Record<string, string> = {
   dev: 'rshono dev',

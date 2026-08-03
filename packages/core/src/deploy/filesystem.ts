@@ -29,7 +29,7 @@ const publicDir = isDev ? join(rootDir, 'public') : join(rootDir, 'dist', 'publi
 /**
  * Everything a deploy target with a real filesystem does the same way.
  *
- * Node, Bun, Deno and the serverless runtimes that unpack a bundle onto disk (Vercel, Netlify, Lambda)
+ * Node and the serverless runtimes that unpack a bundle onto a read-only disk (Vercel, AWS Lambda)
  * differ only in how the finished app is handed over — so each of those presets is this object plus
  * its own {@link DeployRuntime.serveApp}, and the implementations live once, in `server/`.
  */

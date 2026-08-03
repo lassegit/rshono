@@ -46,10 +46,6 @@ export interface RSHonoConfig {
    * The origin is what's used; a path is rejected rather than silently dropped.
    */
   siteUrl?: string;
-  /** Default port for `dev` / `start`. Overridden by the `--port` flag or the `PORT` env var. Default `3000`. */
-  port?: number;
-  /** Bind address for `start`. Overridden by the `HOST` env var. Default `'0.0.0.0'`. */
-  host?: string;
   /**
    * Honour `X-Forwarded-Host` / `X-Forwarded-Proto` when resolving the browser-facing request
    * URL (`getContext().url`, a page's `url` prop, and the origin the CSRF check compares against).

@@ -5,8 +5,8 @@ import { defineConfig } from '@rshono/core';
  * defaults, kept as documentation of what is there to change.
  *
  * The framework settings are compiled into the server bundle at build time, so changing one means a
- * rebuild; there is no env-var interface for them. `--port`/`PORT` and `HOST` are the two exceptions,
- * and they win over what is written here.
+ * rebuild; there is no env-var interface for them. The port and bind address are not settings at all —
+ * they are `--port` / `PORT` and `HOST`.
  */
 export default defineConfig({
   /** Where `build` targets. Overridable per build with `--deploy` or `RSHONO_DEPLOY`. */
@@ -17,9 +17,6 @@ export default defineConfig({
    * bearing rather than decorative. Without it the build warns and every canonical points at localhost.
    */
   siteUrl: 'https://www.rshono.com',
-
-  // port: 3000,          // default for dev/start
-  // host: '0.0.0.0',     // bind address for start
 
   // trustProxy: false,   // honour X-Forwarded-Host/-Proto — only behind a proxy you control
   // checkOrigin: true,   // CSRF origin check on server-action POSTs

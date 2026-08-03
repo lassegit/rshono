@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { NavigationProgress } from '@rshono/core/client';
 import { Logo } from './logo';
 import '../styles.css';
 
@@ -14,7 +13,6 @@ export function Layout({ title = 'rshono', description, children }: { title?: st
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
       </head>
       <body>
-        <NavigationProgress />
         <header>
           <nav>
             <a href="/" className="logo">

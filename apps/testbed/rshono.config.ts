@@ -5,7 +5,6 @@ export default defineConfig({
   // Server
   deploy: 'node', // where `build` targets: node | bun | deno | cloudflare | vercel | netlify | aws-lambda
   siteUrl: 'https://rshono.example', // public origin, baked into prerendered pages' absolute URLs
-  port: 3000, // a --port flag or PORT env var still wins
 
   // Security & limits
   trustProxy: false, // honour X-Forwarded-Host/-Proto — only behind a proxy you control

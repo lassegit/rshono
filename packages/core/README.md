@@ -169,8 +169,6 @@ import { defineConfig } from '@rshono/core';
 export default defineConfig({
   deploy: 'node', // hosting platform to build for — see Deployment (--deploy or RSHONO_DEPLOY override)
   siteUrl: 'https://example.com', // public origin, baked into prerendered pages' absolute URLs
-  port: 3000, // default port for dev/start (--port or PORT env override)
-  host: '0.0.0.0', // bind address for start (HOST env overrides)
   trustProxy: false, // honour X-Forwarded-Host/-Proto — only behind a proxy you control
   checkOrigin: true, // CSRF origin check on server-action POSTs
   allowedOrigins: [], // extra origins allowed to post actions, e.g. ['https://admin.example.com']
@@ -185,7 +183,11 @@ export default defineConfig({
 });
 ```
 
-`defineConfig` is an identity helper for editor autocomplete; `export default { … } satisfies RSHonoConfig` works too. `deploy`/`port`/`host`/`rspack` are consumed by the CLI; the framework settings (`trustProxy`, `checkOrigin`, `allowedOrigins`, `csp`, `cspDirectives`, `bodySizeLimit`, `renderTimeout`, `compress`) are resolved from this file at build time and **compiled into the server bundle** — there is no parallel env-var interface for them (environment variables are for secrets). Changing one of these settings means a rebuild. The two deployment-conventional exceptions stay env-overridable: `--port`/`PORT` and `HOST` win over the file, which wins over the built-in default. Point `rshono build` at a different config with `--config <path>`.
+`defineConfig` is an identity helper for editor autocomplete; `export default { … } satisfies RSHonoConfig` works too. `deploy` and `rspack` are consumed by the CLI; the framework settings (`trustProxy`, `checkOrigin`, `allowedOrigins`, `csp`, `cspDirectives`, `bodySizeLimit`, `renderTimeout`, `compress`) are resolved from this file at build time and **compiled into the server bundle** — there is no parallel env-var interface for them (environment variables are for secrets). Changing one of these settings means a rebuild. Point `rshono build` at a different config with `--config <path>`.
+
+**The port and bind address are not config fields.** They are `--port` / `PORT` and `HOST`, in that precedence order, falling back to `3000` and `0.0.0.0` — because on every host that runs this (a container, a process manager, a PaaS) the environment is what sets them, so a config field would only have been a level that always loses.
+
+A `.ts` config is loaded by Node's own type stripping, with no TypeScript loader in the dependency tree. The one thing that costs: Node will not resolve a `.js` specifier to the `.ts` file beside it, so a config that imports a sibling module has to name it with its real extension (or be an `.mjs` file).
 
 ## Security & hardening
 
@@ -245,29 +247,32 @@ Everything in that bundle that depends on _where_ it runs — binding a port, se
 
 `rshono build` targets one platform. Pick it with `deploy` in the config, `--deploy <name>`, or `RSHONO_DEPLOY` (in that precedence order); the default is `node`. `rshono dev` always runs the Node dev server whatever you choose — the target is a property of the build, not of developing.
 
-| `deploy`     | Handoff                          | Assets & prerendered pages                                      | After `build`                                         |
-| ------------ | -------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------- |
-| `node`       | binds a port                     | from `dist/` on disk                                            | `rshono start`                                        |
-| `bun`        | `{ fetch, port }` default export | from `dist/` on disk                                            | `bun dist/server/main.mjs`                            |
-| `deno`       | `{ fetch }` default export       | from `dist/` on disk                                            | `deno serve -A dist/server/main.mjs`                  |
-| `cloudflare` | `{ fetch }` default export       | Workers Assets; prerendered pages read via the `ASSETS` binding | `wrangler deploy`                                     |
-| `vercel`     | web handler in a Node function   | CDN for assets; prerendered pages inside the function           | `vercel deploy --prebuilt`                            |
-| `netlify`    | web handler, Functions v2        | CDN for assets; prerendered pages inside the function           | `netlify deploy --build=false --dir=.netlify/publish` |
-| `aws-lambda` | streaming handler (Function URL) | from the deployment package                                     | zip `dist/`, handler `dist/server/main.mjs`           |
+| `deploy`     | Handoff                          | Assets & prerendered pages                                      | After `build`                               |
+| ------------ | -------------------------------- | --------------------------------------------------------------- | ------------------------------------------- |
+| `node`       | binds a port                     | from `dist/` on disk                                            | `rshono start`                              |
+| `cloudflare` | `{ fetch }` default export       | Workers Assets; prerendered pages read via the `ASSETS` binding | `wrangler deploy`                           |
+| `vercel`     | web handler in a Node function   | CDN for assets; prerendered pages inside the function           | `vercel deploy --prebuilt`                  |
+| `aws-lambda` | streaming handler (Function URL) | from the deployment package                                     | zip `dist/`, handler `dist/server/main.mjs` |
+
+One target per _handoff_ — the thing an app cannot arrange for itself. Everything else about a platform sits behind `DeployRuntime`, and `node`, `vercel` and `aws-lambda` share one filesystem implementation.
 
 Every target streams: a page's HTML reaches the browser as it renders, which is the whole reason the SSR shell is worth having. That is the bar a new target has to clear.
 
 Notes worth knowing before choosing one:
 
+- **`node` is not only Node.** Anything that runs a Node process runs this build — a VPS, a container, a PaaS. **Bun** (`bun dist/server/main.mjs`) and **Deno** (`deno run -A dist/server/main.mjs`) are expected to as well, since the listener is `@hono/node-server` and both implement the `node:` APIs it needs. They had a target each; neither held anything beyond a default export, so running the `node` build replaces it. The suite runs on Node, so treat those two as an expectation rather than a guarantee.
+- **Netlify is not a target.** It was, and it was removed. Its handoff is `hono/netlify`'s `handle(app)` plus a `functions-internal` entry declaring `path: '/*'` and `preferStatic: true` — reconstructible, but you maintain it. If you want the preset back, ask.
+- **Do not reach for the `app` export to make your own handler.** The entry evaluates `runtime.serveApp(app)` at module scope, so importing a `node` build binds a port as a side effect. Build for the target you're deploying to.
+- **Streaming is the fragile part of a serverless target**, and it fails silently. Vercel needs `supportsResponseStreaming: true` in `.vc-config.json` or it buffers the whole response; Lambda needs `awslambda.streamifyResponse` and a Function URL in `RESPONSE_STREAM` mode. Both are what their preset exists to get right — the deployment works either way, it just stops streaming.
+- **AWS** means a Lambda Function URL with the invoke mode set to `RESPONSE_STREAM`, usually with CloudFront in front for `/_static` and `public/`. **Lambda@Edge is deliberately not a target**: CloudFront returns the response as a value rather than a stream, caps a generated origin-request response near 1 MB, and supports no environment variables at all — so `getContext().env` would be empty there, which is a documented feature quietly doing nothing.
 - **Cloudflare** bundles all your dependencies (a Worker resolves no `node_modules` at runtime), so a dependency that needs a real `node:` API beyond `nodejs_compat` will not work. The build scaffolds a `wrangler.jsonc` if the project has none — including `nodejs_compat`, which the request context needs for `AsyncLocalStorage` — and never touches it again. Bindings (D1, KV, R2) arrive as `getContext().env`; they are not available under `rshono dev`, which is plain Node.
 - **Prerendered pages are never CDN-served.** One URL answers with an HTML document or a flight payload depending on `Accept`, and a path-keyed CDN cannot choose, so the app always handles page URLs. Assets under `/_static` and `public/` do go straight to the CDN where there is one.
-- **Compression** is left to the platform on `cloudflare`, `vercel` and `netlify`; the framework's streaming gzip is used on `node`, `bun`, `deno` and `aws-lambda`. Your `compress` setting only decides whether an available compressor is used.
-- **AWS** means a Lambda Function URL with the invoke mode set to `RESPONSE_STREAM`, usually with CloudFront in front for `/_static` and `public/`. **Lambda@Edge is deliberately not a target**: CloudFront returns the response as a value rather than a stream, caps a generated origin-request response near 1 MB, and supports no environment variables at all — so `getContext().env` would be empty there, which is a documented feature quietly doing nothing.
+- **Compression** is left to the platform on `cloudflare` and `vercel`, which compress at the edge (and `workerd` has no zlib stream to do it with anyway); the framework's streaming gzip is used on `node` and `aws-lambda`. Your `compress` setting only decides whether an available compressor is used.
 - `rshono start` refuses a build made for another platform rather than starting a bundle with no listener in it.
 
 ## Requirements & limitations
 
-- Node ≥ 22.1 (worker threads, `process.loadEnvFile`, `Promise.withResolvers`, `URL.parse`), React ≥ 19.1 (the floor `react-server-dom-rspack` itself requires).
+- Node ≥ 22.18 (worker threads, `process.loadEnvFile`, `Promise.withResolvers`, `URL.parse`, and native TypeScript stripping so a `.ts` config needs no loader), React ≥ 19.1 (the floor `react-server-dom-rspack` itself requires).
 - Responses are gzipped, not brotli — one encoding every client accepts, chosen per chunk so streaming survives. Set `compress: false` behind a proxy that does better.
 - Dev-mode proxy doesn't forward WebSocket upgrades to a custom sub-app (prod is unaffected — the bundle owns the socket there).
 - Dev source maps embed the original source of `'use server'` action modules (dev binds to 127.0.0.1 only; production ships no client source maps).

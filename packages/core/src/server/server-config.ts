@@ -32,18 +32,16 @@ export interface ServerConfig {
   maxBodyBytes: number;
   /** Gzip compressible responses on the way out. */
   compress: boolean;
-  /** Default listen port for `start` (overridden by `PORT`). */
-  port?: number;
-  /** Default bind address for `start` (overridden by `HOST`). */
-  host?: string;
 }
 
 /**
  * The single source of truth for the framework's built-in defaults.
  *
- * `renderTimeoutMs` and `maxBodyBytes` are resolved here, into the bundle. `port` and `host` are not:
- * they stay env-overridable at runtime, so the default is applied where the address is resolved
- * (`deploy/listen.ts` for a server bundle, `cli/dev.ts` for the dev server) and this is what both read.
+ * `renderTimeoutMs` and `maxBodyBytes` are resolved here, into the bundle. `port` and `host` are not
+ * settings at all: they are read from `PORT` / `HOST` (or `--port`) wherever the address is resolved
+ * — `deploy/node/runtime.ts` for a server bundle, `cli/dev.ts` for the dev server — and this is the
+ * default both fall back to. A config field for them would have been a fourth precedence level for
+ * one number, overridden by the environment on every host that matters.
  */
 export const SERVER_DEFAULTS = {
   renderTimeoutMs: 10_000,
@@ -132,7 +130,5 @@ export function resolveServerConfig(config: RSHonoConfig, { isDev }: { isDev: bo
       .map(normalizeOrigin),
     maxBodyBytes: parseByteSize(config.bodySizeLimit) ?? SERVER_DEFAULTS.maxBodyBytes,
     compress: config.compress ?? true,
-    port: config.port,
-    host: config.host,
   };
 }

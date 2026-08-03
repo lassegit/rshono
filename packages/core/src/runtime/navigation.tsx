@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, type ReactNode } from 'react';
 
 /**
  * Imperative navigation actions, reached as `useNavigation().router`.
@@ -14,15 +14,14 @@ export interface Router {
   push(href: string): void;
   /** Navigates to `href`, replacing the current history entry instead of adding one. */
   replace(href: string): void;
-  /** Goes back one history entry — `history.back()`. */
-  back(): void;
-  /** Goes forward one history entry — `history.forward()`. */
-  forward(): void;
   /** Re-fetches the current route from the server, re-running its server components. */
   refresh(): void;
   /** `true` while a soft navigation is in flight — use it to disable controls or show a spinner. */
   pending: boolean;
 }
+
+// No `back()` / `forward()`: they were verbatim aliases for `history.back()` and `history.forward()`,
+// which need no framework. Traversal is picked up by the `popstate` listener either way.
 
 /** The current location plus the {@link Router}, as returned by {@link useNavigation}. */
 export interface Navigation {
@@ -40,7 +39,7 @@ export interface Navigation {
 
 const noop = () => {};
 
-const defaultRouter: Router = { push: noop, replace: noop, back: noop, forward: noop, refresh: noop, pending: false };
+const defaultRouter: Router = { push: noop, replace: noop, refresh: noop, pending: false };
 
 /**
  * Carries the live {@link Router} implementation from the hydration runtime down
@@ -95,8 +94,7 @@ export function RouterProvider({ href, params, children }: { href: string; param
  * ```
  *
  * @returns The current {@link Navigation}: `url` and `params`, plus `router`
- * ({@link Router}) with `push` / `replace` / `back` / `forward` / `refresh` /
- * `pending`.
+ * ({@link Router}) with `push` / `replace` / `refresh` / `pending`.
  * @throws If called outside a page's React tree, where there is no navigation
  *   context to read.
  */
@@ -110,63 +108,15 @@ export function useNavigation(): Navigation {
   return value;
 }
 
-export interface NavigationProgressProps {
-  /** Bar color. Defaults to a neutral blue. */
-  color?: string;
-  /** Bar height in pixels. Defaults to `3`. */
-  height?: number;
-}
-
-/**
- * An opt-in top progress bar that appears while a client navigation is in
- * flight (driven by {@link Router.pending}). Drop one instance in your root
- * layout; it renders nothing on the server and stays invisible until the first
- * soft navigation, so there's no hydration flicker.
- *
- * @example
- * ```tsx
- * import { NavigationProgress } from '@rshono/core/client';
- *
- * // in your layout, once:
- * <body>
- *   <NavigationProgress />
- *   {children}
- * </body>
- * ```
- */
-export function NavigationProgress({ color = '#3b82f6', height = 3 }: NavigationProgressProps = {}): ReactNode {
-  const { router } = useNavigation();
-  const [bar, setBar] = useState({ width: 0, opacity: 0 });
-
-  useEffect(() => {
-    if (router.pending) {
-      // Jump in, then creep toward — but never reach — the end while we wait.
-      setBar({ width: 15, opacity: 1 });
-      const ramp = setTimeout(() => setBar({ width: 85, opacity: 1 }), 80);
-      return () => clearTimeout(ramp);
-    }
-    // Done: snap to full, then fade out. (No-op if it was never shown.)
-    setBar((b) => (b.opacity === 0 ? b : { width: 100, opacity: 1 }));
-    const hide = setTimeout(() => setBar({ width: 0, opacity: 0 }), 220);
-    return () => clearTimeout(hide);
-  }, [router.pending]);
-
-  return (
-    <div
-      data-rshono-progress=""
-      aria-hidden="true"
-      style={{
-        position: 'fixed',
-        top: 0,
-        left: 0,
-        height,
-        width: `${bar.width}%`,
-        opacity: bar.opacity,
-        background: color,
-        zIndex: 2147483647,
-        pointerEvents: 'none',
-        transition: 'width 200ms ease-out, opacity 200ms ease-out',
-      }}
-    />
-  );
-}
+// A `<NavigationProgress>` bar used to live here. It read nothing but `useNavigation().router.pending`
+// — no framework-internal knowledge at all — so it was app code that happened to ship in the
+// framework, and styling opinions with it. Twenty lines in a project that wants one:
+//
+//   'use client';
+//   import { useNavigation } from '@rshono/core/client';
+//
+//   export function NavigationProgress() {
+//     const { router } = useNavigation();
+//     return <div aria-hidden style={{ position: 'fixed', inset: '0 auto auto 0', height: 3,
+//       width: router.pending ? '85%' : 0, background: '#3b82f6', transition: 'width 200ms' }} />;
+//   }

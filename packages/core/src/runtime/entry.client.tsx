@@ -7,7 +7,6 @@ import {
   encodeReply,
   setServerCallback,
 } from 'react-server-dom-rspack/client.browser';
-import { rscStream } from 'rsc-html-stream/client';
 import { isControlDigest, parseRedirectDigest } from './control.js';
 import type { DevMessage } from './dev-protocol.js';
 import type { RscPayload } from './entry.rsc.js';
@@ -15,6 +14,47 @@ import { RouterContext, type Router } from './navigation.js';
 import { createRscRequest } from './request.js';
 
 const isDev = process.env.NODE_ENV === 'development';
+
+declare global {
+  /** The array the payload `<script>` tags `flight-inject.ts` emits push their chunks into. */
+  var __FLIGHT_DATA: Array<string | Uint8Array> | undefined;
+}
+
+/**
+ * The flight payload the document carried, read back out of `__FLIGHT_DATA`.
+ *
+ * The reader for the format `flight-inject.ts` writes — 14 lines, which is the whole reason neither
+ * half of `rsc-html-stream` is a dependency: its server half mishandles a split document trailer
+ * (see `flight-inject.ts`), and once that one is first-party, keeping the package for this one is a
+ * dependency for a `for` loop.
+ */
+function readFlightPayload(): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  // Assigned synchronously by `start`, which `new ReadableStream` runs before it returns.
+  let controller!: ReadableStreamDefaultController<Uint8Array>;
+  const stream = new ReadableStream<Uint8Array>({
+    start: (c) => void (controller = c),
+  });
+  const enqueue = (chunk: string | Uint8Array) => controller.enqueue(typeof chunk === 'string' ? encoder.encode(chunk) : chunk);
+
+  // Payload scripts interleave with the document, so some have already run by the time this module
+  // is evaluated — those are in the array — and the rest run after it, arriving through `push`.
+  const data = (self.__FLIGHT_DATA ??= []);
+  for (const chunk of data) enqueue(chunk);
+  data.push = enqueue as typeof data.push;
+
+  // The last payload script lands before the document finishes parsing, so that is what says there
+  // is no more of it to come.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => controller.close(), { once: true });
+  } else {
+    controller.close();
+  }
+  return stream;
+}
+
+/** Created at module evaluation, not inside `main()`, so no chunk can be pushed before it is watching. */
+const flightStream = readFlightPayload();
 
 /**
  * Guarantees somewhere to attach the fatal overlay. React's root container is the whole `document`,
@@ -140,7 +180,7 @@ async function main() {
     void run();
   };
 
-  const initialPayload = await createFromReadableStream<RscPayload>(rscStream);
+  const initialPayload = await createFromReadableStream<RscPayload>(flightStream);
 
   function push(href: string) {
     const target = new URL(href, window.location.href);
@@ -160,8 +200,6 @@ async function main() {
     window.history.replaceState(null, '', target.href);
   }
 
-  const back = () => window.history.back();
-  const forward = () => window.history.forward();
   // A refresh keeps the URL, so it can't ride the history patch like push/replace — it drives the flight re-fetch directly (bypassing any warmed cache to get fresh data).
   const refresh = () =>
     startNav(async () => {
@@ -234,7 +272,7 @@ async function main() {
       };
     }, []);
 
-    const router = React.useMemo<Router>(() => ({ push, replace, back, forward, refresh, pending }), [pending]);
+    const router = React.useMemo<Router>(() => ({ push, replace, refresh, pending }), [pending]);
 
     return <RouterContext.Provider value={router}>{payload.root}</RouterContext.Provider>;
   }

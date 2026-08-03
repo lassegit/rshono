@@ -33,7 +33,7 @@ import { getContext, publicUrl, readParams, reportServerError, runWithContext } 
 import { isControlSignal, RedirectSignal, type ControlSignal } from './control.js';
 import { renderHTML } from './entry.ssr.js';
 import { RouterProvider } from './navigation.js';
-import { acceptsRsc, isActionRequest, parseRenderRequest, wantsRsc } from './request.js';
+import { acceptsRsc, isActionRequest, parseRenderRequest, requestWantsRsc, wantsRsc } from './request.js';
 
 const serverApp = ((serverAppModule as { default?: unknown }).default ?? null) as Hono | null;
 
@@ -449,7 +449,7 @@ function buildApp(): Hono {
 
   /** Turns a thrown `redirect()` / `notFound()` into the response it stands for. */
   const respondToControlSignal = async (c: Context, signal: ControlSignal): Promise<Response> => {
-    const isRsc = wantsRsc(parseRenderRequest(c.req.raw));
+    const isRsc = requestWantsRsc(c.req.raw);
     if (signal instanceof RedirectSignal) {
       if (isRsc) {
         return c.body(renderToReadableStream({ root: null, redirect: signal.location } satisfies RscPayload, { signal: c.req.raw.signal }), 200, {
@@ -475,11 +475,13 @@ function buildApp(): Hono {
         try {
           if (servesPrerendered && c.req.method === 'GET') {
             const isRsc = acceptsRsc(c.req.raw);
-            // Both representations are prerendered, so a soft navigation is served from the build too
-            // rather than re-rendering a page that was already built. The exception is the HTML
-            // under `csp`, which has to be rendered per request to carry its nonce — the flight
-            // payload never carries one, so it stays servable either way.
-            if (!(cspEnabled && !isRsc)) {
+            // A prerendered file is one fixed set of bytes, so it cannot carry a per-request nonce:
+            // under `csp` the *document* has to be rendered per request. The flight payload never
+            // carries a nonce, so it stays servable from the build either way.
+            const mustRenderForNonce = cspEnabled && !isRsc;
+            // Otherwise both representations come from the build, so a soft navigation is served from
+            // it too rather than re-rendering a page that was already built.
+            if (!mustRenderForNonce) {
               const page = await runtime.readPrerendered(c, isRsc ? 'flight' : 'html');
               // A prerendered page is request-independent by construction, so it is safe to cache
               // publicly; the short max-age matches what `public/` files get. The ETag turns the
@@ -521,7 +523,7 @@ function buildApp(): Hono {
   runtime.mountPublicFallback(app);
 
   app.notFound(async (c) => {
-    const isRsc = wantsRsc(parseRenderRequest(c.req.raw));
+    const isRsc = requestWantsRsc(c.req.raw);
     if (loadNotFoundPage && (isRsc || acceptsHtml(c))) {
       return runWithContext(c, async () => renderComponent(c, await loadNotFoundPage(), { status: 404, isRsc }));
     }
@@ -532,7 +534,7 @@ function buildApp(): Hono {
   app.onError(async (error, c) => {
     if (isControlSignal(error)) return runWithContext(c, () => respondToControlSignal(c, error));
     reportServerError(error, { source: 'request', request: c.req.raw, message: '[rshono] request error:' });
-    const isRsc = wantsRsc(parseRenderRequest(c.req.raw));
+    const isRsc = requestWantsRsc(c.req.raw);
     if (loadErrorPage && (isRsc || acceptsHtml(c))) {
       const errorInfo: ErrorInfo = isDev
         ? {

@@ -46,7 +46,7 @@ export default async function Profile({ params, ctx }: PageProps<'/profile/:id'>
 const REASONS = [
   {
     title: 'An API you can finish reading',
-    body: 'Eleven exported values across three import paths. defineRoutes, getContext, useNavigation and eight more — that is the framework. No second router to learn later, no unstable_ tier, nothing that behaves differently depending on which directory you called it from.',
+    body: 'Nine exported values across three import paths. defineRoutes, getContext, useNavigation and six more — that is the framework. No second router to learn later, no unstable_ tier, nothing that behaves differently depending on which directory you called it from.',
   },
   {
     title: 'Your architecture, not the router’s',

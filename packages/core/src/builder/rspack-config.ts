@@ -14,7 +14,7 @@ import { publicEnv } from './public-env.js';
 const FRAMEWORK_DIST = join(import.meta.dirname, '..');
 const FRAMEWORK_ROOT = join(FRAMEWORK_DIST, '..');
 
-const BUNDLED_PACKAGES = /^(@rshono\/core|react|react-dom|react-server-dom-rspack|rsc-html-stream|hono|@hono\/node-server)(\/|$)/;
+const BUNDLED_PACKAGES = /^(@rshono\/core|react|react-dom|react-server-dom-rspack|hono|@hono\/node-server)(\/|$)/;
 
 /**
  * Packages that end up imported *by app source* without the app ever mentioning them: the RSC

@@ -376,11 +376,11 @@ function Arguments({ linksHtml, contextHtml }: { linksHtml: string; contextHtml:
         <article>
           <h3 className="mb-3 text-lg font-medium text-zinc-900 dark:text-white">An API you can finish reading</h3>
           <p className="mb-4 text-zinc-600 dark:text-zinc-400">
-            rshono exports <strong>eleven values</strong> across three import paths. <code>defineRoutes</code>, <code>defineConfig</code> and{' '}
-            <code>isPageRoute</code> from the root; <code>getContext</code>, <code>redirect</code>, <code>notFound</code> and{' '}
-            <code>onServerError</code> from <code>/server</code>; <code>useNavigation</code>, <code>Boundary</code>, <code>ErrorBoundary</code> and{' '}
-            <code>NavigationProgress</code> from <code>/client</code>. That is the whole framework. There is no second router to learn later, no{' '}
-            <code>unstable_</code> tier, and nothing that behaves differently depending on which directory you called it from.
+            rshono exports <strong>nine values</strong> across three import paths. <code>defineRoutes</code> and <code>defineConfig</code> from the
+            root; <code>getContext</code>, <code>redirect</code>, <code>notFound</code> and <code>onServerError</code> from <code>/server</code>;{' '}
+            <code>useNavigation</code>, <code>Boundary</code> and <code>ErrorBoundary</code> from <code>/client</code>. That is the whole framework.
+            There is no second router to learn later, no <code>unstable_</code> tier, and nothing that behaves differently depending on which directory
+            you called it from.
           </p>
           <p className="text-zinc-600 dark:text-zinc-400">
             For contrast, <code>next/navigation</code> alone exports five hooks and a family of control-flow throws, and it is one of twenty-three

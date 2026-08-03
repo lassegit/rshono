@@ -1,4 +1,4 @@
-import { NavigationProgress } from '@rshono/core/client';
+import { NavigationProgress } from './navigation-progress';
 import type { ReactNode } from 'react';
 import '../styles.css';
 import { InlineCommand, SCAFFOLD_COMMAND } from './command-tabs';

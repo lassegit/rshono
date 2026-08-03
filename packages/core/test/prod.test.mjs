@@ -189,14 +189,6 @@ test('the navigation URL rides the flight payload so soft navigation stays in sy
   assert.match(flight, /profile\/1\?tab=settings/, 'the flight payload should carry the URL for the client router');
 });
 
-test('NavigationProgress renders on every page but starts hidden (no hydration flicker)', async () => {
-  const html = await (await fetch(`${base}/`)).text();
-  const bar = html.match(/<div data-rshono-progress="" [^>]*>/)?.[0];
-  assert.ok(bar, 'the opt-in <NavigationProgress /> should render into the layout');
-  assert.match(bar, /opacity:0/, 'the bar must be invisible at rest — nothing is navigating during SSR');
-  assert.match(bar, /width:0%/, 'the bar must have no width until a navigation is pending');
-});
-
 test('the client runtime ships whole, with its dev-only detail compiled out', () => {
   // What the runtime *does* — soft navigation, data-native/data-prefetch links, scroll restoration,
   // the fatal overlay — is covered in test/browser, where it actually runs. This is the build-level
