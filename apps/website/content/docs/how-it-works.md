@@ -45,9 +45,8 @@ expects: nothing where rshono owns the process, a `fetch` handler where the host
 - **unit** — the parsers and path maths: `bodySizeLimit`, `allowedOrigins`, SSG paths and traversal,
   control-signal digests, page-file scanning, `Vary`/`ETag` helpers. It imports the built `dist/`, so it
   also proves the published output loads in plain Node.
-- **compression** — that gzip does not swallow a streamed response. A chunk the renderer flushes has to
-  reach the client while the response is still open, which is the one property the platform
-  `CompressionStream` would quietly break.
+- **flight injection** — that the payload rides inside the document intact: one document trailer however
+  React chunked it, and every payload script inside `<body>`.
 - **production e2e** — builds a real app, boots the real production server, and asserts pages, flight
   protocol, actions (client and progressive enhancement), CSRF rejection, secret stripping in bundles
   _and_ rendered HTML, SSG output with `ETag`/304, cache and security headers, and error reporting.
@@ -61,6 +60,5 @@ expects: nothing where rshono owns the process, a `fetch` handler where the host
 - **dev** — a smoke test through the dev server's worker and proxy.
 
 `pnpm --filter @rshono/core test:browser` runs the Playwright suite against a production build:
-hydration, soft navigation, prefetch-on-hover, `useNavigation`, client-initiated actions, boundary
-fallbacks, scroll restoration and the fatal overlay — the client runtime, which no amount of asserting
-on HTML can reach.
+hydration, soft navigation, `useNavigation`, client-initiated actions, boundary fallbacks and the fatal
+overlay — the client runtime, which no amount of asserting on HTML can reach.

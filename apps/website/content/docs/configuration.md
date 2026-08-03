@@ -12,16 +12,12 @@ import { defineConfig } from '@rshono/core';
 export default defineConfig({
   deploy: 'node', // hosting platform to build for (--deploy or RSHONO_DEPLOY override)
   siteUrl: 'https://example.com', // public origin, baked into prerendered pages' absolute URLs
-  port: 3000, // default port for dev/start (--port or PORT env override)
-  host: '0.0.0.0', // bind address for start (HOST env overrides)
   trustProxy: false, // honour X-Forwarded-Host/-Proto — only behind a proxy you control
   checkOrigin: true, // CSRF origin check on server-action POSTs
   allowedOrigins: [], // extra origins allowed to post actions, e.g. ['https://admin.example.com']
   csp: false, // strict per-request-nonce Content-Security-Policy
   cspDirectives: {}, // widen the built-in CSP, e.g. { 'img-src': "'self' https://cdn.example.com" }
   bodySizeLimit: '1mb', // request body cap: '512kb' | 4_000_000 | false to disable
-  renderTimeout: 10_000, // ms deadline for a request (action + flight + SSR)
-  compress: true, // gzip compressible responses (streaming-safe)
   rspack(config, { isServer, isDev }) {
     return config; // escape hatch: mutate the generated Rspack config
   },
@@ -36,7 +32,7 @@ RSHonoConfig` works too.
 `deploy`, `port`, `host` and `rspack` are consumed by the CLI.
 
 The framework settings — `trustProxy`, `checkOrigin`, `allowedOrigins`, `csp`, `cspDirectives`,
-`bodySizeLimit`, `renderTimeout`, `compress` — are resolved from this file at build time and **compiled
+`bodySizeLimit` — are resolved from this file at build time and **compiled
 into the server bundle**. There is no parallel env-var interface for them; environment variables are for
 secrets. Changing one of these settings means a rebuild.
 

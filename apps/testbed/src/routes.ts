@@ -15,10 +15,6 @@ export const routes = defineRoutes({
       component: () => import('./components/crash'),
     },
     {
-      path: '/hang',
-      component: () => import('./components/hang'),
-    },
-    {
       path: '/login',
       component: () => import('./components/login'),
     },

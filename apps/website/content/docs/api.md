@@ -10,7 +10,7 @@ what there is to know about the surface.
 | --------------------- | ------------------------------------ | ------------------------------------------------------------------ |
 | `@rshono/core`        | build time, server                   | route and config declaration, and the types pages are written against |
 | `@rshono/core/server` | per request, server only             | the request context, `redirect` / `notFound`, error reporting      |
-| `@rshono/core/client` | browser, from `'use client'` modules | the navigation hook, the boundaries, the progress bar              |
+| `@rshono/core/client` | browser, from `'use client'` modules | the navigation hook and the boundaries                             |
 
 `@rshono/core` pulls in no runtime machinery — importing it from server code is free. `@rshono/core/server`
 from a `'use client'` module is a mistake: those run in the browser, where no request is bound. Read what
@@ -27,7 +27,6 @@ deeper path to import. Everything else is framework plumbing.
 | ------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `defineRoutes(config): RouteConfig`         | Declares the app's route table in `src/routes.ts`. Also accepts a bare `Route[]` as shorthand. Cross-checks every page's props against its own `path`. |
 | `defineConfig(config): RSHonoConfig`        | Types `rshono.config.ts`. Identity function — it exists for the autocomplete.                                    |
-| `isPageRoute(route): route is PageRoute`    | Narrows a `Route` to a `PageRoute`. Anything not explicitly `'endpoint'` is a page.                              |
 
 See [Routing](/docs/routing) and [Configuration](/docs/configuration).
 
@@ -50,7 +49,6 @@ See [Routing](/docs/routing) and [Configuration](/docs/configuration).
 | `RSHonoConfig`                | Every field of `rshono.config.ts`. All optional.                                                              |
 | `RspackHookContext`           | `{ isServer, isDev }`, handed to the `rspack` config hook.                                                    |
 | `DeployTarget`                | `'node'` \| `'cloudflare'` \| `'vercel'` \| `'aws-lambda'`.                                                   |
-| `Context`, `Handler`          | Re-exported from Hono, so an endpoint can type its `handler` without depending on `hono` directly.             |
 
 ## `@rshono/core/server`
 
@@ -86,17 +84,19 @@ only — one instance exists per request and application code never constructs i
 | Member                                     | What it is                                                                                     |
 | ------------------------------------------ | ---------------------------------------------------------------------------------------------- |
 | `url`                                      | The browser-facing `URL`, proxy-header aware. Parsed once and cached.                          |
-| `params`                                   | Matched route params. `{}` when there is no match, rather than a throw.                        |
-| `method`                                   | The request method.                                                                             |
 | `env`                                      | Process env merged with runtime bindings (bindings win). See [Environment](/docs/environment).  |
 | `var`                                      | Typed variables a middleware set with `c.set(…)`.                                              |
-| `req`                                      | The parsed Hono request.                                                                        |
-| `raw`                                      | The underlying Hono `Context` — the escape hatch for anything not exposed here.                 |
-| `header(name, value)`                      | Sets a response header.                                                                         |
+| `raw`                                      | The underlying Hono `Context` — the escape hatch for everything not above.                     |
 | `cookies.get(name)`                        | One cookie, or `undefined`.                                                                     |
 | `cookies.all()`                            | Every cookie as `{ name: value }`.                                                              |
 | `cookies.set(name, value, options?)`       | Sets a cookie on the response.                                                                  |
 | `cookies.delete(name, options?)`           | Clears one. Pass the `path`/`domain` it was set with.                                           |
+
+That is the whole wrapper, and deliberately short: what it adds over Hono's own `Context` is a
+proxy-aware cached URL, an env that merges runtime bindings over process env, and cookies without a
+second import. Anything else is `ctx.raw` — `ctx.raw.req` for the parsed request, `ctx.raw.req.method`,
+`ctx.raw.header(name, value)` to set a response header. Those had one-line getters on `Ctx` once; naming
+them twice bought nothing. Route params come to a page as its `params` prop.
 
 `ctx` can't be handed to a `'use client'` component — it wraps the live request. Reading it on a
 [`render: 'static'`](/docs/prerendering) page throws, because there is no request at build time.
@@ -117,8 +117,8 @@ in production, so a handler is the only place the real error is visible.
 
 ## `@rshono/core/client`
 
-Every export is itself a `'use client'` module, so a server component can render `Boundary` or
-`NavigationProgress` directly. The hook needs a client component.
+Every export is itself a `'use client'` module, so a server component can render `Boundary` directly. The
+hook needs a client component.
 
 ### Hook
 
@@ -144,10 +144,10 @@ export function NextPage() {
 }
 ```
 
-`router` holds `push(href)`, `replace(href)`, `back()`, `forward()`, `refresh()` and the `pending` flag.
-The first three and `refresh` are **soft** navigations: the new page's flight payload is fetched and
-applied in place, so client state outside the changed subtree survives. Off-site hrefs fall back to a
-full load.
+`router` holds `push(href)`, `replace(href)`, `refresh()` and the `pending` flag. All three are **soft**
+navigations: the new page's flight payload is fetched and applied in place, so client state outside the
+changed subtree survives. Off-site hrefs fall back to a full load. History traversal is `history.back()`
+and `history.forward()` — the router wrapped them once and added nothing, so it no longer does.
 
 ### Components
 
@@ -155,7 +155,6 @@ full load.
 | ---------------------------- | -------------------------------------------- | ------------------------------------------------------------------------------------------------ |
 | `<Boundary>`                 | `loading`, `error`, `onError`, `resetKeys`   | A Suspense fallback and an error fallback in one wrapper — the common case for an async section. |
 | `<ErrorBoundary>`            | `fallback`, `onError`, `resetKeys`           | Error boundary alone. Omit `fallback` to report and re-throw to the next boundary out.           |
-| `<NavigationProgress>`       | `color`, `height`                            | Top progress bar during soft navigation. Drop one in the root layout.                            |
 
 Both fallbacks on `Boundary` are optional: no `loading` shows nothing while loading, no `error` lets
 throws propagate to the next boundary out or the global error page. A `redirect()` is never absorbed by
@@ -170,4 +169,3 @@ either boundary — it's navigation, not failure.
 | `BoundaryProps`           | Props of `<Boundary>`.                                                                                    |
 | `ErrorBoundaryProps`      | Props of `<ErrorBoundary>`.                                                                               |
 | `ErrorFallback`           | `ReactNode`, or `(error, reset) => ReactNode`. The function form only works from a `'use client'` module.  |
-| `NavigationProgressProps` | Props of `<NavigationProgress>`.                                                                          |

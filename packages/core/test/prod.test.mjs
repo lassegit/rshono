@@ -431,14 +431,10 @@ test('a route that sets its own cache-control keeps it', async () => {
   assert.equal(res.headers.get('cache-control'), null, 'endpoint routes are raw Hono — the page default must not bleed into them');
 });
 
-test('compressible responses are gzipped, and say so in Vary', async () => {
+test('responses are not compressed — that is a proxy or CDN’s job now', async () => {
   const res = await fetch(`${base}/users`, { headers: { 'accept-encoding': 'gzip' } });
-  assert.equal(res.headers.get('content-encoding'), 'gzip');
-  assert.match(res.headers.get('vary'), /Accept-Encoding/);
-  assert.match(await res.text(), /Ada Lovelace/, 'and it still decodes to the real page');
-
-  const identity = await fetch(`${base}/users`, { headers: { 'accept-encoding': 'identity' } });
-  assert.equal(identity.headers.get('content-encoding'), null, 'a client that asks for no encoding gets none');
+  assert.equal(res.headers.get('content-encoding'), null, 'the framework ships no compressor');
+  assert.match(await res.text(), /Ada Lovelace/);
 });
 
 test('conventional root files in public/ are served at the web root', async () => {

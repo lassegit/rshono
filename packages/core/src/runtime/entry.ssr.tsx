@@ -97,7 +97,7 @@ export async function renderHTML(rscStream: ReadableStream<Uint8Array>, options:
   let reported: unknown;
   const onError = (error: unknown): void => {
     if (typeof (error as { digest?: unknown } | null)?.digest === 'string') return;
-    if (options.signal?.aborted) return; // an abort is the deadline or the client leaving, not a fault
+    if (options.signal?.aborted) return; // an abort is the client leaving, not a fault
     reported = error;
     options.onError?.(error);
   };

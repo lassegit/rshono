@@ -48,7 +48,7 @@ property of the build, not of developing.
 
 ## Requirements
 
-- **Node ≥ 22.1** — for worker threads, `process.loadEnvFile`, `Promise.withResolvers` and `URL.parse`.
+- **Node ≥ 22.18** — for worker threads, `process.loadEnvFile`, `Promise.withResolvers`, `URL.parse`, and native TypeScript stripping so a `.ts` config needs no loader.
 - **React ≥ 19.1** — the floor `react-server-dom-rspack` itself requires.
 
 ## Where to go next

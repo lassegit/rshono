@@ -120,12 +120,10 @@ describe('parseByteSize', () => {
 describe('resolveServerConfig', () => {
   test('applies the documented defaults', () => {
     const config = resolveServerConfig({}, { isDev: false });
-    assert.equal(config.renderTimeoutMs, 10_000);
     assert.equal(config.maxBodyBytes, 1024 * 1024);
     assert.equal(config.checkOrigin, true, 'CSRF checking is on unless turned off');
     assert.equal(config.trustProxy, false, 'proxy headers are never trusted by default');
     assert.equal(config.cspEnabled, false);
-    assert.equal(config.compress, true);
     assert.deepEqual(config.allowedOrigins, []);
     assert.equal(config.isDev, false, 'the build mode is baked in rather than read from NODE_ENV at runtime');
   });
@@ -155,9 +153,6 @@ describe('resolveServerConfig', () => {
     assert.equal('frame-ancestors' in cspDirectives, false, "'' removes a directive entirely");
   });
 
-  test('compress can be turned off for a proxy that already does it', () => {
-    assert.equal(resolveServerConfig({ compress: false }, { isDev: false }).compress, false);
-  });
 });
 
 describe('appendVary', () => {
@@ -184,7 +179,7 @@ describe('etagMatches', () => {
   const etag = '"abc123"';
   test('matches exact, weak and listed validators', () => {
     assert.equal(etagMatches(etag, etag), true);
-    assert.equal(etagMatches(`W/${etag}`, etag), true, 'the compressor weakens the tag it sent');
+    assert.equal(etagMatches(`W/${etag}`, etag), true, 'a proxy that re-encoded the bytes may weaken the tag');
     assert.equal(etagMatches(`"other", ${etag}`, etag), true);
     assert.equal(etagMatches('*', etag), true);
   });
@@ -465,7 +460,9 @@ describe('Ctx enumerability', () => {
   test('the wrapper still resolves request data through the hidden context', () => {
     const ctx = new Ctx(fakeHonoContext);
     assert.equal(ctx.url.pathname, '/');
-    assert.deepEqual(ctx.params, {});
+    // The pass-through getters (`req`, `method`, `params`) and the `header()` setter are gone; what they
+    // named is reached through `raw`, which is the only way in now.
+    assert.equal(ctx.raw.req.url, 'http://example.test/');
   });
 });
 

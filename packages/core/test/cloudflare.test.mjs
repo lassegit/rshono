@@ -120,7 +120,7 @@ describe('serving from a Worker', () => {
     assert.ok(body.startsWith('<!DOCTYPE html>'));
     assert.equal(res.headers.get('cache-control'), 'public, max-age=300');
     assert.ok(res.headers.get('vary')?.includes('Accept'), 'one URL, two representations');
-    assert.match(res.headers.get('etag') ?? '', /^W\//, 'weak, because compression changes the bytes but not the representation');
+    assert.match(res.headers.get('etag') ?? '', /^W\//, 'weak: something in front may re-encode the bytes without changing the representation');
   });
 
   test('answers the same URL with the prerendered flight payload when asked for one', async () => {
@@ -151,12 +151,6 @@ describe('serving from a Worker', () => {
     const res = await fetchWorker('/__ssg/docs/getting-started/index.html');
     await res.text();
     assert.equal(res.status, 404, 'a page has one URL; the store prefix is not it');
-  });
-
-  test('does not compress — the edge already does, and workerd has no zlib stream', async () => {
-    const res = await fetchWorker('/', { headers: { 'accept-encoding': 'gzip' } });
-    await res.text();
-    assert.equal(res.headers.get('content-encoding'), null);
   });
 
   test('falls back to rendering a static route when there is no binding to read it from', async () => {

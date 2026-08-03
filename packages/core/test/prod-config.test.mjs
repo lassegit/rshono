@@ -1,12 +1,12 @@
 // What rshono.config.ts changes about a production build. There is no runtime env-var interface for
-// any of it — CSP, the CSRF allowlist, the body cap, the request deadline and trustProxy are resolved
+// any of it — CSP, the CSRF allowlist, the body cap and trustProxy are resolved
 // at build time and baked into the server bundle — so each permutation means its own build. They run
 // one after another in this one file so the builds never race over `dist/` (the suite as a whole is
 // serialised by `--test-concurrency=1`; suites inside a file are serial too).
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
-import { actionFormData, buildTestbed, FIXTURES_DIR, startTestbed, stopServer } from './helpers.mjs';
+import { buildTestbed, FIXTURES_DIR, startTestbed, stopServer } from './helpers.mjs';
 
 /** Builds the testbed against a fixture config and serves it for the enclosing suite. */
 function serve(configFile) {
@@ -126,23 +126,6 @@ describe('a hardened config', () => {
 
     // Under the cap it is processed normally — here failing to resolve the bogus action id (400).
     assert.notEqual((await post('[]')).status, 413, 'a body under the cap must not be rejected as too large');
-  });
-
-  test('renderTimeout covers the server action, not just the render', async () => {
-    // The deadline used to start *after* the action had run, so an action that never settled held the
-    // socket open indefinitely. /hang posts to an action that never resolves.
-    const html = await (await fetch(`${app.base}/hang`)).text();
-    const startedAt = Date.now();
-    const res = await fetch(`${app.base}/hang`, {
-      method: 'POST',
-      headers: { Accept: 'text/html', Origin: app.base },
-      body: actionFormData(html),
-      redirect: 'manual',
-    });
-    const elapsed = Date.now() - startedAt;
-    await res.text();
-    assert.equal(res.status, 500, 'a hung action should be cut off by the deadline, not left pending');
-    assert.ok(elapsed < 8000, `the deadline (1500ms) should have fired long before this — took ${elapsed}ms`);
   });
 });
 

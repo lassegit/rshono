@@ -34,15 +34,6 @@ export async function crash(_prev: CrashState, _formData: FormData): Promise<Cra
   throw new Error('Intentional server-action failure (progressive-enhancement demo).');
 }
 
-/**
- * Never settles — a deliberate demo that the request deadline (`renderTimeout`) covers the server
- * action and not just the render, so a hung mutation can't hold a socket open indefinitely.
- * Exercised by the e2e suite against a low-timeout config.
- */
-export async function hang(_formData: FormData): Promise<void> {
-  await new Promise<never>(() => {});
-}
-
 export interface SignupState {
   message?: string;
   error?: string;

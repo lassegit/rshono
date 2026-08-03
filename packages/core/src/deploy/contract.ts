@@ -1,4 +1,4 @@
-import type { Context, Hono, MiddlewareHandler } from 'hono';
+import type { Context, Hono } from 'hono';
 import type { PrerenderVariant, PrerenderedPage } from '../server/prerendered.js';
 
 /**
@@ -27,8 +27,8 @@ export type DeployTarget = 'node' | 'cloudflare' | 'vercel' | 'aws-lambda';
  * it is the whole of what "which platform is this" means at request time.
  *
  * The members are the capabilities that genuinely differ between a host with a disk and one without:
- * who opens the socket, who serves the assets, where a prerendered page is read from, whether
- * compressing here is wasted work, and whether there is a `.env` to load at all.
+ * who opens the socket, who serves the assets, where a prerendered page is read from, and whether
+ * there is a `.env` to load at all.
  */
 export interface DeployRuntime {
   /**
@@ -62,13 +62,6 @@ export interface DeployRuntime {
    * (see `prerenderedRelPath`).
    */
   readPrerendered(c: Context, variant: PrerenderVariant): Promise<PrerenderedPage | null>;
-  /**
-   * Response compression, or `null` where the platform already compresses on the way out (and
-   * doing it twice would only cost CPU) or cannot stream a compressor at all.
-   *
-   * Whether it is *used* is still the app's `compress` setting; this is only whether it is available.
-   */
-  compress: MiddlewareHandler | null;
   /** Loads `.env` files, where the platform has a filesystem to read them from. Env is bindings elsewhere. */
   loadEnv(): void;
 }

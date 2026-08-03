@@ -1,7 +1,6 @@
 import type { Hono } from 'hono';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { compress } from '../server/compress.js';
 import { loadEnvFiles } from '../server/load-env.js';
 import { readPrerendered } from '../server/ssg.js';
 import { createPublicFallback, createStaticAssetsApp } from '../server/static.js';
@@ -46,8 +45,6 @@ export const fileSystemRuntime: Omit<DeployRuntime, 'serveApp'> = {
   readPrerendered(c, variant) {
     return readPrerendered(ssgDir, c.req.path, variant);
   },
-
-  compress: compress(),
 
   loadEnv(): void {
     loadEnvFiles(rootDir);

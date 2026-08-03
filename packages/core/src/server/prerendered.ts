@@ -113,18 +113,18 @@ export interface PrerenderedPage {
   /**
    * `Content-Length` for {@link body}, in bytes rather than characters.
    *
-   * Served with the response because Hono sets no length for an in-memory body, and without one the
-   * compressor cannot tell a 300-byte page from a 300 KB one — so it gzips both, including the ones
-   * where the framing costs more than it saves.
+   * Served with the response because Hono sets no length for an in-memory body, and a proxy or CDN in
+   * front is entitled to make decisions with it — whether gzipping this response is worth the framing,
+   * most obviously.
    */
   contentLength: string;
   /**
    * `ETag` for the page, so a revalidating client can be answered with a 304 instead of the body.
    *
-   * Deliberately **weak**. The bytes on the wire depend on whether the client took gzip, and a
-   * strong validator would have to differ between those two — so the 200 and the 304 that
-   * revalidates it would disagree, and a cache would treat them as different pages. A weak tag
-   * says "the same representation", which is exactly what is true across content codings.
+   * Deliberately **weak**. The bytes on the wire depend on whether something in front re-encoded them,
+   * and a strong validator would have to differ per coding — so the 200 and the 304 that revalidates it
+   * could disagree, and a cache would treat them as different pages. A weak tag says "the same
+   * representation", which is exactly what stays true across content codings.
    */
   etag: string;
 }

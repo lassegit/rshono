@@ -24,8 +24,4 @@ export const runtime: DeployRuntime = {
   serveApp(app: Hono): unknown {
     return handle(app);
   },
-
-  // Vercel compresses at the edge. Its Node runtime does support streaming, so the framework's own
-  // streamed SSR still reaches the browser progressively.
-  compress: null,
 };

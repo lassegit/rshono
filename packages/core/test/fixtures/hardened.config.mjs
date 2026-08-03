@@ -13,8 +13,6 @@ export default {
   // used to normalize to an empty string and so silently never match.
   allowedOrigins: ['https://admin.example', 'alt.example:8443'],
   bodySizeLimit: 1024,
-  // Low enough to assert the deadline fires within a test, and far above every other request here.
-  renderTimeout: 1500,
   // Opts in to X-Forwarded-*, which is off by default. The default build asserts those headers are
   // ignored; this one asserts they're honoured once a proxy has been declared.
   trustProxy: true,

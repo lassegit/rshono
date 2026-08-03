@@ -11,7 +11,7 @@
  * request context.
  */
 
-import type { Context, Env, HonoRequest } from 'hono';
+import type { Context, Env } from 'hono';
 import { deleteCookie, getCookie, setCookie } from 'hono/cookie';
 import type { CookieOptions } from 'hono/utils/cookie';
 import { AsyncLocalStorage } from 'node:async_hooks';
@@ -176,7 +176,12 @@ export class Ctx<E extends Env = Env> {
   }
 
   /**
-   * The underlying Hono {@link Context}. Escape hatch for anything this wrapper does not expose.
+   * The underlying Hono {@link Context}. Escape hatch for anything this wrapper does not expose — and
+   * deliberately most things. `req`, `method`, `params` and a `header()` setter used to sit on this class
+   * as one-line pass-throughs to `c.req`, `c.req.method`, `c.req.param()` and `c.header()`; they are
+   * reachable through here (`ctx.raw.req`, `ctx.raw.header(…)`) and adding no name of their own is the
+   * point. What stays below is what this wrapper actually *does*: a proxy-aware cached URL, an env that
+   * merges runtime bindings over process env, and cookies without a second import.
    *
    * A getter over a private field rather than a plain property, so it is not an *own enumerable*
    * one — which matters more than it looks. React's diagnostic for a value that cannot be sent to a
@@ -190,11 +195,6 @@ export class Ctx<E extends Env = Env> {
     return this.#raw;
   }
 
-  /** The parsed Hono request (`c.req`) — headers, body parsing, param access, etc. */
-  get req(): HonoRequest {
-    return this.#raw.req;
-  }
-
   /**
    * The browser-facing request URL, proxy-header aware (see {@link publicUrl}) —
    * read `url.pathname`, `url.searchParams` and the rest off it. Parsed once and
@@ -203,19 +203,6 @@ export class Ctx<E extends Env = Env> {
    */
   get url(): URL {
     return (this.#url ??= publicUrl(this.#raw as Context));
-  }
-
-  /** The HTTP method of the request, e.g. `GET` or `POST`. */
-  get method(): string {
-    return this.#raw.req.method;
-  }
-
-  /**
-   * Matched route params, e.g. `{ id }` for a `/users/[id]` route. Returns an
-   * empty object when there is no active route match (rather than throwing).
-   */
-  get params(): Record<string, string> {
-    return readParams(this.#raw as Context);
   }
 
   /**
@@ -237,11 +224,6 @@ export class Ctx<E extends Env = Env> {
     const bindings = this.#raw.env as Record<string, unknown> | undefined;
     // The snapshot is shared, so hand it back as-is when there are no bindings to merge over it.
     return (this.#env = (bindings ? { ...processEnv(), ...bindings } : processEnv()) as EnvVars<E>);
-  }
-
-  /** Sets a response header. Thin pass-through to `c.header(name, value)`. */
-  header(name: string, value: string): void {
-    this.#raw.header(name, value);
   }
 
   /**

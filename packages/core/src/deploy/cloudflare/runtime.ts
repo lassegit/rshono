@@ -106,10 +106,6 @@ export const runtime: DeployRuntime = {
     return page;
   },
 
-  // Cloudflare compresses on the way out at the edge, and `workerd` has no `node:zlib` stream to do
-  // it with anyway. Doing it here would only spend CPU on bytes the edge is about to re-encode.
-  compress: null,
-
   loadEnv(): void {
     // Nothing to load: a Worker has no filesystem and no `.env`. Secrets and bindings arrive per
     // request as `c.env`, which `getContext().env` already merges — see `runtime/context.ts`.

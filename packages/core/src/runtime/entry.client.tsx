@@ -225,11 +225,11 @@ async function main() {
     }, [startTransition]);
 
     React.useEffect(() => {
-      const stopNavigating = listenNavigation((restoreScroll) =>
+      const stopNavigating = listenNavigation((afterRender) =>
         startNav(async () => {
           try {
             await fetchRscPayload();
-            restoreScroll();
+            afterRender();
           } catch {
             window.location.reload();
           }
@@ -304,56 +304,6 @@ async function main() {
 type NavigationType = 'push' | 'replace' | 'pop';
 
 /**
- * Frames to wait for a fragment's target to turn up before giving up and going to the top.
- *
- * A soft navigation restores scroll as soon as the new payload is *set*, and React commits it a tick
- * or more later — so the element a `#hash` names does not exist yet on the first frame.
- */
-const MAX_HASH_SCROLL_FRAMES = 10;
-
-/**
- * The element the current URL's fragment points at, or null.
- *
- * `location.hash` comes back percent-encoded while the `id` in the DOM is literal, so a heading like
- * `#créer` only matches once decoded — and the raw form is tried too, for the ids that genuinely
- * contain a `%`.
- */
-function hashTarget(): HTMLElement | null {
-  const raw = location.hash.slice(1);
-  if (!raw) return null;
-  let decoded = raw;
-  try {
-    decoded = decodeURIComponent(raw);
-  } catch {}
-  return document.getElementById(decoded) ?? document.getElementById(raw);
-}
-
-/**
- * Defers `run` to the next frame.
- *
- * Every scroll change here goes through this. A navigation restores scroll the moment the new
- * payload is *set*, which is before React has committed it — so the layout being scrolled is still
- * the outgoing one until a frame has passed.
- */
-function nextFrame(run: () => void): void {
-  requestAnimationFrame(run);
-}
-
-/**
- * `nextFrame`, retried once per frame until `find` turns something up or `frames` have gone by.
- * `use` then gets what was found, or null if nothing ever was.
- */
-function whenFound<T>(find: () => T | null, frames: number, use: (found: T | null) => void): void {
-  let waited = 0;
-  nextFrame(function attempt() {
-    const found = find();
-    if (found !== null) use(found);
-    else if (++waited < frames) nextFrame(attempt);
-    else use(null);
-  });
-}
-
-/**
  * Runs teardown in reverse and empties the list, so a second call is a no-op.
  *
  * Collecting these as setup goes keeps each undo next to the thing it undoes: a listener added
@@ -410,17 +360,17 @@ function listenLinks(): () => void {
   return () => disposeAll(undo);
 }
 
-function listenNavigation(onNavigation: (restoreScroll: () => void) => void): () => void {
+function listenNavigation(onNavigation: (afterRender: () => void) => void): () => void {
   const undo: Array<() => void> = [];
 
-  // Scroll restoration. We tag each history entry with a stable numeric key in its
-  // `history.state` and remember scrollY per key, so back/forward restores the exact
-  // position while push scrolls to the top. `manual` hands restoration to us.
-  const scrollByKey = new Map<number, number>();
-  let seq = 0;
+  // Scroll restoration is the browser's. It used to be ours: each history entry was tagged with a key
+  // in `history.state`, `scrollY` was remembered per key, and `manual` handed restoration over — about
+  // 130 lines to restore a traversal exactly and to chase a `#hash` target across the frames before
+  // React had committed the new payload. `auto` is set explicitly rather than left at the default,
+  // because it is a statement: the browser remembers a traversal's offset for us.
   const prevRestoration = window.history.scrollRestoration;
   try {
-    window.history.scrollRestoration = 'manual';
+    window.history.scrollRestoration = 'auto';
   } catch {}
   undo.push(() => {
     try {
@@ -428,45 +378,20 @@ function listenNavigation(onNavigation: (restoreScroll: () => void) => void): ()
     } catch {}
   });
 
-  const keyOf = (): number | null => {
-    const state = window.history.state as { __rshonoScroll?: unknown } | null;
-    return state && typeof state.__rshonoScroll === 'number' ? state.__rshonoScroll : null;
-  };
-  const tag = (state: unknown, key: number) => ({ ...(state as object | null), __rshonoScroll: key });
-
-  if (keyOf() === null) {
-    window.history.replaceState(tag(window.history.state, seq++), '');
-  }
-
-  let scrollRaf = 0;
-  const onScroll = () => {
-    if (scrollRaf) return;
-    scrollRaf = requestAnimationFrame(() => {
-      scrollRaf = 0;
-      const key = keyOf();
-      if (key !== null) scrollByKey.set(key, window.scrollY);
-    });
-  };
-  window.addEventListener('scroll', onScroll, { passive: true });
-  undo.push(() => window.removeEventListener('scroll', onScroll));
-
-  const restoreScrollFor = (type: NavigationType) => () => {
-    if (type === 'replace') return;
-    const key = keyOf();
-    const remembered = type === 'pop' && key !== null ? scrollByKey.get(key) : undefined;
-    if (remembered !== undefined) {
-      nextFrame(() => window.scrollTo(0, remembered));
-      return;
-    }
-
-    // Nothing remembered: a fresh push, or a traversal onto an entry the browser made itself — a
-    // same-page anchor never goes through our patched `pushState`, so it was never tagged. In both
-    // cases a `#hash` is the stated destination, and the top of the page is only the fallback.
-    if (!location.hash) {
-      nextFrame(() => window.scrollTo(0, 0));
-      return;
-    }
-    whenFound(hashTarget, MAX_HASH_SCROLL_FRAMES, (target) => (target ? target.scrollIntoView() : window.scrollTo(0, 0)));
+  /**
+   * A push is not a real navigation as far as the browser is concerned, so nothing resets the scroll
+   * offset — a click through to a new page would otherwise land wherever the last one was scrolled to.
+   * `replace` keeps its position deliberately, and a traversal is the browser's to restore.
+   *
+   * Deferred a frame because the payload is *set* before React commits it, so the layout being scrolled
+   * is still the outgoing one until one has passed.
+   *
+   * A `#hash` on a cross-page link is no longer chased: the target does not exist until the new payload
+   * commits, and following it was the other half of what came out with the scroll memory.
+   */
+  const afterRenderFor = (type: NavigationType) => () => {
+    if (type !== 'push') return;
+    requestAnimationFrame(() => window.scrollTo(0, 0));
   };
 
   const documentUrl = () => location.pathname + location.search;
@@ -484,13 +409,13 @@ function listenNavigation(onNavigation: (restoreScroll: () => void) => void): ()
    * remains the way to ask for fresh data at an unchanged URL.
    */
   const notify = (type: NavigationType) => {
-    const restoreScroll = restoreScrollFor(type);
+    const afterRender = afterRenderFor(type);
     if (documentUrl() === renderedUrl) {
-      restoreScroll();
+      afterRender();
       return;
     }
     renderedUrl = documentUrl();
-    onNavigation(restoreScroll);
+    onNavigation(afterRender);
   };
 
   const onPopState = () => notify('pop');
@@ -499,7 +424,7 @@ function listenNavigation(onNavigation: (restoreScroll: () => void) => void): ()
 
   const oldPushState = window.history.pushState;
   window.history.pushState = function (state, unused, url) {
-    const res = oldPushState.call(this, tag(state, seq++), unused, url as string);
+    const res = oldPushState.call(this, state, unused, url as string);
     notify('push');
     return res;
   };
@@ -509,7 +434,7 @@ function listenNavigation(onNavigation: (restoreScroll: () => void) => void): ()
 
   const oldReplaceState = window.history.replaceState;
   window.history.replaceState = function (state, unused, url) {
-    const res = oldReplaceState.call(this, tag(state, keyOf() ?? seq++), unused, url as string);
+    const res = oldReplaceState.call(this, state, unused, url as string);
     notify('replace');
     return res;
   };

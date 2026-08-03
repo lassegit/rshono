@@ -25,8 +25,6 @@ export default defineConfig({
   // csp: false,          // strict per-request-nonce Content-Security-Policy
   // cspDirectives: {},   // widen it, e.g. { 'img-src': "'self' https://cdn.example.com" }
   // bodySizeLimit: '1mb',// request body cap before a 413; false disables it
-  // renderTimeout: 10_000, // ms deadline for a request (action + flight + SSR)
-  // compress: true,      // gzip; turn off behind a proxy that already does it
 
   // Escape hatch: mutate the generated Rspack config just before it compiles. Called once per compiler.
   // rspack(config, { isServer, isDev }) {
