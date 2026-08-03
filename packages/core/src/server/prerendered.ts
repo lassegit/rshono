@@ -56,8 +56,7 @@ export function prerenderedRelPath(requestPath: string, variant: PrerenderVarian
  * so an entry never needs invalidating.
  *
  * Shared because both targets need exactly this and had a hand-rolled copy of it, down to the same
- * eviction line. (The client runtime's warmed-payload cache is deliberately not this: it evicts on
- * *read*, because a prefetch is used at most once.)
+ * eviction line.
  */
 export function createPageCache(max = 128): { get(key: string): PrerenderedPage | undefined; set(key: string, page: PrerenderedPage): void } {
   const pages = new Map<string, PrerenderedPage>();

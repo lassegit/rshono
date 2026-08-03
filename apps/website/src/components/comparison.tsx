@@ -44,8 +44,8 @@ function Intro() {
         is where rshono is actually different — with the numbers measured and the <a href="#tradeoffs">places it loses</a> on the same page.
       </p>
       <p className="text-zinc-600 dark:text-zinc-400">
-        The short version: rshono has eleven exported functions, seventeen installed packages and no opinion about your directory tree. Everything
-        below is that sentence, in detail.
+        The short version: rshono has nine exported functions, five direct dependencies and no opinion about your directory tree. Everything below is
+        that sentence, in detail.
       </p>
     </section>
   );
@@ -149,7 +149,7 @@ const MATRIX: Array<{ dimension: string; note?: string; cells: Record<(typeof FR
   {
     dimension: 'Deploy targets',
     cells: {
-      rshono: '7 built in — one build command, no adapter package',
+      rshono: '4 built in — one build command, no adapter package',
       'Next.js': 'Vercel first-class; others via community adapters',
       'TanStack Start': 'Target presets via the build config',
       Waku: 'Adapters, per platform',
@@ -277,10 +277,9 @@ function Install() {
         bundle — the code is still there, it is simply no longer a package you can name, version or audit separately. rshono&rsquo;s 17 packages{' '}
         <em>are</em> the whole tree, and{' '}
         <a href="https://github.com/rshono/rshono/blob/main/packages/core/package.json" data-native>
-          seven of them are direct
+          five of them are direct
         </a>
-        : Hono&rsquo;s Node adapter, Rspack, its react-refresh plugin, react-refresh itself, React&rsquo;s RSC bindings for Rspack, an HTML-stream
-        helper, and tsx for loading your config. Nothing else.
+        : Hono&rsquo;s Node adapter, Rspack, its react-refresh plugin, react-refresh itself, and React&rsquo;s RSC bindings for Rspack. Nothing else.
       </p>
     </section>
   );
@@ -291,7 +290,6 @@ const LINKS_SAMPLE = `
 import hero from './hero.png';                   // a content-hashed URL
 
 <a href="/docs/pages">Pages</a>                  // soft navigation
-<a href="/docs/pages" data-prefetch>Pages</a>    // warm it on hover
 <a href="/docs/pages" data-native>Pages</a>      // force a full load
 
 <img src={hero} alt="" loading="lazy" />         // attributes are just attributes
@@ -422,8 +420,8 @@ function Arguments({ linksHtml, contextHtml }: { linksHtml: string; contextHtml:
 
           <p className="mt-6 mb-4 text-zinc-600 dark:text-zinc-400">
             The mechanism, in each case, is that the build or the runtime meets the element where it already is. Soft navigation is a single{' '}
-            <code>click</code> listener on the document that upgrades same-origin anchors, so <code>data-prefetch</code> and <code>data-native</code>
-            are attributes rather than props:
+            <code>click</code> listener on the document that upgrades same-origin anchors, so opting out is <code>data-native</code> — an attribute
+            rather than a prop:
           </p>
           <div className="prose mb-4" dangerouslySetInnerHTML={{ __html: linksHtml }} />
           <p className="mb-4 text-zinc-600 dark:text-zinc-400">
@@ -584,7 +582,7 @@ function Tradeoffs() {
             <p className="text-sm text-zinc-600 dark:text-zinc-400">{item.body}</p>
             {item.href && (
               <p className="mt-3 text-sm">
-                <a href={item.href} data-prefetch>
+                <a href={item.href}>
                   {item.hrefLabel} →
                 </a>
               </p>
@@ -610,7 +608,7 @@ function Method() {
         </p>
         <p>
           <em>Public entry points</em> counts the import paths each package publishes — its <code>exports</code> map, or for Next.js, which has none,
-          the type-declaration files in its package root. <em>Client navigation hooks</em> and rshono&rsquo;s eleven exports were read off the shipped{' '}
+          the type-declaration files in its package root. <em>Client navigation hooks</em> and rshono&rsquo;s nine exports were read off the shipped{' '}
           <code>.d.ts</code> files, not the documentation.
         </p>
         <p>
@@ -628,7 +626,7 @@ function Method() {
         <p>
           There are no performance numbers on this page on purpose — the table above is about design choices, which don&rsquo;t have a unit. What can
           be measured honestly is what the framework costs: bytes to the browser, build time, cold start, install size. That is a separate page,{' '}
-          <a href="/benchmarks" data-prefetch>
+          <a href="/benchmarks">
             benchmarks
           </a>
           , with one app built three ways and the method and caveats next to the numbers. Request throughput is barely in it, and deliberately so: all
@@ -639,7 +637,6 @@ function Method() {
       <p className="mt-10">
         <a
           href="/docs/getting-started"
-          data-prefetch
           className="rounded-lg bg-zinc-900 px-5 py-2.5 font-medium text-white no-underline hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
           Try it — get started

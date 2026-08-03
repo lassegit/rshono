@@ -121,48 +121,17 @@ function showFatal(error: unknown, componentStack?: string | null): void {
   }, 0);
 }
 
-// In-memory flight-payload cache keyed by same-origin path+search. `data-prefetch`
-// links warm it on hover/focus; a navigation to a warmed URL resolves instantly and
-// clears the entry (a prefetch is used at most once, so re-visits always re-fetch).
-const payloadCache = new Map<string, Promise<RscPayload>>();
-
-// Bounded so a long session over a link-dense app can't grow it without limit. Insertion-ordered,
-// so the first key is the least recently warmed.
-const MAX_WARMED_PAYLOADS = 8;
-
-function cacheKey(href: string): string | null {
-  const url = new URL(href, location.href);
-  if (url.origin !== location.origin) return null;
-  return url.pathname + url.search;
-}
-
+/**
+ * Asks a URL for its flight payload.
+ *
+ * There is no cache in front of this any more. A `data-prefetch` attribute used to warm one on
+ * hover/focus, keyed by same-origin path+search and bounded to 8 entries — worth knowing about if you
+ * are wondering where the speculative fetching went. Every navigation is now a fetch at the moment it
+ * is asked for, so a payload can never be staler than the click that wanted it, and the browser's own
+ * HTTP cache is what makes a repeat visit cheap.
+ */
 function requestPayload(href: string): Promise<RscPayload> {
   return createFromFetch<RscPayload>(fetch(createRscRequest(new URL(href, location.href).href)));
-}
-
-function warmPayload(href: string): void {
-  const key = cacheKey(href);
-  if (!key || key === cacheKey(location.href) || payloadCache.has(key)) return;
-  const promise = requestPayload(href);
-  payloadCache.set(key, promise);
-  // One entry in means at most one out, and the first key is the oldest.
-  if (payloadCache.size > MAX_WARMED_PAYLOADS) payloadCache.delete(payloadCache.keys().next().value!);
-  // Don't cache failures, and swallow the rejection until (or unless) a nav awaits it.
-  promise.catch(() => {
-    if (payloadCache.get(key) === promise) payloadCache.delete(key);
-  });
-}
-
-function takePayload(href: string): Promise<RscPayload> {
-  const key = cacheKey(href);
-  if (key) {
-    const cached = payloadCache.get(key);
-    if (cached) {
-      payloadCache.delete(key);
-      return cached;
-    }
-  }
-  return requestPayload(href);
 }
 
 async function main() {
@@ -200,11 +169,12 @@ async function main() {
     window.history.replaceState(null, '', target.href);
   }
 
-  // A refresh keeps the URL, so it can't ride the history patch like push/replace — it drives the flight re-fetch directly (bypassing any warmed cache to get fresh data).
+  // A refresh keeps the URL, so it can't ride the history patch like push/replace — it drives the
+  // flight re-fetch directly.
   const refresh = () =>
     startNav(async () => {
       try {
-        await fetchRscPayload(true);
+        await fetchRscPayload();
       } catch {
         window.location.reload();
       }
@@ -233,10 +203,10 @@ async function main() {
     return true;
   }
 
-  async function fetchRscPayload(force = false) {
+  async function fetchRscPayload() {
     let payload: RscPayload;
     try {
-      payload = await (force ? requestPayload(window.location.href) : takePayload(window.location.href));
+      payload = await requestPayload(window.location.href);
     } catch (error) {
       if (handleControlDigest(error)) return;
       throw error;
@@ -265,7 +235,7 @@ async function main() {
           }
         }),
       );
-      const stopUpgradingLinks = listenLinks(warmPayload);
+      const stopUpgradingLinks = listenLinks();
       return () => {
         stopUpgradingLinks();
         stopNavigating();
@@ -283,9 +253,6 @@ async function main() {
       id,
       body: await encodeReply(args, { temporaryReferences }),
     });
-    // The action is about to mutate who-knows-what, so anything warmed up to now is pre-mutation
-    // data. Cleared before the round-trip so it happens even if the action throws.
-    payloadCache.clear();
     let payload: RscPayload;
     try {
       payload = await createFromFetch<RscPayload>(fetch(request), { temporaryReferences });
@@ -330,18 +297,11 @@ async function main() {
   });
 
   if (import.meta.webpackHot) {
-    // Server code may have changed, so drop any warmed payloads and re-fetch fresh.
-    initDevRefresh(() => {
-      payloadCache.clear();
-      return fetchRscPayload(true);
-    });
+    initDevRefresh(fetchRscPayload);
   }
 }
 
 type NavigationType = 'push' | 'replace' | 'pop';
-
-/** Hover/focus dwell time before a `data-prefetch` link warms its payload. */
-const PREFETCH_DELAY_MS = 120;
 
 /**
  * Frames to wait for a fragment's target to turn up before giving up and going to the top.
@@ -417,14 +377,13 @@ function isRouterLink(link: HTMLAnchorElement): boolean {
 }
 
 /**
- * Upgrades the app's anchors: a plain left-click becomes a soft navigation, and `data-prefetch`
- * warms the payload on hover or focus.
+ * Upgrades the app's anchors: a plain left-click becomes a soft navigation.
  *
  * Kept apart from `listenNavigation` because the two share no state. A click here only calls
  * `history.pushState` — which is where that function picks the navigation up — so the whole contract
  * between them is one global the browser already provides.
  */
-function listenLinks(prefetch: (href: string) => void): () => void {
+function listenLinks(): () => void {
   const undo: Array<() => void> = [];
 
   function onClick(e: MouseEvent) {
@@ -447,25 +406,6 @@ function listenLinks(prefetch: (href: string) => void): () => void {
   }
   document.addEventListener('click', onClick);
   undo.push(() => document.removeEventListener('click', onClick));
-
-  // A prefetch is a full server render, so it waits out a short dwell time on one shared timer:
-  // sweeping the cursor across a list of prefetch links costs one request (for the link the pointer
-  // settled on), not one per link.
-  let prefetchTimer: ReturnType<typeof setTimeout> | undefined;
-  function onPrefetch(e: Event) {
-    const target = e.target;
-    if (!(target instanceof Element)) return;
-    const link = target.closest('a[data-prefetch]');
-    if (!(link instanceof HTMLAnchorElement) || !isRouterLink(link)) return;
-    const { href } = link;
-    clearTimeout(prefetchTimer);
-    prefetchTimer = setTimeout(() => prefetch(href), PREFETCH_DELAY_MS);
-  }
-  undo.push(() => clearTimeout(prefetchTimer));
-  document.addEventListener('pointerover', onPrefetch);
-  undo.push(() => document.removeEventListener('pointerover', onPrefetch));
-  document.addEventListener('focusin', onPrefetch);
-  undo.push(() => document.removeEventListener('focusin', onPrefetch));
 
   return () => disposeAll(undo);
 }

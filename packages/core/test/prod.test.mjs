@@ -190,11 +190,11 @@ test('the navigation URL rides the flight payload so soft navigation stays in sy
 });
 
 test('the client runtime ships whole, with its dev-only detail compiled out', () => {
-  // What the runtime *does* — soft navigation, data-native/data-prefetch links, scroll restoration,
-  // the fatal overlay — is covered in test/browser, where it actually runs. This is the build-level
-  // claim underneath it: the pieces reached the bundle, and the dev-only branches did not.
+  // What the runtime *does* — soft navigation, data-native links, scroll restoration, the fatal
+  // overlay — is covered in test/browser, where it actually runs. This is the build-level claim
+  // underneath it: the pieces reached the bundle, and the dev-only branches did not.
   const sources = clientChunks();
-  for (const marker of ['useNavigation() must be called', 'data-native', 'data-prefetch', 'scrollRestoration', 'data-rshono-fatal']) {
+  for (const marker of ['useNavigation() must be called', 'data-native', 'scrollRestoration', 'data-rshono-fatal']) {
     assert.ok(
       sources.some((source) => source.includes(marker)),
       `the client bundle is missing "${marker}"`,

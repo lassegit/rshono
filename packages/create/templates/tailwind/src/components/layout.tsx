@@ -27,7 +27,7 @@ export function Layout({ title, description, children }: { title?: string; descr
             <a href="/" className="font-semibold no-underline">
               {publicEnv.appName}
             </a>
-            {/* `data-prefetch` warms a page on hover; `data-native` opts a link out of soft navigation. */}
+            {/* `data-native` opts a link out of soft navigation and does a full browser load. */}
             <a href="/api/health" data-native className="text-sm">
               /api/health
             </a>

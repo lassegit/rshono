@@ -228,7 +228,7 @@ A `.ts` config is loaded by Node's own type stripping, with no TypeScript loader
 - **postcss** — a Tailwind fixture wiring the loader up through the `rspack` hook, from an `@import "tailwindcss"` nothing could resolve through to compiled utilities in the stylesheet the served page links. The documented four lines, actually run.
 - **dev** — a smoke test through the dev server's worker + proxy.
 
-`pnpm --filter @rshono/core test:browser` runs the Playwright suite against a production build: hydration, soft navigation, prefetch-on-hover, `useNavigation`, client-initiated actions, boundary fallbacks, scroll restoration and the fatal overlay — the client runtime, which no amount of asserting on HTML can reach.
+`pnpm --filter @rshono/core test:browser` runs the Playwright suite against a production build: hydration, soft navigation, `useNavigation`, client-initiated actions, boundary fallbacks, scroll restoration and the fatal overlay — the client runtime, which no amount of asserting on HTML can reach.
 
 ## How it works
 

@@ -49,7 +49,7 @@ See [Routing](/docs/routing) and [Configuration](/docs/configuration).
 | `HTTPMethod`                  | `'get'` \| `'post'` \| `'put'` \| `'patch'` \| `'delete'` \| `'head'` \| `'options'` \| `'all'`.               |
 | `RSHonoConfig`                | Every field of `rshono.config.ts`. All optional.                                                              |
 | `RspackHookContext`           | `{ isServer, isDev }`, handed to the `rspack` config hook.                                                    |
-| `DeployTarget`                | `'node'` \| `'cloudflare'` \| `'bun'` \| `'deno'` \| `'vercel'` \| `'netlify'` \| `'aws-lambda'`.              |
+| `DeployTarget`                | `'node'` \| `'cloudflare'` \| `'vercel'` \| `'aws-lambda'`.                                                   |
 | `Context`, `Handler`          | Re-exported from Hono, so an endpoint can type its `handler` without depending on `hono` directly.             |
 
 ## `@rshono/core/server`

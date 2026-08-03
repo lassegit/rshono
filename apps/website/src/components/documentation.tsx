@@ -69,7 +69,6 @@ function DocFooterNav({ previous, next }: ReturnType<typeof docNeighbours>) {
       {previous ? (
         <a
           href={previous.href}
-          data-prefetch
           className="rounded-lg border border-zinc-200 px-4 py-3 no-underline hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:border-zinc-700 dark:hover:bg-zinc-900"
         >
           <span className="block text-xs text-zinc-500 dark:text-zinc-400">← Previous</span>
@@ -81,7 +80,6 @@ function DocFooterNav({ previous, next }: ReturnType<typeof docNeighbours>) {
       {next && (
         <a
           href={next.href}
-          data-prefetch
           className="rounded-lg border border-zinc-200 px-4 py-3 text-right no-underline hover:border-zinc-300 hover:bg-zinc-50 sm:col-start-2 dark:border-zinc-800 dark:hover:border-zinc-700 dark:hover:bg-zinc-900"
         >
           <span className="block text-xs text-zinc-500 dark:text-zinc-400">Next →</span>

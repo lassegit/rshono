@@ -43,7 +43,6 @@ function SectionList({ currentSlug }: { currentSlug: string }) {
                 <li key={doc.slug}>
                   <a
                     href={doc.href}
-                    data-prefetch
                     aria-current={current ? 'page' : undefined}
                     className={
                       current

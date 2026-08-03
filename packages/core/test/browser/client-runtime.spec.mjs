@@ -74,8 +74,11 @@ test.describe('soft navigation', () => {
   });
 });
 
-test.describe('prefetch', () => {
-  test('hovering a data-prefetch link warms the payload, and the navigation reuses it', async ({ page }) => {
+test.describe('navigation fetching', () => {
+  // Hovering used to warm a payload into a cache that the click then consumed. Without it, a link is
+  // one fetch at click time and nothing before — which is the property worth pinning, since a stray
+  // speculative fetch is exactly what this removal was for.
+  test('hovering a link fetches nothing; the click fetches once', async ({ page }) => {
     await page.goto('/');
 
     const flightRequests = [];
@@ -83,15 +86,15 @@ test.describe('prefetch', () => {
       if (request.headers()['accept']?.includes('text/x-component')) flightRequests.push(request.url());
     });
 
-    await page.getByRole('link', { name: 'Users', exact: true }).hover();
-    await expect.poll(() => flightRequests.length, { message: 'hover should warm one flight payload' }).toBe(1);
-    expect(flightRequests[0]).toContain('/users');
+    const users = page.getByRole('link', { name: 'Users', exact: true });
+    await users.hover();
+    await page.waitForTimeout(400); // longer than the dwell time the old prefetch waited out
+    expect(flightRequests, 'hover must not speculate').toHaveLength(0);
 
-    await page.getByRole('link', { name: 'Users', exact: true }).click();
+    await users.click();
     await expect(page.getByText('Ada Lovelace')).toBeVisible();
-
-    // The warmed payload is consumed rather than re-fetched, so the count must not have moved.
     expect(flightRequests).toHaveLength(1);
+    expect(flightRequests[0]).toContain('/users');
   });
 });
 

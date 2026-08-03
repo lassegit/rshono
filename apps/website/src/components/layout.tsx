@@ -148,14 +148,14 @@ function SiteHeader() {
 /**
  * One page link in the header.
  *
- * `data-prefetch` warms the page on hover or focus; the off-site links below carry `data-native` instead,
- * which opts a link out of soft navigation. The vertical padding is there for the row's own line on a
+ * Same-origin anchors are soft-navigated for free; the off-site links below carry `data-native`, which
+ * opts a link out of that. The vertical padding is there for the row's own line on a
  * phone, where a 20px-tall link is a poor thing to aim a thumb at; from `sm` up the row is 56px tall and
  * the padding would only stretch it.
  */
 function HeaderLink({ href, children }: { href: string; children: ReactNode }) {
   return (
-    <a href={href} data-prefetch className="py-1.5 text-zinc-600 no-underline hover:text-zinc-900 sm:py-0 dark:text-zinc-400 dark:hover:text-white">
+    <a href={href} className="py-1.5 text-zinc-600 no-underline hover:text-zinc-900 sm:py-0 dark:text-zinc-400 dark:hover:text-white">
       {children}
     </a>
   );

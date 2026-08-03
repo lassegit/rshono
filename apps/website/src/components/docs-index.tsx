@@ -5,7 +5,7 @@ import { Layout } from './layout';
 /** `/docs` — every page in one place, for people who would rather scan than click through a sidebar. */
 export default function DocsIndex({ url }: PageProps<'/docs'>) {
   return (
-    <Layout title="Documentation" description="Everything rshono does, from the one required file to the seven deploy targets." canonical={url.href}>
+    <Layout title="Documentation" description="Everything rshono does, from the one required file to the four deploy targets." canonical={url.href}>
       <h1 className="mb-3 text-3xl font-semibold tracking-tight text-zinc-900 dark:text-white">Documentation</h1>
       <p className="mb-12 text-lg text-zinc-600 dark:text-zinc-400">
         Every page is also served as its own Markdown source — append <code>.md</code> to any URL, or start from{' '}
@@ -23,7 +23,6 @@ export default function DocsIndex({ url }: PageProps<'/docs'>) {
               <li key={doc.slug}>
                 <a
                   href={doc.href}
-                  data-prefetch
                   className="block rounded-lg border border-zinc-200 px-4 py-3 no-underline hover:border-zinc-300 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:border-zinc-700 dark:hover:bg-zinc-900"
                 >
                   <span className="block font-medium text-zinc-900 dark:text-white">{doc.title}</span>
