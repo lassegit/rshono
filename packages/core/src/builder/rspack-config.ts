@@ -221,7 +221,7 @@ export function createConfigs(options: RspackConfigOptions): [RspackOptions, Rsp
       assetModuleFilename: 'assets/[name].[hash][ext]',
     },
     optimization: {
-      minimize: false,
+      minimize: isDev ? false : true,
     },
     externalsType: 'module-import',
     externals: [

@@ -24,6 +24,14 @@ export interface RenderHTMLOptions {
    * dropped instead.
    */
   onError?: (error: unknown) => void;
+  /**
+   * Called once the response stream has ended, however it ended.
+   *
+   * The RSC layer uses it to detach the listener forwarding client-disconnect aborts into this render —
+   * see `renderComponent`. Without a hook here that listener outlives the request and retains the whole
+   * rendered tree, so this is load-bearing rather than a convenience.
+   */
+  onDone?: () => void;
 }
 
 // From the baked config, not `process.env.NODE_ENV`: this is a property of the build, and a deploy
@@ -123,7 +131,7 @@ export async function renderHTML(rscStream: ReadableStream<Uint8Array>, options:
     htmlStream = failureDocument(error);
   }
 
-  const responseStream = htmlStream.pipeThrough(injectFlightPayload(rscForClient, { nonce: options.nonce }));
+  const responseStream = htmlStream.pipeThrough(injectFlightPayload(rscForClient, { nonce: options.nonce, onDone: options.onDone }));
 
   return { stream: responseStream, status };
 }

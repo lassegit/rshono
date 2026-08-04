@@ -32,6 +32,8 @@ import { appendVary, etagMatches } from '../server/headers.js';
 import { getContext, publicUrl, readParams, reportServerError, runWithContext } from './context.js';
 import { isControlSignal, RedirectSignal, type ControlSignal } from './control.js';
 import { renderHTML } from './entry.ssr.js';
+// Type-only, so it is erased — the RSC layer does not take its own instance of the SSR layer's module.
+import type { CancellableTransformer } from './flight-inject.js';
 import { RouterProvider } from './navigation.js';
 import { acceptsRsc, isActionRequest, parseRenderRequest, requestWantsRsc, wantsRsc } from './request.js';
 
@@ -154,6 +156,25 @@ function once<T>(load: () => Promise<T>): () => Promise<T> {
   };
 }
 
+/**
+ * Passes `stream` through untouched, calling `done` once it ends — however it ends.
+ *
+ * Used on the flight-only response path, which has no transform of its own to hang a completion hook
+ * off (the document path has {@link injectFlightPayload}). `done` must be idempotent: a cancelled
+ * response can reach both `cancel` and the abort forwarder.
+ */
+function releaseWhenDone(stream: ReadableStream<Uint8Array>, done: () => void): ReadableStream<Uint8Array> {
+  return stream.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        controller.enqueue(chunk);
+      },
+      flush: done,
+      cancel: done,
+    } as CancellableTransformer<Uint8Array, Uint8Array>),
+  );
+}
+
 interface ComponentRenderOptions {
   status?: number;
   isRsc: boolean;
@@ -176,14 +197,18 @@ interface ComponentRenderOptions {
  * place for it. The README shows the middleware for a Node deploy that wants one in-process.
  *
  * What the deadline *also* did was carry the client-disconnect signal into the two React renderers, and
- * that is kept: `c.req.raw.signal` is handed to them directly. Directly, and never through
- * `AbortSignal.any([...])`, which reads better and leaks the entire render — a signal that
- * `AbortSignal.any()` produced is *composite*, and Node holds every composite signal carrying an
- * `abort` listener in a process-lifetime set (`gcPersistentSignals`) until it either aborts or loses its
- * last listener. Both React renderers add an `abort` listener to whatever signal they are handed and
- * only remove it if the abort fires, so on the happy path the signal is never collected and through
- * those listeners it pins the flight request, the Fizz request and the whole rendered tree — ~200 kB per
- * request, for the life of the process. A request's own signal is not composite, so it is safe to pass.
+ * that is kept — but not by handing them `c.req.raw.signal`. Both React renderers add an `abort`
+ * listener to whatever signal they are given and only remove it if the abort fires, so a listener left on
+ * a request-lifetime signal pins the flight request, the Fizz request and the whole rendered tree. That
+ * is not theoretical: handing them the request signal directly cost ~169 kB per `/ssr` request, never
+ * reclaimed by a major GC, and took GC from 5.8% to 12.9% of wall time under load.
+ *
+ * The deadline's own `AbortController` was, accidentally, what had kept that collectable — its signal
+ * died with the render. So {@link renderComponent} keeps a per-render controller and forwards the request
+ * signal into it, releasing the forwarder when the response ends. Never through `AbortSignal.any([...])`,
+ * which reads better and leaks worse: a signal it produced is *composite*, and Node holds every composite
+ * signal carrying an `abort` listener in a process-lifetime set (`gcPersistentSignals`) until it either
+ * aborts or loses its last listener.
  */
 
 /**
@@ -215,8 +240,26 @@ function pageProps(c: Context, errorInfo: ErrorInfo | undefined): PageProps & { 
 }
 
 async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opts: ComponentRenderOptions): Promise<Response> {
-  // The client going away is the one thing that still aborts a render. Passed directly — see above.
-  const signal = c.req.raw.signal;
+  // The client going away is the one thing that still aborts a render — but React's renderers must not
+  // be handed `c.req.raw.signal` to watch for it. Both of them add an `abort` listener and only remove
+  // it if the abort fires, so on the happy path the listener stays on a signal that lives as long as the
+  // request object, and through it pins the flight request, the Fizz request and the whole rendered
+  // tree. Measured at ~169 kB per `/ssr` request, never reclaimed by a major GC.
+  //
+  // So the render gets a controller of its own and the request signal only forwards into it. The
+  // forwarding listener is `once`, so an abort removes it, and {@link release} removes it on the normal
+  // path — which is what keeps the request from retaining the render. Deliberately not
+  // `AbortSignal.any()`: a signal it produced is *composite*, and Node holds every composite signal
+  // carrying an `abort` listener in a process-lifetime set until it aborts or loses its last listener,
+  // which is a worse leak than the one being fixed here.
+  const requestSignal = c.req.raw.signal;
+  const renderAbort = new AbortController();
+  const signal = renderAbort.signal;
+  const forwardAbort = () => renderAbort.abort(requestSignal.reason);
+  if (requestSignal.aborted) renderAbort.abort(requestSignal.reason);
+  else requestSignal.addEventListener('abort', forwardAbort, { once: true });
+  /** Detaches the forwarder once the response has been written, so nothing survives the request. */
+  const release = () => requestSignal.removeEventListener('abort', forwardAbort);
 
   const nonce = cspEnabled && !opts.isRsc ? crypto.randomUUID() : undefined;
   const props = pageProps(c, opts.errorInfo);
@@ -250,7 +293,7 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
   });
 
   if (opts.isRsc) {
-    return c.body(rscStream, (opts.status ?? 200) as ContentfulStatusCode, {
+    return c.body(releaseWhenDone(rscStream, release), (opts.status ?? 200) as ContentfulStatusCode, {
       'content-type': 'text/x-component;charset=utf-8',
     });
   }
@@ -262,14 +305,19 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
       formState: opts.formState,
       signal,
       nonce,
+      onDone: release,
       onShellError: (error) => reportServerError(error, { source: 'ssr', request: c.req.raw, message: '[rshono] SSR shell error:' }),
       onError: (error) => reportServerError(error, { source: 'ssr', request: c.req.raw, message: '[rshono] SSR error:' }),
     });
   } catch (error) {
+    release();
     if (controlSignal) throw controlSignal;
     throw error;
   }
-  if (controlSignal) throw controlSignal;
+  if (controlSignal) {
+    release();
+    throw controlSignal;
+  }
   const headers: Record<string, string> = { 'content-type': 'text/html;charset=utf-8' };
   if (nonce) {
     // The nonce is always appended to whatever `script-src` resolved to, so overriding the

@@ -14,6 +14,16 @@
  * The reader for this format is `readFlightPayload` in `entry.client.tsx`.
  */
 
+/**
+ * {@link Transformer} plus the `cancel` hook the Streams standard added for a cancelled readable side.
+ *
+ * Node calls it — verified on 22.x — but the bundled lib types have not caught up, so it is declared
+ * here rather than reached for with an `any`. It matters because `cancel` is the only notification that
+ * a response ended *without* finishing, and both users of it release a listener that would otherwise
+ * outlive the request.
+ */
+export type CancellableTransformer<I, O> = Transformer<I, O> & { cancel?: (reason?: unknown) => void };
+
 const encoder = new TextEncoder();
 
 /** What React closes an `<html>` document with, and what this module re-emits after the last payload script. */
@@ -55,8 +65,11 @@ function endsWithTrailer(buffer: Uint8Array, length: number): boolean {
   return true;
 }
 
-export function injectFlightPayload(rscStream: ReadableStream<Uint8Array>, options: { nonce?: string } = {}): TransformStream<Uint8Array, Uint8Array> {
-  const { nonce } = options;
+export function injectFlightPayload(
+  rscStream: ReadableStream<Uint8Array>,
+  options: { nonce?: string; onDone?: () => void } = {},
+): TransformStream<Uint8Array, Uint8Array> {
+  const { nonce, onDone } = options;
   const scriptOpen = `<script${nonce ? ` nonce="${nonce}"` : ''}>(self.__FLIGHT_DATA||=[]).push(`;
   const scriptClose = ')</script>';
 
@@ -115,7 +128,7 @@ export function injectFlightPayload(rscStream: ReadableStream<Uint8Array>, optio
     if (remaining.length) push(escapeScript(JSON.stringify(remaining)));
   }
 
-  return new TransformStream<Uint8Array, Uint8Array>({
+  const transformer: CancellableTransformer<Uint8Array, Uint8Array> = {
     transform(chunk, controller) {
       batch.push(chunk);
       if (boundary) return;
@@ -146,6 +159,11 @@ export function injectFlightPayload(rscStream: ReadableStream<Uint8Array>, optio
         emitBatch(controller);
       }
       controller.enqueue(encoder.encode(TRAILER));
+      onDone?.();
     },
-  });
+    cancel() {
+      onDone?.();
+    },
+  };
+  return new TransformStream<Uint8Array, Uint8Array>(transformer);
 }
