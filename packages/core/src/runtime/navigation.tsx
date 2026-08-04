@@ -107,16 +107,3 @@ export function useNavigation(): Navigation {
   }
   return value;
 }
-
-// A `<NavigationProgress>` bar used to live here. It read nothing but `useNavigation().router.pending`
-// — no framework-internal knowledge at all — so it was app code that happened to ship in the
-// framework, and styling opinions with it. Twenty lines in a project that wants one:
-//
-//   'use client';
-//   import { useNavigation } from '@rshono/core/client';
-//
-//   export function NavigationProgress() {
-//     const { router } = useNavigation();
-//     return <div aria-hidden style={{ position: 'fixed', inset: '0 auto auto 0', height: 3,
-//       width: router.pending ? '85%' : 0, background: '#3b82f6', transition: 'width 200ms' }} />;
-//   }

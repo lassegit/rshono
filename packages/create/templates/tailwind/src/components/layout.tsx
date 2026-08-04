@@ -1,4 +1,3 @@
-import { NavigationProgress } from '@rshono/core/client';
 import type { ReactNode } from 'react';
 import { publicEnv } from '../lib/env';
 import '../styles.css';
@@ -20,8 +19,6 @@ export function Layout({ title, description, children }: { title?: string; descr
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
       </head>
       <body className="bg-zinc-50 text-zinc-900 antialiased dark:bg-zinc-950 dark:text-zinc-100">
-        {/* Paints during a soft navigation, so a slow page still feels answered. */}
-        <NavigationProgress />
         <header className="mx-auto max-w-2xl px-6 py-5">
           <nav className="flex items-center justify-between gap-4">
             <a href="/" className="font-semibold no-underline">
