@@ -35,16 +35,16 @@
         {
           "target": "next",
           "label": "Next.js",
-          "value": 166218,
+          "value": 166217,
           "display": "162.3 kB",
-          "relativeToBest": 0.3709586206066732
+          "relativeToBest": 0.3709608523797205
         },
         {
           "target": "tanstack-start",
           "label": "TanStack Start",
-          "value": 101200,
+          "value": 101201,
           "display": "98.8 kB",
-          "relativeToBest": 0.6092885375494071
+          "relativeToBest": 0.6092825169711762
         }
       ],
       "gap": {
@@ -65,29 +65,29 @@
         {
           "target": "rshono",
           "label": "rshono",
-          "value": 435.680791,
-          "display": "436ms",
+          "value": 428.792041,
+          "display": "429ms",
           "relativeToBest": 1
         },
         {
           "target": "next",
           "label": "Next.js",
-          "value": 3108.182083,
-          "display": "3.11s",
-          "relativeToBest": 0.1401722226580379
+          "value": 3173.930875,
+          "display": "3.17s",
+          "relativeToBest": 0.1350981032313755
         },
         {
           "target": "tanstack-start",
           "label": "TanStack Start",
-          "value": 3318.029042,
-          "display": "3.32s",
-          "relativeToBest": 0.1313071059611298
+          "value": 3156.604541,
+          "display": "3.16s",
+          "relativeToBest": 0.1358396452360676
         }
       ],
       "gap": {
-        "factor": 7.6,
+        "factor": 7.4,
         "bestLabel": "rshono",
-        "worstLabel": "TanStack Start"
+        "worstLabel": "Next.js"
       }
     },
     {
@@ -148,16 +148,16 @@
         {
           "target": "next",
           "label": "Next.js",
-          "value": 166218,
+          "value": 166217,
           "display": "162.3 kB",
-          "relativeToBest": 0.3709586206066732
+          "relativeToBest": 0.3709608523797205
         },
         {
           "target": "tanstack-start",
           "label": "TanStack Start",
-          "value": 101200,
+          "value": 101201,
           "display": "98.8 kB",
-          "relativeToBest": 0.6092885375494071
+          "relativeToBest": 0.6092825169711762
         }
       ],
       "gap": {
@@ -185,16 +185,16 @@
         {
           "target": "next",
           "label": "Next.js",
-          "value": 169167,
+          "value": 169174,
           "display": "165.2 kB",
-          "relativeToBest": 0.3833371756902942
+          "relativeToBest": 0.3833213141499285
         },
         {
           "target": "tanstack-start",
           "label": "TanStack Start",
-          "value": 105388,
+          "value": 105378,
           "display": "102.9 kB",
-          "relativeToBest": 0.6153262230994041
+          "relativeToBest": 0.6153846153846154
         }
       ],
       "gap": {
@@ -252,29 +252,29 @@
         {
           "target": "rshono",
           "label": "rshono",
-          "value": 435.680791,
-          "display": "436ms",
+          "value": 428.792041,
+          "display": "429ms",
           "relativeToBest": 1
         },
         {
           "target": "next",
           "label": "Next.js",
-          "value": 3108.182083,
-          "display": "3.11s",
-          "relativeToBest": 0.1401722226580379
+          "value": 3173.930875,
+          "display": "3.17s",
+          "relativeToBest": 0.1350981032313755
         },
         {
           "target": "tanstack-start",
           "label": "TanStack Start",
-          "value": 3318.029042,
-          "display": "3.32s",
-          "relativeToBest": 0.1313071059611298
+          "value": 3156.604541,
+          "display": "3.16s",
+          "relativeToBest": 0.1358396452360676
         }
       ],
       "gap": {
-        "factor": 7.6,
+        "factor": 7.4,
         "bestLabel": "rshono",
-        "worstLabel": "TanStack Start"
+        "worstLabel": "Next.js"
       }
     },
     {
@@ -289,27 +289,27 @@
         {
           "target": "rshono",
           "label": "rshono",
-          "value": 528.484333,
-          "display": "528ms",
+          "value": 503.55125,
+          "display": "504ms",
           "relativeToBest": 1
         },
         {
           "target": "next",
           "label": "Next.js",
-          "value": 1864.253625,
-          "display": "1.86s",
-          "relativeToBest": 0.2834830657765249
+          "value": 1603.634167,
+          "display": "1.60s",
+          "relativeToBest": 0.31400631164027826
         },
         {
           "target": "tanstack-start",
           "label": "TanStack Start",
-          "value": 2537.309459,
-          "display": "2.54s",
-          "relativeToBest": 0.2082853280373161
+          "value": 2251.147458,
+          "display": "2.25s",
+          "relativeToBest": 0.22368647962642704
         }
       ],
       "gap": {
-        "factor": 4.8,
+        "factor": 4.5,
         "bestLabel": "rshono",
         "worstLabel": "TanStack Start"
       }
@@ -326,27 +326,27 @@
         {
           "target": "rshono",
           "label": "rshono",
-          "value": 29194.84911851246,
-          "display": "29,195 rps",
+          "value": 30333.995475585227,
+          "display": "30,334 rps",
           "relativeToBest": 1
         },
         {
           "target": "next",
           "label": "Next.js",
-          "value": 4751.23720246959,
-          "display": "4,751 rps",
-          "relativeToBest": 0.16274231057617727
+          "value": 4523.8207198696555,
+          "display": "4,524 rps",
+          "relativeToBest": 0.14913369138960678
         },
         {
           "target": "tanstack-start",
           "label": "TanStack Start",
-          "value": 13598.605753503925,
-          "display": "13,599 rps",
-          "relativeToBest": 0.4657878414888278
+          "value": 12597.101550860749,
+          "display": "12,597 rps",
+          "relativeToBest": 0.41527999702511054
         }
       ],
       "gap": {
-        "factor": 6.1,
+        "factor": 6.7,
         "bestLabel": "rshono",
         "worstLabel": "Next.js"
       }
@@ -363,27 +363,27 @@
         {
           "target": "rshono",
           "label": "rshono",
-          "value": 266.50275,
-          "display": "267ms",
+          "value": 267.602334,
+          "display": "268ms",
           "relativeToBest": 1
         },
         {
           "target": "next",
           "label": "Next.js",
-          "value": 342.716916,
-          "display": "343ms",
-          "relativeToBest": 0.77761772926318
+          "value": 329.890833,
+          "display": "330ms",
+          "relativeToBest": 0.8111845108469564
         },
         {
           "target": "tanstack-start",
           "label": "TanStack Start",
-          "value": 577.0845,
-          "display": "577ms",
-          "relativeToBest": 0.4618088858737325
+          "value": 529.394334,
+          "display": "529ms",
+          "relativeToBest": 0.505487718347964
         }
       ],
       "gap": {
-        "factor": 2.2,
+        "factor": 2,
         "bestLabel": "rshono",
         "worstLabel": "TanStack Start"
       }
@@ -400,23 +400,23 @@
         {
           "target": "rshono",
           "label": "rshono",
-          "value": 339.9003095118746,
-          "display": "340 rps",
+          "value": 353.6211961711723,
+          "display": "354 rps",
           "relativeToBest": 1
         },
         {
           "target": "next",
           "label": "Next.js",
-          "value": 323.9970032143545,
-          "display": "324 rps",
-          "relativeToBest": 0.9532118510855181
+          "value": 321.52373806917564,
+          "display": "322 rps",
+          "relativeToBest": 0.9092320866239598
         },
         {
           "target": "tanstack-start",
           "label": "TanStack Start",
-          "value": 278.6054799357125,
-          "display": "279 rps",
-          "relativeToBest": 0.8196682148828089
+          "value": 287.32300579620033,
+          "display": "287 rps",
+          "relativeToBest": 0.8125163562229455
         }
       ],
       "gap": {

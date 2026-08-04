@@ -92,13 +92,13 @@ Brotli-compressed bytes the browser is committed to fetching before the route is
 
 Median of 3 trials. Cold clears the framework's cache directory first; warm keeps it and touches one source file the interactive route imports.
 
-| Metric        | rshono    | Next.js   | TanStack Start |
-| ------------- | --------- | --------- | -------------- |
-| Cold build    | 436ms ±6% | 3.11s ±6% | 3.32s ±20%     |
-| Warm rebuild  | 409ms ±1% | 3.17s ±7% | 3.28s ±4%      |
-| Build output  | 1.21 MB   | 5.92 MB   | 1.57 MB        |
-| Output files  | 14        | 198       | 30             |
-| Server bundle | 989.2 kB  | —         | 804.3 kB       |
+| Metric        | rshono     | Next.js   | TanStack Start |
+| ------------- | ---------- | --------- | -------------- |
+| Cold build    | 429ms ±15% | 3.17s ±7% | 3.16s ±4%      |
+| Warm rebuild  | 409ms ±2%  | 3.08s ±1% | 3.02s ±0%      |
+| Build output  | 1.21 MB    | 5.92 MB   | 1.57 MB        |
+| Output files  | 14         | 198       | 30             |
+| Server bundle | 989.2 kB   | —         | 804.3 kB       |
 
 ## Cold start
 
@@ -106,7 +106,7 @@ Process spawn to first answered request, fresh process each trial. Not a real se
 
 | Metric                 | rshono    | Next.js   | TanStack Start |
 | ---------------------- | --------- | --------- | -------------- |
-| Spawn → first response | 267ms ±1% | 343ms ±2% | 577ms ±5%      |
+| Spawn → first response | 268ms ±1% | 330ms ±1% | 529ms ±4%      |
 | Server bundle          | 989.2 kB  | —         | 804.3 kB       |
 
 ## Throughput
@@ -121,50 +121,53 @@ All three put React server components on the request path for `/ssr` and `/inter
 
 | Metric       | rshono | Next.js | TanStack Start |
 | ------------ | ------ | ------- | -------------- |
-| Requests/sec | 33,883 | 6,516   | 5,362          |
-| p50          | 0.81ms | 4.55ms  | 5.91ms         |
-| p99          | 1.90ms | 9.59ms  | 12ms           |
+| Requests/sec | 35,103 | 6,414   | 4,962          |
+| p50          | 0.79ms | 4.62ms  | 5.94ms         |
+| p99          | 2.90ms | 9.76ms  | 16ms           |
 | Errors       | 0      | 0       | 0              |
 
 ### `/ssr`
 
 | Metric       | rshono | Next.js | TanStack Start |
 | ------------ | ------ | ------- | -------------- |
-| Requests/sec | 340    | 324     | 279            |
-| p50          | 91ms   | 96ms    | 111ms          |
-| p99          | 182ms  | 153ms   | 223ms          |
+| Requests/sec | 354    | 322     | 287            |
+| p50          | 88ms   | 100ms   | 110ms          |
+| p99          | 177ms  | 107ms   | 217ms          |
 | Errors       | 0      | 0       | 0              |
 
 ### `/interactive`
 
 | Metric       | rshono | Next.js | TanStack Start |
 | ------------ | ------ | ------- | -------------- |
-| Requests/sec | 1,431  | 702     | 992            |
-| p50          | 21ms   | 45ms    | 31ms           |
-| p99          | 43ms   | 63ms    | 62ms           |
+| Requests/sec | 1,375  | 676     | 975            |
+| p50          | 21ms   | 48ms    | 30ms           |
+| p99          | 50ms   | 52ms    | 59ms           |
 | Errors       | 0      | 0       | 0              |
 
 ### `/api/health`
 
 | Metric       | rshono | Next.js | TanStack Start |
 | ------------ | ------ | ------- | -------------- |
-| Requests/sec | 29,195 | 4,751   | 13,599         |
-| p50          | 0.94ms | 6.65ms  | 2.07ms         |
-| p99          | 2.70ms | 13ms    | 5.18ms         |
+| Requests/sec | 30,334 | 4,524   | 12,597         |
+| p50          | 0.94ms | 6.50ms  | 2.14ms         |
+| p99          | 2.88ms | 15ms    | 6.54ms         |
 | Errors       | 0      | 0       | 0              |
 
 ### Memory
 
 Resident memory of the whole process tree, and of the single largest process in it — which is the server itself in all three. The tree total carries whatever `npm run start` left running and double-counts pages the processes share, so the **server** row is the one to compare.
 
-| Metric                  | rshono              | Next.js             | TanStack Start      |
-| ----------------------- | ------------------- | ------------------- | ------------------- |
-| RSS idle — tree         | 200.20 MB (3 procs) | 157.55 MB (2 procs) | 246.61 MB (3 procs) |
-| RSS idle — server       | 72.70 MB            | 92.88 MB            | 164.14 MB           |
-| RSS after load — tree   | 897.52 MB (3 procs) | 408.92 MB (2 procs) | 482.89 MB (3 procs) |
-| RSS after load — server | 764.45 MB           | 347.34 MB           | 403.36 MB           |
-| Requests served         | 518,927             | 98,441              | 161,984             |
-| Growth per 1k requests  | 1.33 MB             | 2.58 MB             | 1.48 MB             |
+**None of these are retained-memory figures.** RSS is a high-water mark that includes garbage V8 has not collected yet, and V8 sizes the old generation against the *allocation rate* — so under a fixed-duration load the fastest server churns the most and grows the largest heap. On this app a forced GC returned 362 MB of the 472 MB an uncapped `/api/health` run reported. All three are therefore given the same old-space budget (`--max-old-space-size=256`), which is what makes the rows comparable; the per-route sequence is there so a plateau is distinguishable from a climb. Retention per request measured on the rshono app, after a full GC, was under 20 B — a leak is not what these numbers show.
+
+| Metric                  | rshono                                        | Next.js                                       | TanStack Start                                |
+| ----------------------- | --------------------------------------------- | --------------------------------------------- | --------------------------------------------- |
+| RSS idle — tree         | 203.25 MB (3 procs)                           | 160.52 MB (2 procs)                           | 242.36 MB (3 procs)                           |
+| RSS idle — server       | 73.47 MB                                      | 95.16 MB                                      | 159.55 MB                                     |
+| RSS after load — tree   | 291.64 MB (3 procs)                           | 261.91 MB (2 procs)                           | 289.42 MB (3 procs)                           |
+| RSS after load — server | 157.22 MB                                     | 199.56 MB                                     | 209.80 MB                                     |
+| RSS per route — server  | 116.56 MB → 147.55 MB → 156.80 MB → 157.22 MB | 141.45 MB → 187.30 MB → 198.73 MB → 199.56 MB | 191.13 MB → 204.13 MB → 209.69 MB → 209.80 MB |
+| Requests served         | 537,429                                       | 95,584                                        | 150,719                                       |
+| Churn per 1k requests   | 159.6 kB                                      | 1.09 MB                                       | 341.4 kB                                      |
 
 ## Dev server startup
 
@@ -172,10 +175,10 @@ Resident memory of the whole process tree, and of the single largest process in 
 
 HMR round-trip is the other number worth having here and is not measured: it needs a browser driving the page to assert the patch arrived.
 
-| Metric         | rshono    | Next.js    | TanStack Start |
-| -------------- | --------- | ---------- | -------------- |
-| Cold dev start | 528ms ±8% | 1.86s ±18% | 2.54s ±12%     |
-| Warm dev start | 520ms ±1% | 1.71s ±15% | 2.37s ±3%      |
+| Metric         | rshono    | Next.js   | TanStack Start |
+| -------------- | --------- | --------- | -------------- |
+| Cold dev start | 504ms ±1% | 1.60s ±5% | 2.25s ±1%      |
+| Warm dev start | 500ms ±2% | 1.45s ±0% | 2.14s ±0%      |
 
 ## Footprint
 
