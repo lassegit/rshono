@@ -101,7 +101,7 @@ export const runtime: DeployRuntime = {
     if (!asset || asset.status !== 200) return null;
 
     // The store's own validator where it has one — it already describes these exact bytes.
-    const page = await toPrerenderedPage(await asset.text(), asset.headers.get('etag'));
+    const page = await toPrerenderedPage(new Uint8Array(await asset.arrayBuffer()), asset.headers.get('etag'));
     pageCache.set(key, page);
     return page;
   },

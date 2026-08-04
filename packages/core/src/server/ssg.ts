@@ -72,9 +72,13 @@ export async function readPrerendered(ssgDir: string, requestPath: string, varia
   const file = resolve(root, relPath);
   if (!file.startsWith(root + sep)) return null;
 
-  let body: string;
+  // No encoding argument: the bytes are what gets served, and decoding them to a string here would
+  // only mean re-encoding them on every request that hits the cache. Copied out of the Buffer rather
+  // than kept as one, because `readFile` can hand back a view into Node's shared allocation pool and
+  // this is retained for the life of the process.
+  let body: Uint8Array<ArrayBuffer>;
   try {
-    body = await readFile(file, 'utf8');
+    body = new Uint8Array(await readFile(file));
   } catch {
     return null;
   }

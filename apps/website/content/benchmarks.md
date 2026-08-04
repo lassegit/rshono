@@ -3,7 +3,7 @@ title: Benchmarks
 description: One app built three ways — rshono, Next.js and TanStack Start — measured on payload bytes, build time, cold start and install size.
 ---
 
-_Generated from `packages/benchmarks` on 2026-08-01 (build, payload, coldstart, load, devstart). One run, one machine. Regenerate with
+_Generated from `packages/benchmarks` on 2026-08-04 (build, payload, coldstart, load, devstart). One run, one machine. Regenerate with
 `pnpm --filter @rshono/benchmarks bench` and `pnpm --filter @rshono/benchmarks site:publish`._
 
 ## Environment
@@ -40,12 +40,12 @@ Brotli-compressed bytes the browser is committed to fetching before the route is
 
 | Metric              | rshono           | Next.js            | TanStack Start    |
 | ------------------- | ---------------- | ------------------ | ----------------- |
-| Document (br)       | 870 B            | 1.7 kB             | 1.1 kB            |
+| Document (br)       | 855 B            | 1.7 kB             | 1.1 kB            |
 | Inline script (raw) | 2.3 kB           | 5.7 kB             | 1.3 kB            |
-| External JS (br)    | 59.3 kB · 1 file | 160.0 kB · 9 files | 97.2 kB · 2 files |
+| External JS (br)    | 58.7 kB · 1 file | 160.0 kB · 9 files | 97.2 kB · 2 files |
 | CSS (br)            | 657 B · 1        | 615 B · 1          | 611 B · 1         |
-| **Total (br)**      | **60.8 kB**      | **162.3 kB**       | **98.8 kB**       |
-| Total (raw)         | 225.0 kB         | 627.8 kB           | 356.6 kB          |
+| **Total (br)**      | **60.2 kB**      | **162.3 kB**       | **98.8 kB**       |
+| Total (raw)         | 223.0 kB         | 627.8 kB           | 356.6 kB          |
 | Requests            | 3                | 11                 | 4                 |
 | Spec checks         | ✓                | ✓                  | ✓                 |
 
@@ -55,10 +55,10 @@ Brotli-compressed bytes the browser is committed to fetching before the route is
 | ------------------- | ---------------- | ------------------ | ----------------- |
 | Document (br)       | 4.3 kB           | 5.2 kB             | 5.3 kB            |
 | Inline script (raw) | 35.1 kB          | 38.9 kB            | 37.4 kB           |
-| External JS (br)    | 59.3 kB · 1 file | 160.0 kB · 9 files | 97.0 kB · 2 files |
+| External JS (br)    | 58.7 kB · 1 file | 160.0 kB · 9 files | 97.0 kB · 2 files |
 | CSS (br)            | 657 B · 1        | 615 B · 1          | 611 B · 1         |
-| **Total (br)**      | **64.2 kB**      | **165.8 kB**       | **102.8 kB**      |
-| Total (raw)         | 270.2 kB         | 673.4 kB           | 404.3 kB          |
+| **Total (br)**      | **63.7 kB**      | **165.8 kB**       | **102.9 kB**      |
+| Total (raw)         | 268.2 kB         | 673.4 kB           | 404.3 kB          |
 | Requests            | 3                | 11                 | 4                 |
 | Spec checks         | ✓                | ✓                  | ✓                 |
 
@@ -66,12 +66,12 @@ Brotli-compressed bytes the browser is committed to fetching before the route is
 
 | Metric              | rshono            | Next.js             | TanStack Start    |
 | ------------------- | ----------------- | ------------------- | ----------------- |
-| Document (br)       | 2.9 kB            | 3.7 kB              | 3.8 kB            |
+| Document (br)       | 2.8 kB            | 3.7 kB              | 3.8 kB            |
 | Inline script (raw) | 13.4 kB           | 17.6 kB             | 15.7 kB           |
-| External JS (br)    | 60.4 kB · 4 files | 160.9 kB · 10 files | 98.5 kB · 4 files |
+| External JS (br)    | 59.8 kB · 4 files | 160.9 kB · 10 files | 98.5 kB · 4 files |
 | CSS (br)            | 657 B · 1         | 615 B · 1           | 611 B · 1         |
-| **Total (br)**      | **63.9 kB**       | **165.2 kB**        | **102.9 kB**      |
-| Total (raw)         | 241.1 kB          | 644.7 kB            | 376.6 kB          |
+| **Total (br)**      | **63.3 kB**       | **165.2 kB**        | **102.9 kB**      |
+| Total (raw)         | 239.1 kB          | 644.7 kB            | 376.6 kB          |
 | Requests            | 6                 | 12                  | 6                 |
 | Spec checks         | ✓                 | ✓                   | ✓                 |
 
@@ -92,13 +92,13 @@ Brotli-compressed bytes the browser is committed to fetching before the route is
 
 Median of 3 trials. Cold clears the framework's cache directory first; warm keeps it and touches one source file the interactive route imports.
 
-| Metric        | rshono    | Next.js   | TanStack Start |
-| ------------- | --------- | --------- | -------------- |
-| Cold build    | 453ms ±2% | 3.00s ±1% | 3.03s ±0%      |
-| Warm rebuild  | 452ms ±3% | 3.04s ±1% | 3.03s ±1%      |
-| Build output  | 1.22 MB   | 5.92 MB   | 1.57 MB        |
-| Output files  | 14        | 198       | 30             |
-| Server bundle | 998.1 kB  | —         | 804.3 kB       |
+| Metric        | rshono     | Next.js   | TanStack Start |
+| ------------- | ---------- | --------- | -------------- |
+| Cold build    | 411ms ±20% | 3.02s ±8% | 3.10s ±5%      |
+| Warm rebuild  | 416ms ±2%  | 3.04s ±1% | 3.03s ±0%      |
+| Build output  | 1.21 MB    | 5.92 MB   | 1.57 MB        |
+| Output files  | 14         | 198       | 30             |
+| Server bundle | 986.9 kB   | —         | 804.3 kB       |
 
 ## Cold start
 
@@ -106,8 +106,8 @@ Process spawn to first answered request, fresh process each trial. Not a real se
 
 | Metric                 | rshono    | Next.js   | TanStack Start |
 | ---------------------- | --------- | --------- | -------------- |
-| Spawn → first response | 316ms ±7% | 334ms ±1% | 531ms ±4%      |
-| Server bundle          | 998.1 kB  | —         | 804.3 kB       |
+| Spawn → first response | 267ms ±1% | 332ms ±0% | 529ms ±1%      |
+| Server bundle          | 986.9 kB  | —         | 804.3 kB       |
 
 ## Throughput
 
@@ -121,44 +121,50 @@ All three put React server components on the request path for `/ssr` and `/inter
 
 | Metric       | rshono | Next.js | TanStack Start |
 | ------------ | ------ | ------- | -------------- |
-| Requests/sec | 30,978 | 6,639   | 5,425          |
-| p50          | 0.90ms | 4.46ms  | 5.91ms         |
-| p99          | 1.89ms | 9.46ms  | 12ms           |
+| Requests/sec | 33,788 | 6,161   | 4,869          |
+| p50          | 0.83ms | 4.85ms  | 6.25ms         |
+| p99          | 1.78ms | 11ms    | 14ms           |
 | Errors       | 0      | 0       | 0              |
 
 ### `/ssr`
 
 | Metric       | rshono | Next.js | TanStack Start |
 | ------------ | ------ | ------- | -------------- |
-| Requests/sec | 338    | 347     | 274            |
-| p50          | 92ms   | 92ms    | 113ms          |
-| p99          | 186ms  | 101ms   | 227ms          |
+| Requests/sec | 336    | 331     | 252            |
+| p50          | 90ms   | 94ms    | 121ms          |
+| p99          | 193ms  | 124ms   | 250ms          |
 | Errors       | 0      | 0       | 0              |
 
 ### `/interactive`
 
 | Metric       | rshono | Next.js | TanStack Start |
 | ------------ | ------ | ------- | -------------- |
-| Requests/sec | 1,366  | 737     | 1,010          |
-| p50          | 22ms   | 43ms    | 30ms           |
-| p99          | 45ms   | 64ms    | 61ms           |
+| Requests/sec | 1,307  | 701     | 868            |
+| p50          | 23ms   | 45ms    | 34ms           |
+| p99          | 49ms   | 65ms    | 78ms           |
 | Errors       | 0      | 0       | 0              |
 
 ### `/api/health`
 
 | Metric       | rshono | Next.js | TanStack Start |
 | ------------ | ------ | ------- | -------------- |
-| Requests/sec | 30,349 | 4,914   | 13,740         |
-| p50          | 0.93ms | 6.53ms  | 2.06ms         |
-| p99          | 2.09ms | 13ms    | 5.18ms         |
+| Requests/sec | 24,636 | 4,331   | 11,858         |
+| p50          | 0.95ms | 6.91ms  | 2.26ms         |
+| p99          | 4.87ms | 16ms    | 6.52ms         |
 | Errors       | 0      | 0       | 0              |
 
 ### Memory
 
-| Metric         | rshono              | Next.js             | TanStack Start      |
-| -------------- | ------------------- | ------------------- | ------------------- |
-| RSS idle       | 222.42 MB (3 procs) | 158.94 MB (2 procs) | 245.94 MB (3 procs) |
-| RSS after load | 907.02 MB (3 procs) | 391.03 MB (2 procs) | 483.80 MB (3 procs) |
+Resident memory of the whole process tree, and of the single largest process in it — which is the server itself in all three. The tree total carries whatever `npm run start` left running and double-counts pages the processes share, so the **server** row is the one to compare.
+
+| Metric                  | rshono               | Next.js             | TanStack Start      |
+| ----------------------- | -------------------- | ------------------- | ------------------- |
+| RSS idle — tree         | 200.44 MB (3 procs)  | 158.89 MB (2 procs) | 245.03 MB (3 procs) |
+| RSS idle — server       | 72.86 MB             | 94.23 MB            | 162.47 MB           |
+| RSS after load — tree   | 1357.48 MB (3 procs) | 383.88 MB (2 procs) | 480.92 MB (3 procs) |
+| RSS after load — server | 1229.02 MB           | 322.44 MB           | 401.39 MB           |
+| Requests served         | 480,636              | 92,328              | 143,158             |
+| Growth per 1k requests  | 2.41 MB              | 2.47 MB             | 1.67 MB             |
 
 ## Dev server startup
 
@@ -166,10 +172,10 @@ All three put React server components on the request path for `/ssr` and `/inter
 
 HMR round-trip is the other number worth having here and is not measured: it needs a browser driving the page to assert the patch arrived.
 
-| Metric         | rshono    | Next.js   | TanStack Start |
-| -------------- | --------- | --------- | -------------- |
-| Cold dev start | 556ms ±1% | 1.47s ±0% | 2.25s ±0%      |
-| Warm dev start | 536ms ±0% | 1.45s ±1% | 2.18s ±1%      |
+| Metric         | rshono    | Next.js    | TanStack Start |
+| -------------- | --------- | ---------- | -------------- |
+| Cold dev start | 505ms ±9% | 1.92s ±7%  | 2.56s ±5%      |
+| Warm dev start | 509ms ±4% | 1.98s ±15% | 2.24s ±5%      |
 
 ## Footprint
 

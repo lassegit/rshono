@@ -1,5 +1,5 @@
 import type { PageProps } from '@rshono/core';
-import { users, summary } from '../data';
+import { summary, users } from '../data';
 import { Layout } from './layout';
 
 /**
@@ -9,7 +9,7 @@ import { Layout } from './layout';
  * `export const dynamic = 'force-dynamic'` in the Next app.
  */
 export default function Ssr({ ctx }: PageProps) {
-  const agent = ctx.req.header('user-agent') ?? 'unknown';
+  const agent = ctx.raw.req.header('user-agent') ?? 'unknown';
 
   return (
     <Layout title="Users">

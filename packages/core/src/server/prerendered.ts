@@ -82,8 +82,8 @@ export function createPageCache(max = 128): { get(key: string): PrerenderedPage 
  * disagree, and a cache would treat them as different pages. A weak tag says "the same
  * representation", which is exactly what is true across content codings.
  */
-export async function weakEtag(body: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(body));
+export async function weakEtag(body: Uint8Array<ArrayBuffer>): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', body);
   const base64url = btoa(String.fromCharCode(...new Uint8Array(digest)))
     .replace(/\+/g, '-')
     .replace(/\//g, '_')
@@ -98,18 +98,25 @@ export async function weakEtag(body: string): Promise<string> {
  * bytes, so it is preferred over hashing them again, and only weakened. Both call sites went through
  * their own copy of this before, with two different digest implementations.
  */
-export async function toPrerenderedPage(body: string, storeEtag?: string | null): Promise<PrerenderedPage> {
+export async function toPrerenderedPage(body: Uint8Array<ArrayBuffer>, storeEtag?: string | null): Promise<PrerenderedPage> {
   return {
     body,
-    contentLength: String(new TextEncoder().encode(body).byteLength),
+    contentLength: String(body.byteLength),
     etag: storeEtag ? storeEtag.replace(/^(?!W\/)/, 'W/') : await weakEtag(body),
   };
 }
 
 /** A prerendered page, ready to serve: its body and a validator derived from those exact bytes. */
 export interface PrerenderedPage {
-  /** The document or the flight payload, depending on which {@link PrerenderVariant} was read. */
-  body: string;
+  /**
+   * The document or the flight payload, depending on which {@link PrerenderVariant} was read.
+   *
+   * Bytes rather than a string, because this is a *cache* entry served verbatim to every request that
+   * hits it. Held as a string, each of those requests pays a fresh UTF-8 encode of the whole page on the
+   * way out — the one route where the framework does no rendering at all was spending its time
+   * re-encoding bytes it had already encoded once to measure them. Read once, encoded never.
+   */
+  body: Uint8Array<ArrayBuffer>;
   /**
    * `Content-Length` for {@link body}, in bytes rather than characters.
    *

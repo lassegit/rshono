@@ -257,7 +257,10 @@ describe('readPrerendered', () => {
     writeFileSync(join(dir, 'docs', 'index.html'), '<!DOCTYPE html><p>docs</p>');
 
     const first = await readPrerendered(dir, '/docs');
-    assert.equal(first.body, '<!DOCTYPE html><p>docs</p>');
+    // Bytes, not a string: the entry is served verbatim to every hit, so it is cached already encoded.
+    assert.ok(first.body instanceof Uint8Array);
+    assert.equal(new TextDecoder().decode(first.body), '<!DOCTYPE html><p>docs</p>');
+    assert.equal(first.contentLength, '26');
     assert.match(first.etag, /^W\/"[\w-]{22}"$/, 'weak, so it survives being gzipped on the way out');
 
     const second = await readPrerendered(dir, '/docs');
@@ -326,8 +329,9 @@ describe('prerenderStaticRoutes', () => {
       ],
       'each path is rendered as a document and as a flight payload; a dynamic route is never prerendered',
     );
-    assert.equal((await readPrerendered(ssgDir, '/docs/a')).body, '<!DOCTYPE html><p>ok</p>');
-    assert.equal((await readPrerendered(ssgDir, '/docs/a', 'flight')).body, '0:{"root":"flight"}');
+    const decode = (page) => new TextDecoder().decode(page.body);
+    assert.equal(decode(await readPrerendered(ssgDir, '/docs/a')), '<!DOCTYPE html><p>ok</p>');
+    assert.equal(decode(await readPrerendered(ssgDir, '/docs/a', 'flight')), '0:{"root":"flight"}');
   });
 
   test('renders against siteUrl, so absolute URLs in the output are the deployed ones', async () => {
