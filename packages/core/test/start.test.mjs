@@ -1,0 +1,65 @@
+// `rshono start` decides, from what is on disk, whether it can run the build at all.
+//
+// This used to ride along on the per-target build suite, which built the testbed once per platform to
+// get a non-Node `dist/` to refuse. The gate only reads two files, so the fixtures are written directly
+// — the same assertions, without six production builds.
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, test } from 'node:test';
+
+const CLI = fileURLToPath(new URL('../bin/rshono.mjs', import.meta.url));
+
+const start = (cwd) => spawnSync(process.execPath, [CLI, 'start'], { cwd, encoding: 'utf8', timeout: 30_000 });
+
+/**
+ * A project directory holding what `rshono start` inspects: the server bundle it would spawn, and the
+ * marker `rshono build` leaves recording which platform produced it. `deploy: null` writes no marker,
+ * standing in for a build from a version of rshono that predates it.
+ */
+function projectWith({ deploy, bundle = 'process.exit(0);\n' } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'rshono-start-'));
+  mkdirSync(join(dir, 'dist', 'server'), { recursive: true });
+  writeFileSync(join(dir, 'dist', 'server', 'main.mjs'), bundle);
+  if (deploy) writeFileSync(join(dir, 'dist', 'rshono-build.json'), JSON.stringify({ deploy }));
+  return dir;
+}
+
+describe('`rshono start` refuses what it cannot run', () => {
+  test('a build made for a platform, which has no listener in it and would exit silently', () => {
+    const result = start(projectWith({ deploy: 'cloudflare' }));
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /targets cloudflare/);
+    assert.match(result.stderr, /wrangler deploy/, 'names the command that does deploy it');
+    assert.match(result.stderr, /--deploy node/, 'and how to get a build it can run');
+  });
+
+  test('no build at all, naming the command that makes one', () => {
+    const result = start(mkdtempSync(join(tmpdir(), 'rshono-unbuilt-')));
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /no production build found/);
+    assert.match(result.stderr, /rshono build/);
+  });
+});
+
+describe('`rshono start` runs what it can', () => {
+  test('a node build', () => {
+    const result = start(projectWith({ deploy: 'node' }));
+    assert.equal(result.status, 0, result.stderr);
+  });
+
+  // Refusing a build that would have worked is worse than the confusing failure the marker guards
+  // against, so an absent one is not treated as a refusal.
+  test('a build with no marker, rather than refusing one that predates it', () => {
+    const result = start(projectWith({ deploy: null }));
+    assert.equal(result.status, 0, result.stderr);
+  });
+
+  test('and exits with the bundle when it stops', () => {
+    const result = start(projectWith({ deploy: 'node', bundle: 'process.exit(3);\n' }));
+    assert.equal(result.status, 3, 'the exit code is the app’s, not swallowed');
+  });
+});

@@ -138,12 +138,6 @@ importers:
       react-server-dom-rspack:
         specifier: 0.0.2
         version: 0.0.2(@rspack/core@2.1.5)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      rsc-html-stream:
-        specifier: ^0.0.7
-        version: 0.0.7
-      tsx:
-        specifier: ^4.23.1
-        version: 4.23.1
     devDependencies:
       '@playwright/test':
         specifier: ^1.58.0
@@ -1881,9 +1875,6 @@ packages:
     resolution: {integrity: sha512-pb/MYmXstAkysRFx8piNI1tGFNQIFA3vkE3Gq4EuA1dF6gHp/+vgZqsCGJapvy8N3Q+4o7FwvquPJcnZ7RYy4g==}
     engines: {node: '>=4'}
 
-  rsc-html-stream@0.0.7:
-    resolution: {integrity: sha512-v9+fuY7usTgvXdNl8JmfXCvSsQbq2YMd60kOeeMIqCJFZ69fViuIxztHei7v5mlMMa2h3SqS+v44Gu9i9xANZA==}
-
   scheduler@0.27.0:
     resolution: {integrity: sha512-eNv+WrVbKu1f3vbYJT/xtiF5syA5HPIMtf9IgY/nKg0sWqzAUEvqY/xm7OcZc/qafLx/iO9FgOmeSAp4v5ti/Q==}
 
@@ -1962,11 +1953,6 @@ packages:
 
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
-
-  tsx@4.23.1:
-    resolution: {integrity: sha512-GQHnkIfxyx1wYCOS/wonik5MVRZU9hi1TEZmzGZSCJB1y9YgoZ8H6itNE/u4suE+yLmOzuE4E5S4TZ/ZX2wcWQ==}
-    engines: {node: '>=18.0.0'}
-    hasBin: true
 
   type-check@0.4.0:
     resolution: {integrity: sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==}
@@ -3548,8 +3534,6 @@ snapshots:
 
   resolve-from@4.0.0: {}
 
-  rsc-html-stream@0.0.7: {}
-
   scheduler@0.27.0: {}
 
   section-matter@1.0.0:
@@ -3644,12 +3628,6 @@ snapshots:
 
   tslib@2.8.1:
     optional: true
-
-  tsx@4.23.1:
-    dependencies:
-      esbuild: 0.28.1
-    optionalDependencies:
-      fsevents: 2.3.3
 
   type-check@0.4.0:
     dependencies:

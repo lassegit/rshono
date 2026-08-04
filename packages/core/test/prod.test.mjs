@@ -189,20 +189,12 @@ test('the navigation URL rides the flight payload so soft navigation stays in sy
   assert.match(flight, /profile\/1\?tab=settings/, 'the flight payload should carry the URL for the client router');
 });
 
-test('NavigationProgress renders on every page but starts hidden (no hydration flicker)', async () => {
-  const html = await (await fetch(`${base}/`)).text();
-  const bar = html.match(/<div data-rshono-progress="" [^>]*>/)?.[0];
-  assert.ok(bar, 'the opt-in <NavigationProgress /> should render into the layout');
-  assert.match(bar, /opacity:0/, 'the bar must be invisible at rest — nothing is navigating during SSR');
-  assert.match(bar, /width:0%/, 'the bar must have no width until a navigation is pending');
-});
-
 test('the client runtime ships whole, with its dev-only detail compiled out', () => {
-  // What the runtime *does* — soft navigation, data-native/data-prefetch links, scroll restoration,
-  // the fatal overlay — is covered in test/browser, where it actually runs. This is the build-level
-  // claim underneath it: the pieces reached the bundle, and the dev-only branches did not.
+  // What the runtime *does* — soft navigation, data-native links, scroll restoration, the fatal
+  // overlay — is covered in test/browser, where it actually runs. This is the build-level claim
+  // underneath it: the pieces reached the bundle, and the dev-only branches did not.
   const sources = clientChunks();
-  for (const marker of ['useNavigation() must be called', 'data-native', 'data-prefetch', 'scrollRestoration', 'data-rshono-fatal']) {
+  for (const marker of ['useNavigation() must be called', 'data-native', 'scrollRestoration', 'data-rshono-fatal']) {
     assert.ok(
       sources.some((source) => source.includes(marker)),
       `the client bundle is missing "${marker}"`,
@@ -439,14 +431,10 @@ test('a route that sets its own cache-control keeps it', async () => {
   assert.equal(res.headers.get('cache-control'), null, 'endpoint routes are raw Hono — the page default must not bleed into them');
 });
 
-test('compressible responses are gzipped, and say so in Vary', async () => {
+test('responses are not compressed — that is a proxy or CDN’s job now', async () => {
   const res = await fetch(`${base}/users`, { headers: { 'accept-encoding': 'gzip' } });
-  assert.equal(res.headers.get('content-encoding'), 'gzip');
-  assert.match(res.headers.get('vary'), /Accept-Encoding/);
-  assert.match(await res.text(), /Ada Lovelace/, 'and it still decodes to the real page');
-
-  const identity = await fetch(`${base}/users`, { headers: { 'accept-encoding': 'identity' } });
-  assert.equal(identity.headers.get('content-encoding'), null, 'a client that asks for no encoding gets none');
+  assert.equal(res.headers.get('content-encoding'), null, 'the framework ships no compressor');
+  assert.match(await res.text(), /Ada Lovelace/);
 });
 
 test('conventional root files in public/ are served at the web root', async () => {

@@ -8,16 +8,16 @@ const CONFIG_FILES = ['rshono.config.ts', 'rshono.config.js', 'rshono.config.mjs
 /**
  * Imports the config module.
  *
- * A `.js`/`.mjs` config is a plain dynamic import. A `.ts` one can't be — the CLI itself runs as
- * compiled JavaScript, so nothing in the process understands TypeScript by default. `tsx`'s
- * programmatic API is loaded for that case only, which keeps it off the startup path of every
- * other command instead of paying for a TypeScript loader the whole CLI doesn't need.
+ * A `.ts` config needs no loader of its own: Node strips types natively from 22.18 on, which is what
+ * the package's `engines` floor is for. That replaced a `tsx` dependency whose only job was these two
+ * lines — and `tsx` bundles esbuild, so it was the largest thing in the install.
+ *
+ * The one thing native stripping will not do is resolve a `.js` specifier to a `.ts` file, so a config
+ * that imports a sibling module has to name it with its real extension. {@link loadConfig} turns the
+ * resulting resolution failure into that advice rather than letting a raw `ERR_MODULE_NOT_FOUND` out.
  */
-async function importConfig(file: string): Promise<{ default?: RSHonoConfig }> {
-  const href = pathToFileURL(file).href;
-  if (!/\.[cm]?ts$/.test(file)) return import(href) as Promise<{ default?: RSHonoConfig }>;
-  const { tsImport } = await import('tsx/esm/api');
-  return tsImport(href, import.meta.url) as Promise<{ default?: RSHonoConfig }>;
+function importConfig(file: string): Promise<{ default?: RSHonoConfig }> {
+  return import(pathToFileURL(file).href) as Promise<{ default?: RSHonoConfig }>;
 }
 
 /**
@@ -34,7 +34,21 @@ export async function loadConfig(rootDir: string, configPath?: string): Promise<
   if (!existsSync(file)) {
     throw new Error(`[rshono] config file not found: ${file}`);
   }
-  const mod = await importConfig(file);
+  let mod: { default?: RSHonoConfig };
+  try {
+    mod = await importConfig(file);
+  } catch (error) {
+    // The one failure mode native type stripping has that a TypeScript-aware loader does not.
+    if (/\.[cm]?ts$/.test(file) && (error as { code?: string } | null)?.code === 'ERR_MODULE_NOT_FOUND') {
+      throw new Error(
+        `[rshono] ${file} imports a module Node could not resolve: ${(error as Error).message}\n` +
+          '  A .ts config is loaded by Node itself, which does not rewrite a .js specifier to the .ts file ' +
+          'beside it. Import it by its real extension, or move the config to rshono.config.mjs.',
+        { cause: error },
+      );
+    }
+    throw error;
+  }
   if (!mod.default) {
     throw new Error(`[rshono] ${file} must \`export default\` a config object (use \`defineConfig({ … })\`).`);
   }

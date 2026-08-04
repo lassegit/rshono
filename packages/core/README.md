@@ -169,33 +169,45 @@ import { defineConfig } from '@rshono/core';
 export default defineConfig({
   deploy: 'node', // hosting platform to build for — see Deployment (--deploy or RSHONO_DEPLOY override)
   siteUrl: 'https://example.com', // public origin, baked into prerendered pages' absolute URLs
-  port: 3000, // default port for dev/start (--port or PORT env override)
-  host: '0.0.0.0', // bind address for start (HOST env overrides)
   trustProxy: false, // honour X-Forwarded-Host/-Proto — only behind a proxy you control
   checkOrigin: true, // CSRF origin check on server-action POSTs
   allowedOrigins: [], // extra origins allowed to post actions, e.g. ['https://admin.example.com']
   csp: false, // strict per-request-nonce Content-Security-Policy
   cspDirectives: {}, // widen the built-in CSP, e.g. { 'img-src': "'self' https://cdn.example.com" }
   bodySizeLimit: '1mb', // request body cap: '512kb' | 4_000_000 | false to disable
-  renderTimeout: 10_000, // ms deadline for a request (action + flight + SSR)
-  compress: true, // gzip compressible responses (streaming-safe)
   rspack(config, { isServer, isDev }) {
     return config; // escape hatch: mutate the generated Rspack config
   },
 });
 ```
 
-`defineConfig` is an identity helper for editor autocomplete; `export default { … } satisfies RSHonoConfig` works too. `deploy`/`port`/`host`/`rspack` are consumed by the CLI; the framework settings (`trustProxy`, `checkOrigin`, `allowedOrigins`, `csp`, `cspDirectives`, `bodySizeLimit`, `renderTimeout`, `compress`) are resolved from this file at build time and **compiled into the server bundle** — there is no parallel env-var interface for them (environment variables are for secrets). Changing one of these settings means a rebuild. The two deployment-conventional exceptions stay env-overridable: `--port`/`PORT` and `HOST` win over the file, which wins over the built-in default. Point `rshono build` at a different config with `--config <path>`.
+`defineConfig` is an identity helper for editor autocomplete; `export default { … } satisfies RSHonoConfig` works too. `deploy` and `rspack` are consumed by the CLI; the framework settings (`trustProxy`, `checkOrigin`, `allowedOrigins`, `csp`, `cspDirectives`, `bodySizeLimit`) are resolved from this file at build time and **compiled into the server bundle** — there is no parallel env-var interface for them (environment variables are for secrets). Changing one of these settings means a rebuild. Point `rshono build` at a different config with `--config <path>`.
+
+**The port and bind address are not config fields.** They are `--port` / `PORT` and `HOST`, in that precedence order, falling back to `3000` and `0.0.0.0` — because on every host that runs this (a container, a process manager, a PaaS) the environment is what sets them, so a config field would only have been a level that always loses.
+
+A `.ts` config is loaded by Node's own type stripping, with no TypeScript loader in the dependency tree. The one thing that costs: Node will not resolve a `.js` specifier to the `.ts` file beside it, so a config that imports a sibling module has to name it with its real extension (or be an `.mjs` file).
 
 ## Security & hardening
 
 - **Every `'use server'` export is a public HTTP endpoint.** That's the RSC model, not an rshono choice: the client is handed an id for each action and can call it with whatever arguments it likes. The CSRF check below proves a request came from your own site — it says nothing about _who_ sent it. Authenticate and authorize inside the action (and validate its arguments) exactly as you would in a route handler.
 - **CSRF**: server-action POSTs are origin-checked automatically — a cross-origin `Origin` (compared against your own host) is rejected with 403, as is anything the browser labels `Sec-Fetch-Site: cross-site`/`same-site`. A browser-asserted `Sec-Fetch-Site: same-origin` is accepted directly, which is what keeps the check from misfiring behind a proxy that rewrites `Host`. Applies to both client-initiated calls and no-JS form posts. Turn it off with `checkOrigin: false` behind a gateway that already enforces it, or list trusted cross-origins in `allowedOrigins` (full origins or bare hosts; a malformed entry fails the build).
 - **Proxy headers are not trusted by default.** `X-Forwarded-Host` / `-Proto` are client-supplied, so honouring them blindly lets anyone who can reach the server dictate the origin of every absolute URL the app builds (`getContext().url`, a page's `url` prop) — poisoning canonical tags, emails and redirects, and any shared cache in front. Set `trustProxy: true` only when a proxy you control sets those headers; `rshono dev` forces it on for its own localhost-bound proxy.
-- **Request deadline**: every request races a timeout (`renderTimeout`, default 10000) and the client-disconnect signal — covering the server action as well as flight + SSR — so neither a hung data fetch nor a hung mutation can pin sockets open.
+- **Client disconnect**: a render is aborted when the client goes away, so a browser that navigated on stops the work it asked for. There is **no request deadline in the framework** — a `renderTimeout` setting used to wrap every request in a timer, but every host this deploys to enforces one already (Workers, Vercel and Lambda all do), leaving a bare Node process as the only shape that needed it. Put it in your proxy, or in your own middleware if you want it in-process:
+
+  ```ts
+  // src/server.ts — a deadline for a Node deploy that fronts nothing
+  const TIMEOUT_MS = 10_000;
+  server.use(async (c, next) => {
+    const timedOut = Symbol('timeout');
+    const timer = new Promise((resolve) => setTimeout(() => resolve(timedOut), TIMEOUT_MS).unref?.());
+    if ((await Promise.race([next(), timer])) === timedOut) return c.text('Gateway Timeout', 504);
+  });
+  ```
+
+  Note what that cannot do, and what the framework's own version could not either: the abandoned render keeps running to completion. All either one buys you is not holding the socket open for it.
 - **Request-body limit**: request bodies are capped (`bodySizeLimit`, default 1048576 = 1 MiB) before they're buffered into memory — oversized bodies are rejected with `413 Payload Too Large`. This covers **every** route, not just server actions: `{ type: 'endpoint' }` routes and the `src/server.ts` sub-app are equally exposed the moment they call `.json()` or `.formData()`. An over-cap `Content-Length` is refused up front; bodies that omit it (chunked) are cut off mid-stream. Set to `false`/`0` to disable (e.g. behind a proxy that already enforces a limit, or to stream a large upload yourself). Raise it for large multipart uploads.
 - **Baseline response headers**: `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin` and `X-Frame-Options: SAMEORIGIN` on every response, unconditionally. The framing header is the floor for everyone who hasn't opted into `csp` — that policy's `frame-ancestors 'none'` is stricter and takes precedence where both apply. Set any of them in your own middleware to override.
-- **Caching defaults**: a dynamic page is answered with `Cache-Control: private, no-cache` — a page is request-specific by default (cookies, session, headers), and with no directives at all a shared cache is free to store one user's page and serve it to the next. `private` forbids exactly that, and `no-cache` makes the browser revalidate rather than re-show a stale personalised page; neither disables bfcache the way `no-store` would. Set your own value (from middleware, or `getContext().header(…)`) and it is left alone. Prerendered pages keep `public, max-age=300` and carry a weak `ETag`, so a revalidation costs a 304 instead of the page.
+- **Caching defaults**: a dynamic page is answered with `Cache-Control: private, no-cache` — a page is request-specific by default (cookies, session, headers), and with no directives at all a shared cache is free to store one user's page and serve it to the next. `private` forbids exactly that, and `no-cache` makes the browser revalidate rather than re-show a stale personalised page; neither disables bfcache the way `no-store` would. Set your own value (from middleware, or `getContext().raw.header(…)`) and it is left alone. Prerendered pages keep `public, max-age=300` and carry a weak `ETag`, so a revalidation costs a 304 instead of the page.
 - **`Vary: Accept` on page responses.** One URL answers with an HTML document or a flight payload depending on `Accept`. Without `Vary` a cache keyed on the URL alone will eventually hand a document to a soft navigation that asked for flight — a hard reload at best. Compression appends `Accept-Encoding` to the same header rather than replacing it.
 - **CSP (opt-in)**: set `csp: true` to send a strict per-request-nonce `Content-Security-Policy` with every HTML document (nonce stamped on bootstrap scripts, inlined flight payload, and dynamically loaded chunks). Beyond `default-src 'self'` it also closes the gaps `default-src` doesn't cover — `base-uri`, `object-src`, `frame-ancestors`, `form-action` — so it blocks framing and third-party assets until you widen it with `cspDirectives` (the nonce is always re-appended to `script-src`, and `''` drops a directive). While enabled, the **document** for a `render: 'static'` route is rendered per request — a prerendered file can't carry a per-request nonce. Its flight payload never carries one, so soft navigations are still served from the prerender.
 - **Error reporting**: every error the framework catches — a thrown action, a failed render, SSR falling over, anything reaching the top-level handler — goes through one funnel. Register a handler at the top level of `src/server.ts` to send them somewhere real; they keep going to `stderr` either way, and a handler that throws is caught rather than failing the request.
@@ -220,13 +232,12 @@ export default defineConfig({
 `pnpm --filter @rshono/core test` builds the package and runs everything that doesn't need a browser:
 
 - **unit** — the parsers and path maths (`bodySizeLimit`, `allowedOrigins`, SSG paths and traversal, control-signal digests, page-file scanning, `Vary`/`ETag` helpers). Imports the built `dist/`, so it also proves the published output loads in plain Node.
-- **compression** — that gzip does not swallow a streamed response: a chunk the renderer flushes has to reach the client while the response is still open, which is the one property the platform `CompressionStream` would quietly break.
 - **production e2e** — builds `apps/testbed`, boots the real production server, and asserts pages, flight protocol, actions (client + progressive enhancement), CSRF rejection, secret stripping in bundles _and_ rendered HTML, SSG output with `ETag`/304, cache and security headers, and error reporting. Settings baked into the bundle (CSP, CSRF allowlist/origin-check, body-size cap) each get their own build from a fixture config (`test/fixtures/`, via `rshono build --config`).
 - **minimal app** — a fixture with `src/routes.ts` and nothing else: no `server.ts`, no `public/`, no config, no `notFound`/`error` pages. Everything the docs call optional, actually left out.
 - **postcss** — a Tailwind fixture wiring the loader up through the `rspack` hook, from an `@import "tailwindcss"` nothing could resolve through to compiled utilities in the stylesheet the served page links. The documented four lines, actually run.
 - **dev** — a smoke test through the dev server's worker + proxy.
 
-`pnpm --filter @rshono/core test:browser` runs the Playwright suite against a production build: hydration, soft navigation, prefetch-on-hover, `useNavigation`, client-initiated actions, boundary fallbacks, scroll restoration and the fatal overlay — the client runtime, which no amount of asserting on HTML can reach.
+`pnpm --filter @rshono/core test:browser` runs the Playwright suite against a production build: hydration, soft navigation, `useNavigation`, client-initiated actions, boundary fallbacks and the fatal overlay — the client runtime, which no amount of asserting on HTML can reach.
 
 ## How it works
 
@@ -239,35 +250,39 @@ In dev, the CLI watches both bundles, runs the server bundle in a worker thread 
 
 In production, `dist/server/main.mjs` is self-contained (React, Hono and the framework are bundled in; your other npm dependencies resolve from `node_modules`): `rshono start` or any process manager running `node dist/server/main.mjs`.
 
-Everything in that bundle that depends on _where_ it runs — binding a port, serving `/_static` and `public/`, reading a prerendered page, gzipping, loading `.env` — sits behind a single interface (`DeployRuntime`) that the build resolves per `deploy` target, so the request-handling code has no platform in it. The entry's default export is whatever the platform expects: nothing where rshono owns the process, a `fetch` handler where the host does.
+Everything in that bundle that depends on _where_ it runs — binding a port, serving `/_static` and `public/`, reading a prerendered page, loading `.env` — sits behind a single interface (`DeployRuntime`) that the build resolves per `deploy` target, so the request-handling code has no platform in it. The entry's default export is whatever the platform expects: nothing where rshono owns the process, a `fetch` handler where the host does.
 
 ## Deployment
 
 `rshono build` targets one platform. Pick it with `deploy` in the config, `--deploy <name>`, or `RSHONO_DEPLOY` (in that precedence order); the default is `node`. `rshono dev` always runs the Node dev server whatever you choose — the target is a property of the build, not of developing.
 
-| `deploy`     | Handoff                          | Assets & prerendered pages                                      | After `build`                                         |
-| ------------ | -------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------- |
-| `node`       | binds a port                     | from `dist/` on disk                                            | `rshono start`                                        |
-| `bun`        | `{ fetch, port }` default export | from `dist/` on disk                                            | `bun dist/server/main.mjs`                            |
-| `deno`       | `{ fetch }` default export       | from `dist/` on disk                                            | `deno serve -A dist/server/main.mjs`                  |
-| `cloudflare` | `{ fetch }` default export       | Workers Assets; prerendered pages read via the `ASSETS` binding | `wrangler deploy`                                     |
-| `vercel`     | web handler in a Node function   | CDN for assets; prerendered pages inside the function           | `vercel deploy --prebuilt`                            |
-| `netlify`    | web handler, Functions v2        | CDN for assets; prerendered pages inside the function           | `netlify deploy --build=false --dir=.netlify/publish` |
-| `aws-lambda` | streaming handler (Function URL) | from the deployment package                                     | zip `dist/`, handler `dist/server/main.mjs`           |
+| `deploy`     | Handoff                          | Assets & prerendered pages                                      | After `build`                               |
+| ------------ | -------------------------------- | --------------------------------------------------------------- | ------------------------------------------- |
+| `node`       | binds a port                     | from `dist/` on disk                                            | `rshono start`                              |
+| `cloudflare` | `{ fetch }` default export       | Workers Assets; prerendered pages read via the `ASSETS` binding | `wrangler deploy`                           |
+| `vercel`     | web handler in a Node function   | CDN for assets; prerendered pages inside the function           | `vercel deploy --prebuilt`                  |
+| `aws-lambda` | streaming handler (Function URL) | from the deployment package                                     | zip `dist/`, handler `dist/server/main.mjs` |
+
+One target per _handoff_ — the thing an app cannot arrange for itself. Everything else about a platform sits behind `DeployRuntime`, and `node`, `vercel` and `aws-lambda` share one filesystem implementation.
 
 Every target streams: a page's HTML reaches the browser as it renders, which is the whole reason the SSR shell is worth having. That is the bar a new target has to clear.
 
 Notes worth knowing before choosing one:
 
+- **`node` is not only Node.** Anything that runs a Node process runs this build — a VPS, a container, a PaaS. **Bun** (`bun dist/server/main.mjs`) and **Deno** (`deno run -A dist/server/main.mjs`) are expected to as well, since the listener is `@hono/node-server` and both implement the `node:` APIs it needs. They had a target each; neither held anything beyond a default export, so running the `node` build replaces it. The suite runs on Node, so treat those two as an expectation rather than a guarantee.
+- **Netlify is not a target.** It was, and it was removed. Its handoff is `hono/netlify`'s `handle(app)` plus a `functions-internal` entry declaring `path: '/*'` and `preferStatic: true` — reconstructible, but you maintain it. If you want the preset back, ask.
+- **Do not reach for the `app` export to make your own handler.** The entry evaluates `runtime.serveApp(app)` at module scope, so importing a `node` build binds a port as a side effect. Build for the target you're deploying to.
+- **Streaming is the fragile part of a serverless target**, and it fails silently. Vercel needs `supportsResponseStreaming: true` in `.vc-config.json` or it buffers the whole response; Lambda needs `awslambda.streamifyResponse` and a Function URL in `RESPONSE_STREAM` mode. Both are what their preset exists to get right — the deployment works either way, it just stops streaming.
+- **AWS** means a Lambda Function URL with the invoke mode set to `RESPONSE_STREAM`, usually with CloudFront in front for `/_static` and `public/`. **Lambda@Edge is deliberately not a target**: CloudFront returns the response as a value rather than a stream, caps a generated origin-request response near 1 MB, and supports no environment variables at all — so `getContext().env` would be empty there, which is a documented feature quietly doing nothing.
 - **Cloudflare** bundles all your dependencies (a Worker resolves no `node_modules` at runtime), so a dependency that needs a real `node:` API beyond `nodejs_compat` will not work. The build scaffolds a `wrangler.jsonc` if the project has none — including `nodejs_compat`, which the request context needs for `AsyncLocalStorage` — and never touches it again. Bindings (D1, KV, R2) arrive as `getContext().env`; they are not available under `rshono dev`, which is plain Node.
 - **Prerendered pages are never CDN-served.** One URL answers with an HTML document or a flight payload depending on `Accept`, and a path-keyed CDN cannot choose, so the app always handles page URLs. Assets under `/_static` and `public/` do go straight to the CDN where there is one.
-- **Compression** is left to the platform on `cloudflare`, `vercel` and `netlify`; the framework's streaming gzip is used on `node`, `bun`, `deno` and `aws-lambda`. Your `compress` setting only decides whether an available compressor is used.
-- **AWS** means a Lambda Function URL with the invoke mode set to `RESPONSE_STREAM`, usually with CloudFront in front for `/_static` and `public/`. **Lambda@Edge is deliberately not a target**: CloudFront returns the response as a value rather than a stream, caps a generated origin-request response near 1 MB, and supports no environment variables at all — so `getContext().env` would be empty there, which is a documented feature quietly doing nothing.
+- **Compression is not the framework's job.** `cloudflare` and `vercel` compress at the edge regardless, and a `node` or `aws-lambda` deploy is almost always behind something that does — a reverse proxy, a load balancer, CloudFront. rshono shipped a streaming-safe gzip for the two targets that might not be; it is gone, because it was one target's feature by the end and a proxy does it better. If you serve a bare Node process straight to the internet and want it, `hono/compress` is one `app.use` in `src/server.ts` — read its docs on streaming first, since a buffering compressor undoes streamed SSR.
 - `rshono start` refuses a build made for another platform rather than starting a bundle with no listener in it.
 
 ## Requirements & limitations
 
-- Node ≥ 22.1 (worker threads, `process.loadEnvFile`, `Promise.withResolvers`, `URL.parse`), React ≥ 19.1 (the floor `react-server-dom-rspack` itself requires).
-- Responses are gzipped, not brotli — one encoding every client accepts, chosen per chunk so streaming survives. Set `compress: false` behind a proxy that does better.
+- Node ≥ 22.18 (worker threads, `process.loadEnvFile`, `Promise.withResolvers`, `URL.parse`, and native TypeScript stripping so a `.ts` config needs no loader), React ≥ 19.1 (the floor `react-server-dom-rspack` itself requires).
+- Responses are not compressed. A proxy, a load balancer or a CDN is where that belongs, and every hosted target already does it.
+- Scroll restoration is the browser's (`history.scrollRestoration = 'auto'`). A soft navigation to a new page starts at the top; a traversal is restored by the browser. A `#hash` on a link to a *different* page is not chased — the target does not exist until the new payload commits — so it lands on the page rather than the heading. Same-page anchors are untouched and jump natively.
 - Dev-mode proxy doesn't forward WebSocket upgrades to a custom sub-app (prod is unaffected — the bundle owns the socket there).
 - Dev source maps embed the original source of `'use server'` action modules (dev binds to 127.0.0.1 only; production ships no client source maps).

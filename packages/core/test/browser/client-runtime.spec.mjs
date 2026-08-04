@@ -74,8 +74,11 @@ test.describe('soft navigation', () => {
   });
 });
 
-test.describe('prefetch', () => {
-  test('hovering a data-prefetch link warms the payload, and the navigation reuses it', async ({ page }) => {
+test.describe('navigation fetching', () => {
+  // Hovering used to warm a payload into a cache that the click then consumed. Without it, a link is
+  // one fetch at click time and nothing before — which is the property worth pinning, since a stray
+  // speculative fetch is exactly what this removal was for.
+  test('hovering a link fetches nothing; the click fetches once', async ({ page }) => {
     await page.goto('/');
 
     const flightRequests = [];
@@ -83,15 +86,15 @@ test.describe('prefetch', () => {
       if (request.headers()['accept']?.includes('text/x-component')) flightRequests.push(request.url());
     });
 
-    await page.getByRole('link', { name: 'Users', exact: true }).hover();
-    await expect.poll(() => flightRequests.length, { message: 'hover should warm one flight payload' }).toBe(1);
-    expect(flightRequests[0]).toContain('/users');
+    const users = page.getByRole('link', { name: 'Users', exact: true });
+    await users.hover();
+    await page.waitForTimeout(400); // longer than the dwell time the old prefetch waited out
+    expect(flightRequests, 'hover must not speculate').toHaveLength(0);
 
-    await page.getByRole('link', { name: 'Users', exact: true }).click();
+    await users.click();
     await expect(page.getByText('Ada Lovelace')).toBeVisible();
-
-    // The warmed payload is consumed rather than re-fetched, so the count must not have moved.
     expect(flightRequests).toHaveLength(1);
+    expect(flightRequests[0]).toContain('/users');
   });
 });
 
@@ -162,8 +165,11 @@ test.describe('boundaries', () => {
   });
 });
 
-test.describe('scroll restoration', () => {
-  test('back restores the previous scroll position; a new navigation starts at the top', async ({ page }) => {
+test.describe('scroll on navigation', () => {
+  // The framework's own scroll memory is gone: `history.scrollRestoration` is `auto`, so a traversal is
+  // the browser's to restore and this asserts only the part that is still ours — a push starts at the
+  // top, because `pushState` is not a navigation and nothing else resets the offset.
+  test('a new navigation starts at the top', async ({ page }) => {
     await page.setViewportSize({ width: 500, height: 400 });
     await page.goto('/users');
 
@@ -172,11 +178,12 @@ test.describe('scroll restoration', () => {
 
     await page.getByRole('link', { name: 'Docs' }).click();
     await expect(page).toHaveURL('/docs/getting-started');
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+    await expect.poll(() => page.evaluate(() => window.scrollY), { message: 'a pushed page must not inherit the last one’s offset' }).toBe(0);
+  });
 
-    await page.goBack();
-    await expect(page).toHaveURL('/users');
-    await expect.poll(() => page.evaluate(() => window.scrollY), { message: 'back should land where the user left off' }).toBeGreaterThan(100);
+  test('scroll restoration is left to the browser', async ({ page }) => {
+    await page.goto('/users');
+    expect(await page.evaluate(() => history.scrollRestoration)).toBe('auto');
   });
 });
 
@@ -202,7 +209,10 @@ test.describe('fragment links', () => {
     expect(payloadRequests, 'a same-page anchor needs nothing from the server').toEqual([]);
   });
 
-  test('a cross-page anchor soft-navigates and still lands on the heading', async ({ page }) => {
+  // A cross-page `#hash` is a known regression of dropping the framework's scroll handling: the heading
+  // does not exist until the new payload commits, and nothing waits for it any more. The navigation
+  // still has to be *soft* and land on the right URL — that is what this pins.
+  test('a cross-page anchor soft-navigates, landing on the page if not the heading', async ({ page }) => {
     await page.setViewportSize({ width: 500, height: 400 });
     await page.goto('/docs/getting-started');
     const id = await markDocument(page);
@@ -210,18 +220,13 @@ test.describe('fragment links', () => {
     await page.getByRole('link', { name: 'Deployment: Targets' }).click();
 
     await expect(page).toHaveURL('/docs/deployment#targets');
-    // The heading only exists after the new payload commits, so the scroll has to wait it out —
-    // without that, this lands at the top of the page with the fragment ignored.
-    await expect.poll(() => headingOffset(page, 'targets'), { message: 'the fragment should survive the navigation' }).toBeLessThan(2);
+    await expect(page.locator('#targets')).toBeVisible();
     expect(await documentId(page), 'it should still be a soft navigation').toBe(id);
   });
 
-  test('back out of an anchor restores scroll without re-fetching the page', async ({ page }) => {
+  test('back out of an anchor does not re-fetch the page', async ({ page }) => {
     await page.setViewportSize({ width: 500, height: 400 });
     await page.goto('/docs/getting-started');
-
-    await page.evaluate(() => window.scrollTo(0, 250));
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
 
     await page.getByRole('navigation', { name: 'On this page' }).getByRole('link', { name: 'Routes' }).click();
     await expect(page).toHaveURL('/docs/getting-started#routes');
@@ -233,7 +238,6 @@ test.describe('fragment links', () => {
 
     await page.goBack();
     await expect(page).toHaveURL('/docs/getting-started');
-    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
     expect(payloadRequests, 'the document did not change, so nothing needed re-rendering').toEqual([]);
   });
 });

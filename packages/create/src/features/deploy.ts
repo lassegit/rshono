@@ -22,16 +22,6 @@ const DEPLOY_FEATURES: Record<DeployTargetName, Feature> = {
     id: 'deploy-node',
     scripts: { start: 'rshono start' },
   },
-  // `rshono start` is the Node target's launcher and refuses a build made for another platform, so
-  // these two get the command their own runtime uses under the same script name.
-  bun: {
-    id: 'deploy-bun',
-    scripts: { start: 'bun dist/server/main.mjs' },
-  },
-  deno: {
-    id: 'deploy-deno',
-    scripts: { start: 'deno serve -A dist/server/main.mjs' },
-  },
   cloudflare: {
     id: 'deploy-cloudflare',
     devDependencies: { wrangler: TOOL_VERSIONS.wrangler },
@@ -47,11 +37,6 @@ const DEPLOY_FEATURES: Record<DeployTargetName, Feature> = {
     scripts: { deploy: 'rshono build && vercel deploy --prebuilt' },
     gitignore: ['.vercel/'],
     notes: ['--prebuilt uploads what rshono build assembled; the platform must not rebuild it.'],
-  },
-  netlify: {
-    id: 'deploy-netlify',
-    scripts: { deploy: 'rshono build && netlify deploy --build=false --dir=.netlify/publish' },
-    gitignore: ['.netlify/'],
   },
   'aws-lambda': {
     id: 'deploy-aws-lambda',

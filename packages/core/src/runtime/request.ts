@@ -47,6 +47,15 @@ export function wantsRsc(renderRequest: RenderRequest): boolean {
   return renderRequest.kind === 'rsc' || renderRequest.kind === 'rsc-action';
 }
 
+/**
+ * {@link wantsRsc} straight off the request, for the error and control-signal paths that have no parsed
+ * {@link RenderRequest} to hand — they are reached from Hono's `onError` / `notFound`, not from the
+ * render, so each one used to re-parse with `wantsRsc(parseRenderRequest(c.req.raw))`.
+ */
+export function requestWantsRsc(request: Request): boolean {
+  return wantsRsc(parseRenderRequest(request));
+}
+
 /** True when the request carries a server action to run before rendering. */
 export function isActionRequest(renderRequest: RenderRequest): renderRequest is Extract<RenderRequest, { kind: 'form-action' | 'rsc-action' }> {
   return renderRequest.kind === 'form-action' || renderRequest.kind === 'rsc-action';

@@ -1,5 +1,5 @@
 import type { Context, Hono } from 'hono';
-import { prerenderedRelPath, type PrerenderedPage } from '../../server/prerendered.js';
+import { createPageCache, prerenderedRelPath, toPrerenderedPage, type PrerenderedPage } from '../../server/prerendered.js';
 import type { DeployRuntime } from '../contract.js';
 
 /**
@@ -52,28 +52,8 @@ function serveAsset(asset: Response): Response {
   return new Response(asset.body, asset);
 }
 
-/**
- * A weak `ETag` for a body the asset store gave us no validator for.
- *
- * Web Crypto rather than `node:crypto`: this module is compiled for `workerd`, and the digest is the
- * one thing here that has a platform-neutral form.
- */
-async function weakEtag(body: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(body));
-  const bytes = String.fromCharCode(...new Uint8Array(digest));
-  const base64url = btoa(bytes).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  return `W/"${base64url.slice(0, 22)}"`;
-}
-
-/**
- * Prerendered pages, keyed by the path that produced them.
- *
- * Per isolate rather than per process, and bounded for the same reason the Node cache is: a site with
- * thousands of prerendered pages should keep a working set, not the whole build. Only *hits* are
- * cached, so nobody can mint entries by requesting paths that do not exist.
- */
-const pageCache = new Map<string, PrerenderedPage>();
-const MAX_CACHED_PAGES = 128;
+/** Prerendered pages, keyed by the path that produced them. Per isolate rather than per process. */
+const pageCache = createPageCache();
 
 /**
  * Cloudflare Workers: the host owns the process, so there is nothing to listen on; the CDN owns the
@@ -120,23 +100,11 @@ export const runtime: DeployRuntime = {
     const asset = await assetResponse(c, `${SSG_PREFIX}/${relPath}`);
     if (!asset || asset.status !== 200) return null;
 
-    const body = await asset.text();
-    const page: PrerenderedPage = {
-      body,
-      contentLength: String(new TextEncoder().encode(body).byteLength),
-      // The store's own validator where it has one — it already describes these exact bytes. Weakened
-      // because compression downstream would make a strong one wrong for the compressed encoding.
-      etag: asset.headers.get('etag')?.replace(/^(?!W\/)/, 'W/') ?? (await weakEtag(body)),
-    };
-
+    // The store's own validator where it has one — it already describes these exact bytes.
+    const page = await toPrerenderedPage(new Uint8Array(await asset.arrayBuffer()), asset.headers.get('etag'));
     pageCache.set(key, page);
-    if (pageCache.size > MAX_CACHED_PAGES) pageCache.delete(pageCache.keys().next().value!);
     return page;
   },
-
-  // Cloudflare compresses on the way out at the edge, and `workerd` has no `node:zlib` stream to do
-  // it with anyway. Doing it here would only spend CPU on bytes the edge is about to re-encode.
-  compress: null,
 
   loadEnv(): void {
     // Nothing to load: a Worker has no filesystem and no `.env`. Secrets and bindings arrive per

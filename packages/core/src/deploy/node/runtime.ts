@@ -1,14 +1,40 @@
 import { serve } from '@hono/node-server';
 import type { Hono } from 'hono';
 import { parentPort, workerData } from 'node:worker_threads';
+import { SERVER_DEFAULTS } from '../../server/server-config.js';
 import { onShutdown } from '../../server/shutdown.js';
 import type { DeployRuntime } from '../contract.js';
 import { fileSystemRuntime } from '../filesystem.js';
-import { listenAddress, readyMessage } from '../listen.js';
+
+/** Bound to every interface — so the address printed on start is `localhost`, not this. */
+const WILDCARD_HOST = '0.0.0.0';
 
 /**
- * Node: a long-lived process that owns its own port, with a filesystem behind every asset. The shape
- * the framework was built against, and the only target `rshono dev` ever produces.
+ * Resolves the address to listen on: an explicit override (the dev server, which picks the port for its
+ * worker) beats the environment, which beats the built-in default.
+ *
+ * `PORT` and `HOST` are the whole interface, because that is the deployment convention everywhere this
+ * runs — a container, a process manager, a PaaS. `??` rather than `||` so an explicit `PORT=0`, which
+ * means "any free port", is honoured.
+ *
+ * Lives here rather than in a `deploy/listen.ts` of its own because `node` is the only target that
+ * binds anything: every other one is handed a request by its host.
+ */
+function listenAddress(overrides?: { port?: number; hostname?: string }): { port: number; hostname: string } {
+  const envPort = process.env.PORT !== undefined ? Number(process.env.PORT) : undefined;
+  return {
+    port: overrides?.port ?? envPort ?? SERVER_DEFAULTS.port,
+    hostname: overrides?.hostname ?? process.env.HOST ?? SERVER_DEFAULTS.host,
+  };
+}
+
+/**
+ * Node: a long-lived process that owns its own port, with a filesystem behind every asset. The shape the
+ * framework was built against, and the only target `rshono dev` ever produces.
+ *
+ * Anything that runs a Node process runs this build — a VPS, a container, a PaaS — and Bun and Deno are
+ * expected to as well, since the listener below is `@hono/node-server` and both implement the `node:`
+ * APIs it needs. They get no preset of their own: there was nothing in one but this.
  */
 export const runtime: DeployRuntime = {
   ...fileSystemRuntime,
@@ -20,7 +46,7 @@ export const runtime: DeployRuntime = {
     if (process.env.RSHONO_PRERENDER) return;
 
     // The dev server runs this bundle in a worker thread and picks the port itself, so its choice wins
-    // over both the environment and the config file.
+    // over the environment.
     const devWorker = workerData as { port?: number; hostname?: string } | null;
     const address = listenAddress(devWorker ?? undefined);
 
@@ -28,7 +54,8 @@ export const runtime: DeployRuntime = {
       if (parentPort) {
         parentPort.postMessage({ type: 'ready', port: info.port });
       } else {
-        console.log(readyMessage({ ...address, port: info.port }));
+        const host = address.hostname === WILDCARD_HOST ? 'localhost' : address.hostname;
+        console.log(`  ➜ rshono serving on http://${host}:${info.port}`);
       }
     });
 

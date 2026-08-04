@@ -1,9 +1,8 @@
-import { createHash } from 'node:crypto';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { isPageRoute, type PageRoute, type Route } from '../router.js';
-import { prerenderedRelPath, ssgFilePath, VARIANTS, type PrerenderedPage, type PrerenderVariant } from './prerendered.js';
+import { createPageCache, prerenderedRelPath, ssgFilePath, toPrerenderedPage, VARIANTS, type PrerenderedPage, type PrerenderVariant } from './prerendered.js';
 
 /**
  * Stand-in origin for a build that didn't declare {@link RSHonoConfig.siteUrl}. Deliberately
@@ -54,16 +53,8 @@ function interpolatePath(pattern: string, params: Record<string, string>): strin
     .join('/');
 }
 
-/**
- * Prerendered pages, keyed by the request that produced them (see {@link readPrerendered}).
- *
- * Bounded so a site with thousands of prerendered pages keeps a working set rather than the whole
- * build in memory. Only *hits* are cached: caching misses would let anyone mint entries by
- * requesting paths that don't exist. The files are written at build time and never change while
- * the server is up, so an entry never needs invalidating.
- */
-const pageCache = new Map<string, PrerenderedPage>();
-const MAX_CACHED_PAGES = 128;
+/** Prerendered pages, keyed by the request that produced them (see {@link readPrerendered}). */
+const pageCache = createPageCache();
 
 export async function readPrerendered(ssgDir: string, requestPath: string, variant: PrerenderVariant = 'html'): Promise<PrerenderedPage | null> {
   // Keyed by what the request carried, not by the resolved filename, so a hit costs one Map lookup
@@ -81,21 +72,19 @@ export async function readPrerendered(ssgDir: string, requestPath: string, varia
   const file = resolve(root, relPath);
   if (!file.startsWith(root + sep)) return null;
 
-  let body: string;
+  // No encoding argument: the bytes are what gets served, and decoding them to a string here would
+  // only mean re-encoding them on every request that hits the cache. Copied out of the Buffer rather
+  // than kept as one, because `readFile` can hand back a view into Node's shared allocation pool and
+  // this is retained for the life of the process.
+  let body: Uint8Array<ArrayBuffer>;
   try {
-    body = await readFile(file, 'utf8');
+    body = new Uint8Array(await readFile(file));
   } catch {
     return null;
   }
 
-  const page: PrerenderedPage = {
-    body,
-    contentLength: String(Buffer.byteLength(body)),
-    etag: `W/"${createHash('sha256').update(body).digest('base64url').slice(0, 22)}"`,
-  };
+  const page = await toPrerenderedPage(body);
   pageCache.set(key, page);
-  // Insertion-ordered, so the first key is the oldest. One entry in means at most one out.
-  if (pageCache.size > MAX_CACHED_PAGES) pageCache.delete(pageCache.keys().next().value!);
   return page;
 }
 

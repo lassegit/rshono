@@ -17,7 +17,7 @@ Usage:
   rshono start   [--port 3000]   run the production build
 
 Options:
-  -p, --port <n>      port to listen on (default: PORT env or rshono.config.ts or 3000)
+  -p, --port <n>      port to listen on (default: PORT env or 3000)
   -c, --config <path> path to a config file (default: rshono.config.{ts,js,mjs})
   -d, --deploy <name> platform to build for: ${DEPLOY_TARGETS.join(' | ')} (default: node)
   -h, --help          show this help
@@ -57,10 +57,10 @@ async function main(): Promise<void> {
     console.error(`rshono: invalid --port "${values.port}"`);
     process.exit(1);
   }
-  // Precedence: --port flag > PORT env > rshono.config.ts > the command's built-in default.
+  // Precedence: --port flag > PORT env > the command's built-in default.
   const envPort = process.env.PORT ? Number(process.env.PORT) : undefined;
-  const port = flagPort ?? envPort ?? config.port;
-  const host = process.env.HOST ?? config.host;
+  const port = flagPort ?? envPort;
+  const host = process.env.HOST;
 
   switch (command) {
     case 'dev':

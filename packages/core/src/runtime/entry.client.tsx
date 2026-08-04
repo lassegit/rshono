@@ -7,7 +7,6 @@ import {
   encodeReply,
   setServerCallback,
 } from 'react-server-dom-rspack/client.browser';
-import { rscStream } from 'rsc-html-stream/client';
 import { isControlDigest, parseRedirectDigest } from './control.js';
 import type { DevMessage } from './dev-protocol.js';
 import type { RscPayload } from './entry.rsc.js';
@@ -15,6 +14,47 @@ import { RouterContext, type Router } from './navigation.js';
 import { createRscRequest } from './request.js';
 
 const isDev = process.env.NODE_ENV === 'development';
+
+declare global {
+  /** The array the payload `<script>` tags `flight-inject.ts` emits push their chunks into. */
+  var __FLIGHT_DATA: Array<string | Uint8Array> | undefined;
+}
+
+/**
+ * The flight payload the document carried, read back out of `__FLIGHT_DATA`.
+ *
+ * The reader for the format `flight-inject.ts` writes — 14 lines, which is the whole reason neither
+ * half of `rsc-html-stream` is a dependency: its server half mishandles a split document trailer
+ * (see `flight-inject.ts`), and once that one is first-party, keeping the package for this one is a
+ * dependency for a `for` loop.
+ */
+function readFlightPayload(): ReadableStream<Uint8Array> {
+  const encoder = new TextEncoder();
+  // Assigned synchronously by `start`, which `new ReadableStream` runs before it returns.
+  let controller!: ReadableStreamDefaultController<Uint8Array>;
+  const stream = new ReadableStream<Uint8Array>({
+    start: (c) => void (controller = c),
+  });
+  const enqueue = (chunk: string | Uint8Array) => controller.enqueue(typeof chunk === 'string' ? encoder.encode(chunk) : chunk);
+
+  // Payload scripts interleave with the document, so some have already run by the time this module
+  // is evaluated — those are in the array — and the rest run after it, arriving through `push`.
+  const data = (self.__FLIGHT_DATA ??= []);
+  for (const chunk of data) enqueue(chunk);
+  data.push = enqueue as typeof data.push;
+
+  // The last payload script lands before the document finishes parsing, so that is what says there
+  // is no more of it to come.
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => controller.close(), { once: true });
+  } else {
+    controller.close();
+  }
+  return stream;
+}
+
+/** Created at module evaluation, not inside `main()`, so no chunk can be pushed before it is watching. */
+const flightStream = readFlightPayload();
 
 /**
  * Guarantees somewhere to attach the fatal overlay. React's root container is the whole `document`,
@@ -81,48 +121,17 @@ function showFatal(error: unknown, componentStack?: string | null): void {
   }, 0);
 }
 
-// In-memory flight-payload cache keyed by same-origin path+search. `data-prefetch`
-// links warm it on hover/focus; a navigation to a warmed URL resolves instantly and
-// clears the entry (a prefetch is used at most once, so re-visits always re-fetch).
-const payloadCache = new Map<string, Promise<RscPayload>>();
-
-// Bounded so a long session over a link-dense app can't grow it without limit. Insertion-ordered,
-// so the first key is the least recently warmed.
-const MAX_WARMED_PAYLOADS = 8;
-
-function cacheKey(href: string): string | null {
-  const url = new URL(href, location.href);
-  if (url.origin !== location.origin) return null;
-  return url.pathname + url.search;
-}
-
+/**
+ * Asks a URL for its flight payload.
+ *
+ * There is no cache in front of this any more. A `data-prefetch` attribute used to warm one on
+ * hover/focus, keyed by same-origin path+search and bounded to 8 entries — worth knowing about if you
+ * are wondering where the speculative fetching went. Every navigation is now a fetch at the moment it
+ * is asked for, so a payload can never be staler than the click that wanted it, and the browser's own
+ * HTTP cache is what makes a repeat visit cheap.
+ */
 function requestPayload(href: string): Promise<RscPayload> {
   return createFromFetch<RscPayload>(fetch(createRscRequest(new URL(href, location.href).href)));
-}
-
-function warmPayload(href: string): void {
-  const key = cacheKey(href);
-  if (!key || key === cacheKey(location.href) || payloadCache.has(key)) return;
-  const promise = requestPayload(href);
-  payloadCache.set(key, promise);
-  // One entry in means at most one out, and the first key is the oldest.
-  if (payloadCache.size > MAX_WARMED_PAYLOADS) payloadCache.delete(payloadCache.keys().next().value!);
-  // Don't cache failures, and swallow the rejection until (or unless) a nav awaits it.
-  promise.catch(() => {
-    if (payloadCache.get(key) === promise) payloadCache.delete(key);
-  });
-}
-
-function takePayload(href: string): Promise<RscPayload> {
-  const key = cacheKey(href);
-  if (key) {
-    const cached = payloadCache.get(key);
-    if (cached) {
-      payloadCache.delete(key);
-      return cached;
-    }
-  }
-  return requestPayload(href);
 }
 
 async function main() {
@@ -140,7 +149,7 @@ async function main() {
     void run();
   };
 
-  const initialPayload = await createFromReadableStream<RscPayload>(rscStream);
+  const initialPayload = await createFromReadableStream<RscPayload>(flightStream);
 
   function push(href: string) {
     const target = new URL(href, window.location.href);
@@ -160,13 +169,12 @@ async function main() {
     window.history.replaceState(null, '', target.href);
   }
 
-  const back = () => window.history.back();
-  const forward = () => window.history.forward();
-  // A refresh keeps the URL, so it can't ride the history patch like push/replace — it drives the flight re-fetch directly (bypassing any warmed cache to get fresh data).
+  // A refresh keeps the URL, so it can't ride the history patch like push/replace — it drives the
+  // flight re-fetch directly.
   const refresh = () =>
     startNav(async () => {
       try {
-        await fetchRscPayload(true);
+        await fetchRscPayload();
       } catch {
         window.location.reload();
       }
@@ -195,10 +203,10 @@ async function main() {
     return true;
   }
 
-  async function fetchRscPayload(force = false) {
+  async function fetchRscPayload() {
     let payload: RscPayload;
     try {
-      payload = await (force ? requestPayload(window.location.href) : takePayload(window.location.href));
+      payload = await requestPayload(window.location.href);
     } catch (error) {
       if (handleControlDigest(error)) return;
       throw error;
@@ -217,24 +225,24 @@ async function main() {
     }, [startTransition]);
 
     React.useEffect(() => {
-      const stopNavigating = listenNavigation((restoreScroll) =>
+      const stopNavigating = listenNavigation((afterRender) =>
         startNav(async () => {
           try {
             await fetchRscPayload();
-            restoreScroll();
+            afterRender();
           } catch {
             window.location.reload();
           }
         }),
       );
-      const stopUpgradingLinks = listenLinks(warmPayload);
+      const stopUpgradingLinks = listenLinks();
       return () => {
         stopUpgradingLinks();
         stopNavigating();
       };
     }, []);
 
-    const router = React.useMemo<Router>(() => ({ push, replace, back, forward, refresh, pending }), [pending]);
+    const router = React.useMemo<Router>(() => ({ push, replace, refresh, pending }), [pending]);
 
     return <RouterContext.Provider value={router}>{payload.root}</RouterContext.Provider>;
   }
@@ -245,9 +253,6 @@ async function main() {
       id,
       body: await encodeReply(args, { temporaryReferences }),
     });
-    // The action is about to mutate who-knows-what, so anything warmed up to now is pre-mutation
-    // data. Cleared before the round-trip so it happens even if the action throws.
-    payloadCache.clear();
     let payload: RscPayload;
     try {
       payload = await createFromFetch<RscPayload>(fetch(request), { temporaryReferences });
@@ -292,68 +297,11 @@ async function main() {
   });
 
   if (import.meta.webpackHot) {
-    // Server code may have changed, so drop any warmed payloads and re-fetch fresh.
-    initDevRefresh(() => {
-      payloadCache.clear();
-      return fetchRscPayload(true);
-    });
+    initDevRefresh(fetchRscPayload);
   }
 }
 
 type NavigationType = 'push' | 'replace' | 'pop';
-
-/** Hover/focus dwell time before a `data-prefetch` link warms its payload. */
-const PREFETCH_DELAY_MS = 120;
-
-/**
- * Frames to wait for a fragment's target to turn up before giving up and going to the top.
- *
- * A soft navigation restores scroll as soon as the new payload is *set*, and React commits it a tick
- * or more later — so the element a `#hash` names does not exist yet on the first frame.
- */
-const MAX_HASH_SCROLL_FRAMES = 10;
-
-/**
- * The element the current URL's fragment points at, or null.
- *
- * `location.hash` comes back percent-encoded while the `id` in the DOM is literal, so a heading like
- * `#créer` only matches once decoded — and the raw form is tried too, for the ids that genuinely
- * contain a `%`.
- */
-function hashTarget(): HTMLElement | null {
-  const raw = location.hash.slice(1);
-  if (!raw) return null;
-  let decoded = raw;
-  try {
-    decoded = decodeURIComponent(raw);
-  } catch {}
-  return document.getElementById(decoded) ?? document.getElementById(raw);
-}
-
-/**
- * Defers `run` to the next frame.
- *
- * Every scroll change here goes through this. A navigation restores scroll the moment the new
- * payload is *set*, which is before React has committed it — so the layout being scrolled is still
- * the outgoing one until a frame has passed.
- */
-function nextFrame(run: () => void): void {
-  requestAnimationFrame(run);
-}
-
-/**
- * `nextFrame`, retried once per frame until `find` turns something up or `frames` have gone by.
- * `use` then gets what was found, or null if nothing ever was.
- */
-function whenFound<T>(find: () => T | null, frames: number, use: (found: T | null) => void): void {
-  let waited = 0;
-  nextFrame(function attempt() {
-    const found = find();
-    if (found !== null) use(found);
-    else if (++waited < frames) nextFrame(attempt);
-    else use(null);
-  });
-}
 
 /**
  * Runs teardown in reverse and empties the list, so a second call is a no-op.
@@ -379,14 +327,13 @@ function isRouterLink(link: HTMLAnchorElement): boolean {
 }
 
 /**
- * Upgrades the app's anchors: a plain left-click becomes a soft navigation, and `data-prefetch`
- * warms the payload on hover or focus.
+ * Upgrades the app's anchors: a plain left-click becomes a soft navigation.
  *
  * Kept apart from `listenNavigation` because the two share no state. A click here only calls
  * `history.pushState` — which is where that function picks the navigation up — so the whole contract
  * between them is one global the browser already provides.
  */
-function listenLinks(prefetch: (href: string) => void): () => void {
+function listenLinks(): () => void {
   const undo: Array<() => void> = [];
 
   function onClick(e: MouseEvent) {
@@ -410,39 +357,20 @@ function listenLinks(prefetch: (href: string) => void): () => void {
   document.addEventListener('click', onClick);
   undo.push(() => document.removeEventListener('click', onClick));
 
-  // A prefetch is a full server render, so it waits out a short dwell time on one shared timer:
-  // sweeping the cursor across a list of prefetch links costs one request (for the link the pointer
-  // settled on), not one per link.
-  let prefetchTimer: ReturnType<typeof setTimeout> | undefined;
-  function onPrefetch(e: Event) {
-    const target = e.target;
-    if (!(target instanceof Element)) return;
-    const link = target.closest('a[data-prefetch]');
-    if (!(link instanceof HTMLAnchorElement) || !isRouterLink(link)) return;
-    const { href } = link;
-    clearTimeout(prefetchTimer);
-    prefetchTimer = setTimeout(() => prefetch(href), PREFETCH_DELAY_MS);
-  }
-  undo.push(() => clearTimeout(prefetchTimer));
-  document.addEventListener('pointerover', onPrefetch);
-  undo.push(() => document.removeEventListener('pointerover', onPrefetch));
-  document.addEventListener('focusin', onPrefetch);
-  undo.push(() => document.removeEventListener('focusin', onPrefetch));
-
   return () => disposeAll(undo);
 }
 
-function listenNavigation(onNavigation: (restoreScroll: () => void) => void): () => void {
+function listenNavigation(onNavigation: (afterRender: () => void) => void): () => void {
   const undo: Array<() => void> = [];
 
-  // Scroll restoration. We tag each history entry with a stable numeric key in its
-  // `history.state` and remember scrollY per key, so back/forward restores the exact
-  // position while push scrolls to the top. `manual` hands restoration to us.
-  const scrollByKey = new Map<number, number>();
-  let seq = 0;
+  // Scroll restoration is the browser's. It used to be ours: each history entry was tagged with a key
+  // in `history.state`, `scrollY` was remembered per key, and `manual` handed restoration over — about
+  // 130 lines to restore a traversal exactly and to chase a `#hash` target across the frames before
+  // React had committed the new payload. `auto` is set explicitly rather than left at the default,
+  // because it is a statement: the browser remembers a traversal's offset for us.
   const prevRestoration = window.history.scrollRestoration;
   try {
-    window.history.scrollRestoration = 'manual';
+    window.history.scrollRestoration = 'auto';
   } catch {}
   undo.push(() => {
     try {
@@ -450,45 +378,20 @@ function listenNavigation(onNavigation: (restoreScroll: () => void) => void): ()
     } catch {}
   });
 
-  const keyOf = (): number | null => {
-    const state = window.history.state as { __rshonoScroll?: unknown } | null;
-    return state && typeof state.__rshonoScroll === 'number' ? state.__rshonoScroll : null;
-  };
-  const tag = (state: unknown, key: number) => ({ ...(state as object | null), __rshonoScroll: key });
-
-  if (keyOf() === null) {
-    window.history.replaceState(tag(window.history.state, seq++), '');
-  }
-
-  let scrollRaf = 0;
-  const onScroll = () => {
-    if (scrollRaf) return;
-    scrollRaf = requestAnimationFrame(() => {
-      scrollRaf = 0;
-      const key = keyOf();
-      if (key !== null) scrollByKey.set(key, window.scrollY);
-    });
-  };
-  window.addEventListener('scroll', onScroll, { passive: true });
-  undo.push(() => window.removeEventListener('scroll', onScroll));
-
-  const restoreScrollFor = (type: NavigationType) => () => {
-    if (type === 'replace') return;
-    const key = keyOf();
-    const remembered = type === 'pop' && key !== null ? scrollByKey.get(key) : undefined;
-    if (remembered !== undefined) {
-      nextFrame(() => window.scrollTo(0, remembered));
-      return;
-    }
-
-    // Nothing remembered: a fresh push, or a traversal onto an entry the browser made itself — a
-    // same-page anchor never goes through our patched `pushState`, so it was never tagged. In both
-    // cases a `#hash` is the stated destination, and the top of the page is only the fallback.
-    if (!location.hash) {
-      nextFrame(() => window.scrollTo(0, 0));
-      return;
-    }
-    whenFound(hashTarget, MAX_HASH_SCROLL_FRAMES, (target) => (target ? target.scrollIntoView() : window.scrollTo(0, 0)));
+  /**
+   * A push is not a real navigation as far as the browser is concerned, so nothing resets the scroll
+   * offset — a click through to a new page would otherwise land wherever the last one was scrolled to.
+   * `replace` keeps its position deliberately, and a traversal is the browser's to restore.
+   *
+   * Deferred a frame because the payload is *set* before React commits it, so the layout being scrolled
+   * is still the outgoing one until one has passed.
+   *
+   * A `#hash` on a cross-page link is no longer chased: the target does not exist until the new payload
+   * commits, and following it was the other half of what came out with the scroll memory.
+   */
+  const afterRenderFor = (type: NavigationType) => () => {
+    if (type !== 'push') return;
+    requestAnimationFrame(() => window.scrollTo(0, 0));
   };
 
   const documentUrl = () => location.pathname + location.search;
@@ -506,13 +409,13 @@ function listenNavigation(onNavigation: (restoreScroll: () => void) => void): ()
    * remains the way to ask for fresh data at an unchanged URL.
    */
   const notify = (type: NavigationType) => {
-    const restoreScroll = restoreScrollFor(type);
+    const afterRender = afterRenderFor(type);
     if (documentUrl() === renderedUrl) {
-      restoreScroll();
+      afterRender();
       return;
     }
     renderedUrl = documentUrl();
-    onNavigation(restoreScroll);
+    onNavigation(afterRender);
   };
 
   const onPopState = () => notify('pop');
@@ -521,7 +424,7 @@ function listenNavigation(onNavigation: (restoreScroll: () => void) => void): ()
 
   const oldPushState = window.history.pushState;
   window.history.pushState = function (state, unused, url) {
-    const res = oldPushState.call(this, tag(state, seq++), unused, url as string);
+    const res = oldPushState.call(this, state, unused, url as string);
     notify('push');
     return res;
   };
@@ -531,7 +434,7 @@ function listenNavigation(onNavigation: (restoreScroll: () => void) => void): ()
 
   const oldReplaceState = window.history.replaceState;
   window.history.replaceState = function (state, unused, url) {
-    const res = oldReplaceState.call(this, tag(state, keyOf() ?? seq++), unused, url as string);
+    const res = oldReplaceState.call(this, state, unused, url as string);
     notify('replace');
     return res;
   };

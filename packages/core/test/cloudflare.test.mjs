@@ -9,6 +9,16 @@ import { join, resolve } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { APP_ENV, buildApp, TESTBED_DIR, TESTBED_DIST, importServerBundle } from './helpers.mjs';
 
+/**
+ * Every specifier the bundle imports *statically*, whether or not it was minified.
+ *
+ * The production server bundle is minified, so there is no whitespace to anchor on: `import` is followed
+ * directly by `{`, `*` or a quote. The `from` clause is optional (a bare `import "x"` has none) and the
+ * leading `^|[;}]` keeps `import(` — a dynamic import, which is bundled rather than external — and the
+ * word `import` inside a string from matching.
+ */
+const STATIC_IMPORTS = /(?:^|[;}])\s*import\s*(?:[^'"]*?\bfrom\s*)?['"]([^'"]+)['"]/g;
+
 const ASSETS_ROOT = join(TESTBED_DIST, 'cloudflare', 'assets');
 const WRANGLER_CONFIG = join(TESTBED_DIR, 'wrangler.jsonc');
 const ORIGIN = 'https://rshono.example';
@@ -67,7 +77,11 @@ describe('the Workers build output', () => {
 
   test('leaves nothing external that workerd does not provide', () => {
     const source = readFileSync(join(TESTBED_DIST, 'server', 'main.mjs'), 'utf8');
-    const imported = [...source.matchAll(/^import\s[^;]*?from\s*"([^"]+)"/gm)].map((m) => m[1]);
+    const imported = [...source.matchAll(STATIC_IMPORTS)].map((m) => m[1]);
+    // Both assertions below are satisfied by an empty list, so a scan that matched nothing would report
+    // a clean bundle instead of a broken scan. It has done exactly that once: the pattern required
+    // whitespace after `import`, which a minified bundle does not emit.
+    assert.ok(imported.length > 0, 'the import scan found nothing — the bundle format changed, not the bundle');
     const foreign = imported.filter((request) => !/^(?:\.|node:|cloudflare:)/.test(request));
     assert.deepEqual(foreign, [], 'a Worker resolves no node_modules at runtime, so everything else must be bundled');
     // node: imports are fine, but only the ones `nodejs_compat` actually covers — and the scaffolded
@@ -120,7 +134,7 @@ describe('serving from a Worker', () => {
     assert.ok(body.startsWith('<!DOCTYPE html>'));
     assert.equal(res.headers.get('cache-control'), 'public, max-age=300');
     assert.ok(res.headers.get('vary')?.includes('Accept'), 'one URL, two representations');
-    assert.match(res.headers.get('etag') ?? '', /^W\//, 'weak, because compression changes the bytes but not the representation');
+    assert.match(res.headers.get('etag') ?? '', /^W\//, 'weak: something in front may re-encode the bytes without changing the representation');
   });
 
   test('answers the same URL with the prerendered flight payload when asked for one', async () => {
@@ -151,12 +165,6 @@ describe('serving from a Worker', () => {
     const res = await fetchWorker('/__ssg/docs/getting-started/index.html');
     await res.text();
     assert.equal(res.status, 404, 'a page has one URL; the store prefix is not it');
-  });
-
-  test('does not compress — the edge already does, and workerd has no zlib stream', async () => {
-    const res = await fetchWorker('/', { headers: { 'accept-encoding': 'gzip' } });
-    await res.text();
-    assert.equal(res.headers.get('content-encoding'), null);
   });
 
   test('falls back to rendering a static route when there is no binding to read it from', async () => {

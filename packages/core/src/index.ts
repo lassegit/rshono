@@ -8,14 +8,13 @@
  *   server components and actions (`getContext`, `redirect`, `notFound`), plus
  *   `onServerError` for reporting the errors the framework catches.
  * - `@rshono/core/client` — hooks and components for `'use client'` modules
- *   (`useNavigation`, `Boundary`, `ErrorBoundary`, `NavigationProgress`).
+ *   (`useNavigation`, `Boundary`, `ErrorBoundary`).
  *
  * @packageDocumentation
  */
 
 export {
   defineRoutes,
-  isPageRoute,
   type EndpointRoute,
   type EndpointServerModule,
   type ErrorInfo,
@@ -34,8 +33,6 @@ export { defineConfig, type RSHonoConfig, type RspackHookContext } from './confi
 
 export type { DeployTarget } from './deploy/contract.js';
 
-/**
- * Re-exported from Hono for convenience, so an endpoint module can type its
- * `handler` without depending on `hono` directly.
- */
-export type { Context, Handler } from 'hono';
+// Hono's own `Context` and `Handler` used to be re-exported from here "for convenience". They are
+// Hono's types, `hono` is a peer dependency every app already has, and importing them from two places
+// only raised the question of which one is right — so an endpoint module imports them from `hono`.

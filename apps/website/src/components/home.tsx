@@ -39,14 +39,14 @@ export default async function Profile({ params, ctx }: PageProps<'/profile/:id'>
  * The case for the framework, as opposed to the list of what it does.
  *
  * Every number in here is measured rather than claimed, and the [comparison page](/comparison) shows the
- * working — which is why these read as flatly as they do. `eleven exports` and `seventeen packages` are
- * checkable in a minute, and that is the whole argument: nothing on this page needs to be taken on
+ * working — which is why these read as flatly as they do. `nine exports` and `five direct dependencies`
+ * are checkable in a minute, and that is the whole argument: nothing on this page needs to be taken on
  * trust.
  */
 const REASONS = [
   {
     title: 'An API you can finish reading',
-    body: 'Eleven exported values across three import paths. defineRoutes, getContext, useNavigation and eight more — that is the framework. No second router to learn later, no unstable_ tier, nothing that behaves differently depending on which directory you called it from.',
+    body: 'Nine exported values across three import paths. defineRoutes, getContext, useNavigation and six more — that is the framework. No second router to learn later, no unstable_ tier, nothing that behaves differently depending on which directory you called it from.',
   },
   {
     title: 'Your architecture, not the router’s',
@@ -62,7 +62,7 @@ const REASONS = [
   },
   {
     title: 'A dependency tree you could audit',
-    body: 'Seventeen packages install, seven of them direct. That is Hono, Rspack, React’s RSC bindings and little else — every one nameable, versionable and auditable, because none of it is vendored out of sight.',
+    body: 'Five direct dependencies, and the install is the whole tree. That is Hono, Rspack, React’s RSC bindings and little else — every one nameable, versionable and auditable, because none of it is vendored out of sight.',
   },
   {
     title: 'One bundler, dev and build',
@@ -74,13 +74,13 @@ const REASONS = [
   },
   {
     title: 'No platform, and no legacy',
-    body: 'Seven deploy targets behind one interface the build resolves — one flag, not an adapter package each. And one router with one rendering model: there is no earlier generation of rshono still in the API for compatibility’s sake.',
+    body: 'Four deploy targets behind one interface the build resolves — one flag, not an adapter package each. And one router with one rendering model: there is no earlier generation of rshono still in the API for compatibility’s sake.',
   },
 ];
 
 /** The four numbers behind the copy above, for a reader who scans before they read. */
 const NUMBERS = [
-  { value: '11', label: 'exported functions and components' },
+  { value: '9', label: 'exported functions and components' },
   { value: '3', label: 'public import paths' },
   { value: '17', label: 'packages in a production install' },
   { value: '1', label: 'required file' },
@@ -119,7 +119,7 @@ const FEATURES = [
   },
 ];
 
-const TARGETS = ['node', 'bun', 'deno', 'cloudflare', 'vercel', 'netlify', 'aws-lambda'];
+const TARGETS = ['node', 'cloudflare', 'vercel', 'aws-lambda'];
 
 /**
  * The landing page.
@@ -175,14 +175,12 @@ function Hero() {
       <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
         <a
           href="/docs/getting-started"
-          data-prefetch
           className="rounded-lg bg-zinc-900 px-5 py-2.5 font-medium text-white no-underline hover:bg-zinc-700 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
         >
           Get started
         </a>
         <a
           href="/comparison"
-          data-prefetch
           className="rounded-lg border border-zinc-300 px-5 py-2.5 font-medium text-zinc-900 no-underline hover:bg-zinc-50 dark:border-zinc-700 dark:text-white dark:hover:bg-zinc-900"
         >
           Why not Next.js?
@@ -243,7 +241,7 @@ function Reasons() {
       </ul>
 
       <p className="mt-10">
-        <a href="/comparison" data-prefetch>
+        <a href="/comparison">
           See it next to Next.js, TanStack Start, Waku and Astro — including where they win →
         </a>
       </p>
@@ -287,7 +285,7 @@ function Features() {
           <li key={feature.title} className="bg-white p-6 dark:bg-zinc-950">
             <h3 className="mb-2 font-medium text-zinc-900 dark:text-white">{feature.title}</h3>
             <p className="mb-3 text-sm text-zinc-600 dark:text-zinc-400">{feature.body}</p>
-            <a href={feature.href} data-prefetch className="text-sm">
+            <a href={feature.href} className="text-sm">
               Read more →
             </a>
           </li>
@@ -317,7 +315,7 @@ function Deployment() {
           ))}
         </ul>
         <p className="mt-6">
-          <a href="/docs/deployment" data-prefetch>
+          <a href="/docs/deployment">
             Compare the targets →
           </a>
         </p>

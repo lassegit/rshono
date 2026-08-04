@@ -7,7 +7,7 @@ export const RSHONO_VERSION = '1.0.0-rc.3';
  * The Node range rshono itself declares, restated in every scaffolded app's `engines` — so a CI image
  * or a contributor on an older Node hears it from their package manager rather than from a stack trace.
  */
-export const NODE_ENGINE = '>=22.1.0';
+export const NODE_ENGINE = '>=22.18.0';
 
 /**
  * The dependency versions rshono is tested against, copied from its own manifest. Exact where it is
@@ -27,10 +27,7 @@ export const FRAMEWORK_DEPS = {
 export const DEPLOY_TARGETS = [
   { name: 'node', hint: 'run `rshono start`' },
   { name: 'cloudflare', hint: 'deploy with `wrangler deploy`' },
-  { name: 'bun', hint: 'run `bun dist/server/main.mjs`' },
-  { name: 'deno', hint: 'run `deno serve -A dist/server/main.mjs`' },
   { name: 'vercel', hint: 'deploy with `vercel deploy --prebuilt`' },
-  { name: 'netlify', hint: 'deploy with `netlify deploy --build=false --dir=.netlify/publish`' },
   { name: 'aws-lambda', hint: 'zip dist/ with the handler at dist/server/main.mjs' },
 ] as const;
 

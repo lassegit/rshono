@@ -280,7 +280,7 @@ function Reproduce() {
           packages/benchmarks
         </a>{' '}
         has the method, the full caveat list, and what it deliberately does not measure. For the non-numeric differences, see{' '}
-        <a href="/comparison" data-prefetch>
+        <a href="/comparison">
           how rshono compares
         </a>
         .

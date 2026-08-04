@@ -46,10 +46,6 @@ export interface RSHonoConfig {
    * The origin is what's used; a path is rejected rather than silently dropped.
    */
   siteUrl?: string;
-  /** Default port for `dev` / `start`. Overridden by the `--port` flag or the `PORT` env var. Default `3000`. */
-  port?: number;
-  /** Bind address for `start`. Overridden by the `HOST` env var. Default `'0.0.0.0'`. */
-  host?: string;
   /**
    * Honour `X-Forwarded-Host` / `X-Forwarded-Proto` when resolving the browser-facing request
    * URL (`getContext().url`, a page's `url` prop, and the origin the CSRF check compares against).
@@ -102,15 +98,6 @@ export interface RSHonoConfig {
    * Default `'1mb'`.
    */
   bodySizeLimit?: string | number | false;
-  /** Deadline in milliseconds for a single page render (flight + SSR). Default `10000`. */
-  renderTimeout?: number;
-  /**
-   * Gzip compressible responses (HTML, flight payloads, JSON, CSS, JS). Streaming-safe — each
-   * chunk the renderer flushes is flushed on the wire too. Default `true`.
-   *
-   * Set `false` behind a proxy or CDN that already compresses, to avoid doing the work twice.
-   */
-  compress?: boolean;
   /**
    * Escape hatch: mutate the generated Rspack config just before it's compiled. Called once per
    * compiler — inspect {@link RspackHookContext.isServer} to tell them apart. Mutate `config` in

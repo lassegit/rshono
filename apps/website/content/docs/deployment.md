@@ -44,10 +44,14 @@ Assets under `/_static` and `public/` _do_ go straight to the CDN where there is
 
 ## Compression
 
-Left to the platform on `cloudflare`, `vercel` and `netlify`. The framework's streaming gzip is used on
-`node`, `bun`, `deno` and `aws-lambda`.
+The framework ships no compressor. `cloudflare` and `vercel` compress at the edge regardless, and a
+`node` or `aws-lambda` deploy is almost always behind something that does — a reverse proxy, a load
+balancer, CloudFront.
 
-Your `compress` setting only decides whether an available compressor is used.
+rshono did ship a streaming-safe gzip, for the targets that might not be behind one. It was one
+target's feature by the end, and a proxy does it better. If you serve a bare Node process straight to
+the internet and want it back, `hono/compress` is one `app.use` in `src/server.ts` — read its docs on
+streaming first, because a buffering compressor undoes streamed SSR.
 
 ## AWS
 

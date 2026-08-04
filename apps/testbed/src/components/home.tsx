@@ -49,7 +49,7 @@ export default function Home({ url, ctx }: PageProps) {
           Rendered on the server for <code>{url.href}</code>
         </p>
         <p className="meta">
-          The <code>ctx</code> prop is the request context: this was a <code data-ctx="method">{ctx.method}</code>, and you are{' '}
+          The <code>ctx</code> prop is the request context: this was a <code data-ctx="method">{ctx.raw.req.method}</code>, and you are{' '}
           <code data-ctx="visitor">{visitor ? decodeURIComponent(visitor) : 'a first-time visitor'}</code>.
         </p>
       </div>

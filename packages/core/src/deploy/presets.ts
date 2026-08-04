@@ -1,7 +1,6 @@
 import type { RspackOptions } from '@rspack/core';
 import { finalizeCloudflareBuild } from './cloudflare/build.js';
 import type { DeployTarget } from './contract.js';
-import { finalizeNetlifyBuild } from './netlify/build.js';
 import { finalizeVercelBuild } from './vercel/build.js';
 
 /** What a preset's {@link DeployPreset.finalize} is told about the build it is arranging. */
@@ -65,6 +64,10 @@ export interface DeployPreset {
  * Node: a long-lived server process. The generated config is already this shape, so the preset has
  * nothing to contribute — the platform-specific settings still living in `builder/rspack-config.ts`
  * (`target: 'node'`, the externals policy, ESM chunk output) are the Node ones by default.
+ *
+ * Anywhere that runs a Node process runs this build: a VPS, a container, a PaaS. Bun and Deno are
+ * expected to as well, through their `node:` compatibility — they had a preset each, and since neither
+ * held anything but a default export, running the bundle (`bun dist/server/main.mjs`) replaces it.
  */
 export const NODE_PRESET: DeployPreset = {
   name: 'node',
@@ -98,25 +101,11 @@ const CLOUDFLARE_PRESET: DeployPreset = {
 };
 
 /**
- * Bun and Deno: like Node, but the runtime opens the socket from the module's default export. Their
- * `node:` compatibility covers everything `server/` uses, so the bundle is Node's — only the handoff
- * differs, which is precisely the thing an app cannot do for itself.
- */
-const BUN_PRESET: DeployPreset = {
-  name: 'bun',
-  runtimeModule: 'deploy/bun/runtime.js',
-  deployHint: 'run `bun dist/server/main.mjs`',
-};
-
-const DENO_PRESET: DeployPreset = {
-  name: 'deno',
-  runtimeModule: 'deploy/deno/runtime.js',
-  deployHint: 'run `deno serve -A dist/server/main.mjs`',
-};
-
-/**
- * Vercel and Netlify: one Node function behind the platform's CDN, which serves the assets and reaches
- * the function only for a page. Both `finalize` hooks assemble the layout the platform uploads.
+ * Vercel: one Node function behind the platform's CDN, which serves the assets and reaches the function
+ * only for a page. `finalize` assembles the Build Output API layout the platform uploads — including the
+ * `supportsResponseStreaming` flag, without which Vercel buffers the whole response and streamed SSR is
+ * silently undone. That flag, and the exact path the bundle has to keep, are the reason this is a preset
+ * rather than a snippet in the docs.
  */
 const VERCEL_PRESET: DeployPreset = {
   name: 'vercel',
@@ -125,14 +114,12 @@ const VERCEL_PRESET: DeployPreset = {
   finalize: finalizeVercelBuild,
 };
 
-const NETLIFY_PRESET: DeployPreset = {
-  name: 'netlify',
-  runtimeModule: 'deploy/netlify/runtime.js',
-  deployHint: 'deploy with `netlify deploy --build=false --dir=.netlify/publish`',
-  finalize: finalizeNetlifyBuild,
-};
-
-/** AWS Lambda behind a Function URL in `RESPONSE_STREAM` mode — the AWS shape that keeps streaming. */
+/**
+ * AWS Lambda behind a Function URL in `RESPONSE_STREAM` mode — the AWS shape that keeps streaming.
+ *
+ * Same reasoning as Vercel: the runtime wraps the app in `awslambda.streamifyResponse`, and the buffered
+ * alternative would deploy fine and then hold every page until its last byte rendered.
+ */
 const AWS_LAMBDA_PRESET: DeployPreset = {
   name: 'aws-lambda',
   runtimeModule: 'deploy/aws-lambda/runtime.js',
@@ -142,10 +129,7 @@ const AWS_LAMBDA_PRESET: DeployPreset = {
 const PRESETS: Record<DeployTarget, DeployPreset> = {
   node: NODE_PRESET,
   cloudflare: CLOUDFLARE_PRESET,
-  bun: BUN_PRESET,
-  deno: DENO_PRESET,
   vercel: VERCEL_PRESET,
-  netlify: NETLIFY_PRESET,
   'aws-lambda': AWS_LAMBDA_PRESET,
 };
 

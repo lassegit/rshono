@@ -15,6 +15,7 @@ import { appendVary, etagMatches } from '../dist/server/headers.js';
 import { parseByteSize, resolveServerConfig } from '../dist/server/server-config.js';
 import { prerenderedRelPath, ssgFilePath } from '../dist/server/prerendered.js';
 import { prerenderStaticRoutes, readPrerendered, resolveSiteOrigin } from '../dist/server/ssg.js';
+import { injectFlightPayload } from '../dist/runtime/flight-inject.js';
 import { isControlDigest, parseRedirectDigest, RedirectSignal } from '../dist/runtime/control.js';
 import { Ctx } from '../dist/runtime/context.js';
 import { MINIMAL_APP_DIR } from './helpers.mjs';
@@ -27,6 +28,74 @@ function tempDir() {
 }
 after(() => {
   for (const dir of tempDirs) rmSync(dir, { recursive: true, force: true });
+});
+
+describe('injectFlightPayload', () => {
+  const encoder = new TextEncoder();
+  const streamOf = (chunks) =>
+    new ReadableStream({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(typeof chunk === 'string' ? encoder.encode(chunk) : chunk);
+        controller.close();
+      },
+    });
+
+  async function inject(htmlChunks, { nonce } = {}) {
+    const out = streamOf(htmlChunks).pipeThrough(injectFlightPayload(streamOf(['0:"hi"\n']), nonce ? { nonce } : {}));
+    const decoder = new TextDecoder();
+    let html = '';
+    for await (const chunk of out) html += decoder.decode(chunk, { stream: true });
+    return html + decoder.decode();
+  }
+
+  const countOf = (html, needle) => html.split(needle).length - 1;
+
+  // React's byte writer packs output into 2 kB views and splits any write that straddles one, so the
+  // document trailer can arrive as two chunks. `rsc-html-stream/server` tests each chunk with
+  // `endsWith` and misses that, emitting two trailers with the payload script after the first — i.e.
+  // outside <body>. A page's byte layout is deterministic, so such a page is malformed every time.
+  const splits = {
+    'one chunk': ['<html><body><p>hi</p>', '</body></html>'],
+    'mid-tag': ['<html><body><p>hi</p></bo', 'dy></html>'],
+    'between tags': ['<html><body><p>hi</p></body>', '</html>'],
+    'one byte early': ['<html><body><p>hi</p></body></htm', 'l>'],
+    'byte at a time': ['<html><body><p>hi</p>', ...'</body></html>'],
+  };
+
+  for (const [name, chunks] of Object.entries(splits)) {
+    test(`holds back a document trailer split ${name}`, async () => {
+      const html = await inject(chunks);
+      assert.equal(countOf(html, '</body></html>'), 1, 'exactly one trailer, however React chunked it');
+      assert.equal(countOf(html, '__FLIGHT_DATA'), 1, 'the payload rides in one script');
+      assert.match(html, /<script>\(self\.__FLIGHT_DATA\|\|=\[\]\)\.push\("0:\\"hi\\"\\n"\)<\/script><\/body><\/html>$/);
+    });
+  }
+
+  test('puts the payload script inside the body, before the trailer', async () => {
+    const html = await inject(['<html><body><p>hi</p></body></html>']);
+    assert.ok(html.indexOf('__FLIGHT_DATA') < html.indexOf('</body></html>'), 'the script must not land after </body>');
+  });
+
+  test('carries the CSP nonce on the injected script', async () => {
+    const html = await inject(['<html><body></body></html>'], { nonce: 'abc123' });
+    assert.match(html, /<script nonce="abc123">/);
+  });
+
+  test('escapes a payload that would close the script element early', async () => {
+    const out = streamOf(['<html><body></body></html>']).pipeThrough(injectFlightPayload(streamOf(['0:"</script><!--x"\n'])));
+    const decoder = new TextDecoder();
+    let html = '';
+    for await (const chunk of out) html += decoder.decode(chunk, { stream: true });
+    html += decoder.decode();
+    assert.equal(countOf(html, '</script>'), 1, 'only the real closing tag');
+    assert.match(html, /<\/\\script>/, 'the payload copy is escaped');
+    assert.match(html, /<\\!--/);
+  });
+
+  test('re-emits a trailer even when the document never had one', async () => {
+    const html = await inject(['<p>fragment</p>']);
+    assert.equal(countOf(html, '</body></html>'), 1);
+  });
 });
 
 describe('parseByteSize', () => {
@@ -51,12 +120,10 @@ describe('parseByteSize', () => {
 describe('resolveServerConfig', () => {
   test('applies the documented defaults', () => {
     const config = resolveServerConfig({}, { isDev: false });
-    assert.equal(config.renderTimeoutMs, 10_000);
     assert.equal(config.maxBodyBytes, 1024 * 1024);
     assert.equal(config.checkOrigin, true, 'CSRF checking is on unless turned off');
     assert.equal(config.trustProxy, false, 'proxy headers are never trusted by default');
     assert.equal(config.cspEnabled, false);
-    assert.equal(config.compress, true);
     assert.deepEqual(config.allowedOrigins, []);
     assert.equal(config.isDev, false, 'the build mode is baked in rather than read from NODE_ENV at runtime');
   });
@@ -86,9 +153,6 @@ describe('resolveServerConfig', () => {
     assert.equal('frame-ancestors' in cspDirectives, false, "'' removes a directive entirely");
   });
 
-  test('compress can be turned off for a proxy that already does it', () => {
-    assert.equal(resolveServerConfig({ compress: false }, { isDev: false }).compress, false);
-  });
 });
 
 describe('appendVary', () => {
@@ -115,7 +179,7 @@ describe('etagMatches', () => {
   const etag = '"abc123"';
   test('matches exact, weak and listed validators', () => {
     assert.equal(etagMatches(etag, etag), true);
-    assert.equal(etagMatches(`W/${etag}`, etag), true, 'the compressor weakens the tag it sent');
+    assert.equal(etagMatches(`W/${etag}`, etag), true, 'a proxy that re-encoded the bytes may weaken the tag');
     assert.equal(etagMatches(`"other", ${etag}`, etag), true);
     assert.equal(etagMatches('*', etag), true);
   });
@@ -193,7 +257,10 @@ describe('readPrerendered', () => {
     writeFileSync(join(dir, 'docs', 'index.html'), '<!DOCTYPE html><p>docs</p>');
 
     const first = await readPrerendered(dir, '/docs');
-    assert.equal(first.body, '<!DOCTYPE html><p>docs</p>');
+    // Bytes, not a string: the entry is served verbatim to every hit, so it is cached already encoded.
+    assert.ok(first.body instanceof Uint8Array);
+    assert.equal(new TextDecoder().decode(first.body), '<!DOCTYPE html><p>docs</p>');
+    assert.equal(first.contentLength, '26');
     assert.match(first.etag, /^W\/"[\w-]{22}"$/, 'weak, so it survives being gzipped on the way out');
 
     const second = await readPrerendered(dir, '/docs');
@@ -262,8 +329,9 @@ describe('prerenderStaticRoutes', () => {
       ],
       'each path is rendered as a document and as a flight payload; a dynamic route is never prerendered',
     );
-    assert.equal((await readPrerendered(ssgDir, '/docs/a')).body, '<!DOCTYPE html><p>ok</p>');
-    assert.equal((await readPrerendered(ssgDir, '/docs/a', 'flight')).body, '0:{"root":"flight"}');
+    const decode = (page) => new TextDecoder().decode(page.body);
+    assert.equal(decode(await readPrerendered(ssgDir, '/docs/a')), '<!DOCTYPE html><p>ok</p>');
+    assert.equal(decode(await readPrerendered(ssgDir, '/docs/a', 'flight')), '0:{"root":"flight"}');
   });
 
   test('renders against siteUrl, so absolute URLs in the output are the deployed ones', async () => {
@@ -396,7 +464,9 @@ describe('Ctx enumerability', () => {
   test('the wrapper still resolves request data through the hidden context', () => {
     const ctx = new Ctx(fakeHonoContext);
     assert.equal(ctx.url.pathname, '/');
-    assert.deepEqual(ctx.params, {});
+    // The pass-through getters (`req`, `method`, `params`) and the `header()` setter are gone; what they
+    // named is reached through `raw`, which is the only way in now.
+    assert.equal(ctx.raw.req.url, 'http://example.test/');
   });
 });
 
@@ -460,9 +530,9 @@ describe('deploy target resolution', () => {
   });
 
   test('the flag wins over the environment, which wins over the config file', () => {
-    assert.equal(resolveDeployPreset({ flag: 'node', env: 'cloudflare', config: 'vercel' }).name, 'node');
-    assert.equal(resolveDeployPreset({ env: 'cloudflare', config: 'vercel' }).name, 'cloudflare');
-    assert.equal(resolveDeployPreset({ config: 'vercel' }).name, 'vercel');
+    assert.equal(resolveDeployPreset({ flag: 'node', env: 'cloudflare', config: 'cloudflare' }).name, 'node');
+    assert.equal(resolveDeployPreset({ env: 'cloudflare', config: 'node' }).name, 'cloudflare');
+    assert.equal(resolveDeployPreset({ config: 'cloudflare' }).name, 'cloudflare');
     // A loser never reaches the lookup, so only the winner can be the one reported as unknown.
     assert.throws(() => resolveDeployPreset({ flag: 'from-flag', env: 'node', config: 'node' }), /from-flag/);
   });

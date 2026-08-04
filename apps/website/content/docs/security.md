@@ -34,11 +34,29 @@ page's `url` prop — poisoning canonical tags, emails and redirects, and any sh
 Set `trustProxy: true` only when a proxy you control sets those headers. `rshono dev` forces it on for
 its own localhost-bound proxy.
 
-## Request deadline
+## Client disconnect
 
-Every request races a timeout (`renderTimeout`, default 10000 ms) and the client-disconnect signal —
-covering the server action as well as flight and SSR. Neither a hung data fetch nor a hung mutation can
-pin sockets open.
+A render is aborted when the client goes away, so a browser that navigated on stops the work it asked
+for.
+
+There is **no request deadline in the framework.** A `renderTimeout` setting used to wrap every request
+in a timer covering the action as well as the render, but every host rshono targets enforces one of its
+own — Workers, Vercel and Lambda all do — which left a bare Node process as the only shape that needed
+it, and a proxy as the better place to put it. For a Node deploy that fronts nothing and wants one
+in-process:
+
+```ts
+// src/server.ts
+const TIMEOUT_MS = 10_000;
+server.use(async (c, next) => {
+  const timedOut = Symbol('timeout');
+  const timer = new Promise((resolve) => setTimeout(() => resolve(timedOut), TIMEOUT_MS).unref?.());
+  if ((await Promise.race([next(), timer])) === timedOut) return c.text('Gateway Timeout', 504);
+});
+```
+
+Note what that cannot do, and what the framework's version could not either: the abandoned render runs
+to completion. All either buys you is not holding the socket open for it.
 
 ## Request-body limit
 
@@ -74,7 +92,7 @@ user's page and serve it to the next. `private` forbids exactly that, and `no-ca
 revalidate rather than re-show a stale personalised page. Neither disables bfcache the way `no-store`
 would.
 
-Set your own value, from middleware or `getContext().header(…)`, and it is left alone.
+Set your own value, from middleware or `getContext().raw.header(…)`, and it is left alone.
 
 **Prerendered pages** keep `public, max-age=300` and carry a weak `ETag`, so a revalidation costs a 304
 instead of the page.

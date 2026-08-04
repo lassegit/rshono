@@ -32,8 +32,10 @@ import { appendVary, etagMatches } from '../server/headers.js';
 import { getContext, publicUrl, readParams, reportServerError, runWithContext } from './context.js';
 import { isControlSignal, RedirectSignal, type ControlSignal } from './control.js';
 import { renderHTML } from './entry.ssr.js';
+// Type-only, so it is erased — the RSC layer does not take its own instance of the SSR layer's module.
+import type { CancellableTransformer } from './flight-inject.js';
 import { RouterProvider } from './navigation.js';
-import { acceptsRsc, isActionRequest, parseRenderRequest, wantsRsc } from './request.js';
+import { acceptsRsc, isActionRequest, parseRenderRequest, requestWantsRsc, wantsRsc } from './request.js';
 
 const serverApp = ((serverAppModule as { default?: unknown }).default ?? null) as Hono | null;
 
@@ -43,7 +45,7 @@ const serverApp = ((serverAppModule as { default?: unknown }).default ?? null) a
 // resolved. `isDev` among them: the build mode is decided by which command produced the bundle, not
 // by `process.env.NODE_ENV`, and not every runtime this deploys to has a `process` to read anyway.
 const CONFIG = __RSHONO_CONFIG__;
-const { isDev, renderTimeoutMs, cspEnabled, checkOrigin, maxBodyBytes, compress: compressEnabled } = CONFIG;
+const { isDev, cspEnabled, checkOrigin, maxBodyBytes } = CONFIG;
 /** Extra cross-origin hosts permitted to post server actions, beyond the app's own origin. */
 const allowedOrigins = new Set(CONFIG.allowedOrigins);
 
@@ -154,6 +156,25 @@ function once<T>(load: () => Promise<T>): () => Promise<T> {
   };
 }
 
+/**
+ * Passes `stream` through untouched, calling `done` once it ends — however it ends.
+ *
+ * Used on the flight-only response path, which has no transform of its own to hang a completion hook
+ * off (the document path has {@link injectFlightPayload}). `done` must be idempotent: a cancelled
+ * response can reach both `cancel` and the abort forwarder.
+ */
+function releaseWhenDone(stream: ReadableStream<Uint8Array>, done: () => void): ReadableStream<Uint8Array> {
+  return stream.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        controller.enqueue(chunk);
+      },
+      flush: done,
+      cancel: done,
+    } as CancellableTransformer<Uint8Array, Uint8Array>),
+  );
+}
+
 interface ComponentRenderOptions {
   status?: number;
   isRsc: boolean;
@@ -164,77 +185,31 @@ interface ComponentRenderOptions {
   errorInfo?: ErrorInfo;
   /** Marks the payload as the not-found page, so a soft navigation can tell it apart from the page it asked for. */
   notFound?: boolean;
-  /** An already-running deadline to render under — passed when the request spent time on an action first. */
-  deadline?: RenderDeadline;
-}
-
-interface RenderDeadline {
-  /** The request signal combined with the timeout — pass to the RSC/SSR renderers. */
-  readonly signal: AbortSignal;
-  /** Releases the timer now — call on an error path where nothing will stream. */
-  clear(): void;
-  /** Wraps a response stream so the timer is released once its last byte flushes. */
-  guard(stream: ReadableStream<Uint8Array>): ReadableStream<Uint8Array>;
-  /**
-   * Settles with `work`, or rejects the moment the deadline (or the client disconnect) fires —
-   * for the phases that take a plain promise rather than an {@link AbortSignal}, i.e. running a
-   * server action. The abandoned work keeps running to completion; we just stop holding the
-   * socket open for it.
-   */
-  race<T>(work: T | PromiseLike<T>): Promise<T>;
 }
 
 /**
- * Owns the render-deadline lifecycle in one place (the RAII / `defer` pattern — a
- * `using` declaration doesn't fit because the timer must outlive this call to keep
- * guarding the *stream*, not just the function scope). The timer is released on
- * exactly one of: the stream finishing ({@link RenderDeadline.guard}), an explicit
- * {@link RenderDeadline.clear} on an error path, or the signal aborting (client
- * disconnect, or the deadline firing itself). A manually-cleared timer instead of
- * `AbortSignal.timeout()` so a fast response doesn't leave one pending to fire later.
+ * There is no render deadline here any more.
  *
- * One deadline covers the whole request — server action included, not just the render — so a
- * hung action can't pin a socket open indefinitely either.
+ * A `renderTimeout` setting used to wrap every request in an `AbortController` with a timer, covering
+ * the server action as well as the flight and SSR passes. Every host this deploys to enforces its own
+ * request timeout — Workers, Vercel and Lambda all do — so the only shape that needed one was a Node
+ * process facing the internet directly, and there a proxy is both the conventional and the more capable
+ * place for it. The README shows the middleware for a Node deploy that wants one in-process.
  *
- * The request signal is forwarded into our own controller by hand rather than combined with
- * `AbortSignal.any([requestSignal, controller.signal])`, which reads better but leaks the entire
- * render. A signal that `AbortSignal.any()` produced is *composite*, and Node holds every composite
- * signal carrying an `abort` listener in a process-lifetime set (`gcPersistentSignals`) until it
- * either aborts or loses its last listener. Both React renderers add an `abort` listener to whatever
- * signal they are handed and only remove it if the abort actually fires — so on the happy path the
- * signal is never collected, and through those listeners it pins the flight request, the Fizz
- * request and the whole rendered tree. ~200 kB per request, for the life of the process. A plain
- * controller's signal is not composite and is never registered, so the graph dies with the request.
+ * What the deadline *also* did was carry the client-disconnect signal into the two React renderers, and
+ * that is kept — but not by handing them `c.req.raw.signal`. Both React renderers add an `abort`
+ * listener to whatever signal they are given and only remove it if the abort fires, so a listener left on
+ * a request-lifetime signal pins the flight request, the Fizz request and the whole rendered tree. That
+ * is not theoretical: handing them the request signal directly cost ~169 kB per `/ssr` request, never
+ * reclaimed by a major GC, and took GC from 5.8% to 12.9% of wall time under load.
+ *
+ * The deadline's own `AbortController` was, accidentally, what had kept that collectable — its signal
+ * died with the render. So {@link renderComponent} keeps a per-render controller and forwards the request
+ * signal into it, releasing the forwarder when the response ends. Never through `AbortSignal.any([...])`,
+ * which reads better and leaks worse: a signal it produced is *composite*, and Node holds every composite
+ * signal carrying an `abort` listener in a process-lifetime set (`gcPersistentSignals`) until it either
+ * aborts or loses its last listener.
  */
-function createRenderDeadline(requestSignal: AbortSignal, ms: number): RenderDeadline {
-  const controller = new AbortController();
-  const signal = controller.signal;
-  const timer = setTimeout(() => controller.abort(new Error(`[rshono] request exceeded ${ms}ms`)), ms);
-  timer.unref?.();
-  const onRequestAbort = () => controller.abort(requestSignal.reason);
-  const clear = () => {
-    clearTimeout(timer);
-    requestSignal.removeEventListener('abort', onRequestAbort);
-  };
-  signal.addEventListener('abort', clear, { once: true });
-  // Registered after `clear`, so an already-aborted request still releases the timer it just made.
-  if (requestSignal.aborted) controller.abort(requestSignal.reason);
-  else requestSignal.addEventListener('abort', onRequestAbort, { once: true });
-  return {
-    signal,
-    clear,
-    guard: (stream) => stream.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({ flush: clear })),
-    race<T>(work: T | PromiseLike<T>): Promise<T> {
-      if (signal.aborted) return Promise.reject(signal.reason);
-      const { promise: aborted, reject } = Promise.withResolvers<never>();
-      const onAbort = () => reject(signal.reason);
-      signal.addEventListener('abort', onAbort, { once: true });
-      // `Promise.race` subscribes to `work` either way, so abandoning it can't surface as an
-      // unhandled rejection. Detach on settle so a long-lived signal doesn't accumulate listeners.
-      return Promise.race([work, aborted]).finally(() => signal.removeEventListener('abort', onAbort));
-    },
-  };
-}
 
 /**
  * Builds the props a page component is called with.
@@ -265,8 +240,26 @@ function pageProps(c: Context, errorInfo: ErrorInfo | undefined): PageProps & { 
 }
 
 async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opts: ComponentRenderOptions): Promise<Response> {
-  const deadline = opts.deadline ?? createRenderDeadline(c.req.raw.signal, renderTimeoutMs);
-  const signal = deadline.signal;
+  // The client going away is the one thing that still aborts a render — but React's renderers must not
+  // be handed `c.req.raw.signal` to watch for it. Both of them add an `abort` listener and only remove
+  // it if the abort fires, so on the happy path the listener stays on a signal that lives as long as the
+  // request object, and through it pins the flight request, the Fizz request and the whole rendered
+  // tree. Measured at ~169 kB per `/ssr` request, never reclaimed by a major GC.
+  //
+  // So the render gets a controller of its own and the request signal only forwards into it. The
+  // forwarding listener is `once`, so an abort removes it, and {@link release} removes it on the normal
+  // path — which is what keeps the request from retaining the render. Deliberately not
+  // `AbortSignal.any()`: a signal it produced is *composite*, and Node holds every composite signal
+  // carrying an `abort` listener in a process-lifetime set until it aborts or loses its last listener,
+  // which is a worse leak than the one being fixed here.
+  const requestSignal = c.req.raw.signal;
+  const renderAbort = new AbortController();
+  const signal = renderAbort.signal;
+  const forwardAbort = () => renderAbort.abort(requestSignal.reason);
+  if (requestSignal.aborted) renderAbort.abort(requestSignal.reason);
+  else requestSignal.addEventListener('abort', forwardAbort, { once: true });
+  /** Detaches the forwarder once the response has been written, so nothing survives the request. */
+  const release = () => requestSignal.removeEventListener('abort', forwardAbort);
 
   const nonce = cspEnabled && !opts.isRsc ? crypto.randomUUID() : undefined;
   const props = pageProps(c, opts.errorInfo);
@@ -300,7 +293,7 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
   });
 
   if (opts.isRsc) {
-    return c.body(deadline.guard(rscStream), (opts.status ?? 200) as ContentfulStatusCode, {
+    return c.body(releaseWhenDone(rscStream, release), (opts.status ?? 200) as ContentfulStatusCode, {
       'content-type': 'text/x-component;charset=utf-8',
     });
   }
@@ -312,16 +305,17 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
       formState: opts.formState,
       signal,
       nonce,
+      onDone: release,
       onShellError: (error) => reportServerError(error, { source: 'ssr', request: c.req.raw, message: '[rshono] SSR shell error:' }),
       onError: (error) => reportServerError(error, { source: 'ssr', request: c.req.raw, message: '[rshono] SSR error:' }),
     });
   } catch (error) {
-    deadline.clear();
+    release();
     if (controlSignal) throw controlSignal;
     throw error;
   }
   if (controlSignal) {
-    deadline.clear();
+    release();
     throw controlSignal;
   }
   const headers: Record<string, string> = { 'content-type': 'text/html;charset=utf-8' };
@@ -332,15 +326,12 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
     const scriptSrc = `script-src ${CSP_SCRIPT_SRC} 'nonce-${nonce}'${isDev ? " 'unsafe-eval'" : ''}`;
     headers['content-security-policy'] = CSP_STATIC ? `${CSP_STATIC}; ${scriptSrc}` : scriptSrc;
   }
-  return c.body(deadline.guard(ssrResult.stream), (ssrResult.status ?? opts.status ?? 200) as ContentfulStatusCode, headers);
+  return c.body(ssrResult.stream, (ssrResult.status ?? opts.status ?? 200) as ContentfulStatusCode, headers);
 }
 
 async function renderPage(c: Context, loadPage: () => Promise<ServerEntry<PageComponent>>): Promise<Response> {
   const request = c.req.raw;
   const renderRequest = parseRenderRequest(request);
-  // Created before the action runs so the deadline covers the whole request, then handed to
-  // `renderComponent` so the render doesn't get a fresh budget of its own.
-  const deadline = createRenderDeadline(request.signal, renderTimeoutMs);
 
   let returnValue: ActionResult | undefined;
   let formState: ReactFormState | undefined;
@@ -348,7 +339,6 @@ async function renderPage(c: Context, loadPage: () => Promise<ServerEntry<PageCo
   let actionStatus: number | undefined;
   if (isActionRequest(renderRequest)) {
     if (!isSameOriginAction(c)) {
-      deadline.clear();
       return c.text('Forbidden: cross-origin server action rejected', 403);
     }
     if (renderRequest.kind === 'rsc-action') {
@@ -356,7 +346,6 @@ async function renderPage(c: Context, loadPage: () => Promise<ServerEntry<PageCo
       // `loadServerAction` would otherwise fault on the missing manifest entry, turning a bad
       // request into an unhandled 500. `hasOwn` so `__proto__` doesn't resolve to a manifest entry.
       if (!Object.hasOwn(__rspack_rsc_manifest__.serverManifest, renderRequest.actionId)) {
-        deadline.clear();
         return c.text('Bad Request: unknown server action', 400);
       }
       const contentType = request.headers.get('content-type');
@@ -365,7 +354,7 @@ async function renderPage(c: Context, loadPage: () => Promise<ServerEntry<PageCo
       const args = await decodeReply<unknown[]>(body, { temporaryReferences });
       const action = loadServerAction(renderRequest.actionId);
       try {
-        returnValue = { ok: true, value: await deadline.race(action.apply(null, args)) };
+        returnValue = { ok: true, value: await action.apply(null, args) };
       } catch (error) {
         if (isControlSignal(error)) throw error;
         // React sends a thrown action error to the client as an opaque marker in production — no
@@ -378,7 +367,7 @@ async function renderPage(c: Context, loadPage: () => Promise<ServerEntry<PageCo
       const formData = await request.formData();
       const decodedAction = await decodeAction(formData, __rspack_rsc_manifest__.serverManifest);
       if (decodedAction) {
-        const result = await deadline.race(decodedAction());
+        const result = await decodedAction();
         formState = (await decodeFormState(result, formData, __rspack_rsc_manifest__.serverManifest)) ?? undefined;
       }
     }
@@ -391,16 +380,11 @@ async function renderPage(c: Context, loadPage: () => Promise<ServerEntry<PageCo
     formState,
     returnValue,
     temporaryReferences,
-    deadline,
   });
 }
 
 function buildApp(): Hono {
   const app = new Hono();
-
-  // Outermost, so it wraps the finished response — headers and all — on the way out. A platform that
-  // compresses for us (or cannot stream a compressor) offers none, and the setting has nothing to do.
-  if (compressEnabled && runtime.compress) app.use(runtime.compress);
 
   // Cheap, unconditional headers that only matter when something else has gone wrong: stop
   // content-type sniffing, keep the full URL (paths, query) out of cross-origin referrers, and
@@ -449,7 +433,7 @@ function buildApp(): Hono {
 
   /** Turns a thrown `redirect()` / `notFound()` into the response it stands for. */
   const respondToControlSignal = async (c: Context, signal: ControlSignal): Promise<Response> => {
-    const isRsc = wantsRsc(parseRenderRequest(c.req.raw));
+    const isRsc = requestWantsRsc(c.req.raw);
     if (signal instanceof RedirectSignal) {
       if (isRsc) {
         return c.body(renderToReadableStream({ root: null, redirect: signal.location } satisfies RscPayload, { signal: c.req.raw.signal }), 200, {
@@ -475,11 +459,13 @@ function buildApp(): Hono {
         try {
           if (servesPrerendered && c.req.method === 'GET') {
             const isRsc = acceptsRsc(c.req.raw);
-            // Both representations are prerendered, so a soft navigation is served from the build too
-            // rather than re-rendering a page that was already built. The exception is the HTML
-            // under `csp`, which has to be rendered per request to carry its nonce — the flight
-            // payload never carries one, so it stays servable either way.
-            if (!(cspEnabled && !isRsc)) {
+            // A prerendered file is one fixed set of bytes, so it cannot carry a per-request nonce:
+            // under `csp` the *document* has to be rendered per request. The flight payload never
+            // carries a nonce, so it stays servable from the build either way.
+            const mustRenderForNonce = cspEnabled && !isRsc;
+            // Otherwise both representations come from the build, so a soft navigation is served from
+            // it too rather than re-rendering a page that was already built.
+            if (!mustRenderForNonce) {
               const page = await runtime.readPrerendered(c, isRsc ? 'flight' : 'html');
               // A prerendered page is request-independent by construction, so it is safe to cache
               // publicly; the short max-age matches what `public/` files get. The ETag turns the
@@ -521,7 +507,7 @@ function buildApp(): Hono {
   runtime.mountPublicFallback(app);
 
   app.notFound(async (c) => {
-    const isRsc = wantsRsc(parseRenderRequest(c.req.raw));
+    const isRsc = requestWantsRsc(c.req.raw);
     if (loadNotFoundPage && (isRsc || acceptsHtml(c))) {
       return runWithContext(c, async () => renderComponent(c, await loadNotFoundPage(), { status: 404, isRsc }));
     }
@@ -532,7 +518,7 @@ function buildApp(): Hono {
   app.onError(async (error, c) => {
     if (isControlSignal(error)) return runWithContext(c, () => respondToControlSignal(c, error));
     reportServerError(error, { source: 'request', request: c.req.raw, message: '[rshono] request error:' });
-    const isRsc = wantsRsc(parseRenderRequest(c.req.raw));
+    const isRsc = requestWantsRsc(c.req.raw);
     if (loadErrorPage && (isRsc || acceptsHtml(c))) {
       const errorInfo: ErrorInfo = isDev
         ? {

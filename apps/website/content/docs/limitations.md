@@ -5,7 +5,7 @@ description: What rshono needs, and the sharp edges worth knowing before you com
 
 ## Requirements
 
-- **Node ≥ 22.1** — worker threads, `process.loadEnvFile`, `Promise.withResolvers`, `URL.parse`.
+- **Node ≥ 22.18** — worker threads, `process.loadEnvFile`, `Promise.withResolvers`, `URL.parse`, and native TypeScript stripping for a `.ts` config.
 - **React ≥ 19.1** — the floor `react-server-dom-rspack` itself requires.
 
 ## Alpha
@@ -18,8 +18,14 @@ versions, and a release of rshono is what moves them.
 
 ## Known limitations
 
-- **gzip, not brotli.** One encoding every client accepts, chosen per chunk so streaming survives. Set
-  `compress: false` behind a proxy that does better.
+- **No compression.** It belongs in a proxy, a load balancer or a CDN, and every hosted target already
+  does it. `hono/compress` in `src/server.ts` if you need it in-process.
+- **Scroll restoration is the browser's** (`history.scrollRestoration = 'auto'`). A soft navigation to a
+  new page starts at the top and a traversal is restored by the browser, but a `#hash` on a link to a
+  _different_ page is not chased — the target does not exist until the new payload commits — so it lands
+  on the page rather than the heading. Same-page anchors jump natively and are untouched.
+- **No prefetching.** A navigation fetches when it is asked for; there is no speculative warming on
+  hover or focus.
 - **The dev-mode proxy doesn't forward WebSocket upgrades** to a custom sub-app. Production is
   unaffected — the bundle owns the socket there.
 - **Dev source maps embed the original source of `'use server'` action modules.** Dev binds to

@@ -1,4 +1,3 @@
-import { NavigationProgress } from '@rshono/core/client';
 import type { ReactNode } from 'react';
 import { publicEnv } from '../lib/env';
 import '../styles.css';
@@ -20,14 +19,12 @@ export function Layout({ title, description, children }: { title?: string; descr
         <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
       </head>
       <body>
-        {/* Paints during a soft navigation, so a slow page still feels answered. */}
-        <NavigationProgress />
         <header>
           <nav>
             <a href="/">
               <strong>{publicEnv.appName}</strong>
             </a>
-            {/* `data-prefetch` warms a page on hover; `data-native` opts a link out of soft navigation. */}
+            {/* `data-native` opts a link out of soft navigation and does a full browser load. */}
             <a href="/api/health" data-native>
               /api/health
             </a>

@@ -1,7 +1,6 @@
 import type { Hono } from 'hono';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { compress } from '../server/compress.js';
 import { loadEnvFiles } from '../server/load-env.js';
 import { readPrerendered } from '../server/ssg.js';
 import { createPublicFallback, createStaticAssetsApp } from '../server/static.js';
@@ -29,7 +28,7 @@ const publicDir = isDev ? join(rootDir, 'public') : join(rootDir, 'dist', 'publi
 /**
  * Everything a deploy target with a real filesystem does the same way.
  *
- * Node, Bun, Deno and the serverless runtimes that unpack a bundle onto disk (Vercel, Netlify, Lambda)
+ * Node and the serverless runtimes that unpack a bundle onto a read-only disk (Vercel, AWS Lambda)
  * differ only in how the finished app is handed over — so each of those presets is this object plus
  * its own {@link DeployRuntime.serveApp}, and the implementations live once, in `server/`.
  */
@@ -46,8 +45,6 @@ export const fileSystemRuntime: Omit<DeployRuntime, 'serveApp'> = {
   readPrerendered(c, variant) {
     return readPrerendered(ssgDir, c.req.path, variant);
   },
-
-  compress: compress(),
 
   loadEnv(): void {
     loadEnvFiles(rootDir);

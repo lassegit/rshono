@@ -2,22 +2,27 @@
  * Carrying the flight payload inside the HTML document, so the browser hydrates from bytes it
  * already has rather than fetching the page a second time.
  *
- * This is `rsc-html-stream/server`'s `injectRSCPayload` rewritten against the same wire format —
- * a run of `<script>(self.__FLIGHT_DATA||=[]).push("…")</script>` tags, which is what
- * `rsc-html-stream/client` on the browser side still reads. It is first-party for two reasons, both
- * measured on the benchmark app's `/ssr` (a 100-row table, ~30 kB of flight payload):
+ * The wire format is `rsc-html-stream`'s — a run of
+ * `<script>(self.__FLIGHT_DATA||=[]).push("…")</script>` tags — but the implementation is
+ * first-party, because that package's `injectRSCPayload` tests each HTML chunk for the document
+ * trailer with `endsWith`. React's byte writer packs its output into 2 kB views and splits any write
+ * that straddles one, so `</body></html>` can arrive as two chunks; upstream then fails to hold it
+ * back, and the document ends up with two trailers and the payload script after the first of them.
+ * A page's byte layout is deterministic, so that is not an intermittent fault — an unlucky page is
+ * malformed on every request. `test/unit.test.mjs` pins the split-trailer cases.
  *
- * - **`setImmediate` rather than `setTimeout(…, 0)`** for the batch boundary. Both are macrotasks,
- *   which is the part that matters (see {@link injectFlightPayload}), but a Node timer has a 1ms
- *   floor and every HTML flush paid it. Uncontended time-to-last-byte: 4.7ms → 3.0ms.
- * - **No UTF-8 round trip on the HTML.** The upstream version decodes every HTML chunk to a string
- *   and re-encodes it, only to test whether it ends with the document trailer. The trailer is found
- *   by comparing bytes here, and the chunks React produced are forwarded untouched.
- *
- * Under saturation neither shows up — a `/ssr` render is ~60% React's own flight encode and decode,
- * and the timer waits overlap with other requests' work — so this is a latency change, not a
- * throughput one.
+ * The reader for this format is `readFlightPayload` in `entry.client.tsx`.
  */
+
+/**
+ * {@link Transformer} plus the `cancel` hook the Streams standard added for a cancelled readable side.
+ *
+ * Node calls it — verified on 22.x — but the bundled lib types have not caught up, so it is declared
+ * here rather than reached for with an `any`. It matters because `cancel` is the only notification that
+ * a response ended *without* finishing, and both users of it release a listener that would otherwise
+ * outlive the request.
+ */
+export type CancellableTransformer<I, O> = Transformer<I, O> & { cancel?: (reason?: unknown) => void };
 
 const encoder = new TextEncoder();
 
@@ -28,58 +33,16 @@ const TRAILER_BYTES = encoder.encode(TRAILER);
 /**
  * A macrotask boundary. `setImmediate` where there is one (Node, Bun, Deno's node compat), which is
  * the current turn's check phase rather than a timer; `setTimeout` is the portable fallback that
- * every other runtime has.
+ * every other runtime has. A Node timer has a 1ms floor and every HTML flush would pay it — worth
+ * the two lines: uncontended time-to-last-byte on a 30 kB payload, 4.7ms → 3.0ms.
  */
 type TaskHandle = ReturnType<typeof setTimeout> | ReturnType<typeof setImmediate>;
-const schedule: (fn: () => void) => TaskHandle = typeof setImmediate === 'function' ? setImmediate : (fn) => setTimeout(fn, 0);
+const hasSetImmediate = typeof setImmediate === 'function';
+const schedule: (fn: () => void) => TaskHandle = hasSetImmediate ? setImmediate : (fn) => setTimeout(fn, 0);
 const unschedule = (handle: TaskHandle): void => {
-  if (typeof setImmediate === 'function') clearImmediate(handle as ReturnType<typeof setImmediate>);
+  if (hasSetImmediate) clearImmediate(handle as ReturnType<typeof setImmediate>);
   else clearTimeout(handle as ReturnType<typeof setTimeout>);
 };
-
-export interface InjectOptions {
-  /** Put on each injected `<script>` when the app runs under a CSP. */
-  nonce?: string;
-  /** Run once the last byte has been enqueued — the render deadline's release hook. */
-  onFlush?: () => void;
-}
-
-/**
- * One reader over the flight stream, feeding both the copy that is rendered to HTML and the copy
- * that rides along inside it.
- *
- * `ReadableStream.prototype.tee()` is the obvious way to write this, but the flight stream is a
- * *byte* stream and the spec's tee for those copies every chunk into a fresh `Uint8Array` for the
- * second branch. Neither consumer here writes to the buffer it is given, so the copy buys nothing.
- * The SSR branch is the puller — React's flight client drains it eagerly — and each chunk it takes
- * is handed to the client branch on the way past, which keeps the source's backpressure intact.
- */
-export function forkFlightStream(source: ReadableStream<Uint8Array>): [ReadableStream<Uint8Array>, ReadableStream<Uint8Array>] {
-  const reader = source.getReader();
-  let clientController: ReadableStreamDefaultController<Uint8Array>;
-  const forClient = new ReadableStream<Uint8Array>({
-    start(controller) {
-      clientController = controller;
-    },
-  });
-  const forSsr = new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      const { done, value } = await reader.read();
-      if (done) {
-        controller.close();
-        clientController.close();
-        return;
-      }
-      controller.enqueue(value);
-      clientController.enqueue(value);
-    },
-    cancel(reason) {
-      clientController.error(reason);
-      return reader.cancel(reason);
-    },
-  });
-  return [forSsr, forClient];
-}
 
 /**
  * Escapes the two sequences that would end a `<script>` element early.
@@ -92,8 +55,21 @@ function escapeScript(script: string): string {
   return script.includes('<') ? script.replace(/<!--/g, '<\\!--').replace(/<\/(script)/gi, '</\\$1') : script;
 }
 
-export function injectFlightPayload(rscStream: ReadableStream<Uint8Array>, options: InjectOptions = {}): TransformStream<Uint8Array, Uint8Array> {
-  const { nonce, onFlush } = options;
+/** Whether `buffer`'s first `length` bytes end with the document trailer. */
+function endsWithTrailer(buffer: Uint8Array, length: number): boolean {
+  if (length < TRAILER_BYTES.length) return false;
+  const from = length - TRAILER_BYTES.length;
+  for (let i = 0; i < TRAILER_BYTES.length; i++) {
+    if (buffer[from + i] !== TRAILER_BYTES[i]) return false;
+  }
+  return true;
+}
+
+export function injectFlightPayload(
+  rscStream: ReadableStream<Uint8Array>,
+  options: { nonce?: string; onDone?: () => void } = {},
+): TransformStream<Uint8Array, Uint8Array> {
+  const { nonce, onDone } = options;
   const scriptOpen = `<script${nonce ? ` nonce="${nonce}"` : ''}>(self.__FLIGHT_DATA||=[]).push(`;
   const scriptClose = ')</script>';
 
@@ -107,42 +83,30 @@ export function injectFlightPayload(rscStream: ReadableStream<Uint8Array>, optio
    * Emits the HTML buffered since the last boundary, holding back the document trailer for
    * {@link TransformStream.flush} to re-emit after the payload scripts.
    *
-   * The trailer is located by walking the batch backwards a byte at a time rather than by testing
-   * the last chunk, because React's byte writer packs its output into 2 kB views and splits any
-   * write that straddles one — so `</body></html>` can arrive as two chunks, and missing it would
-   * put a second copy in the document.
+   * The batch is joined before the trailer is looked for, so a trailer React split across two views
+   * is still found — that is the whole reason this module is not `rsc-html-stream/server`. React
+   * writes its final flush in one synchronous run, so every chunk of the trailer lands in the same
+   * batch; a trailer split *across* batches is not a shape React produces.
    */
   function emitBatch(controller: TransformStreamDefaultController<Uint8Array>): void {
-    let matched = 0;
-    let trailerChunk = -1;
-    let trailerAt = 0;
-    for (let i = batch.length - 1; i >= 0 && matched < TRAILER_BYTES.length; i--) {
-      const chunk = batch[i]!;
-      let j = chunk.byteLength - 1;
-      for (; j >= 0 && matched < TRAILER_BYTES.length; j--) {
-        if (chunk[j] !== TRAILER_BYTES[TRAILER_BYTES.length - 1 - matched]) {
-          matched = -1;
-          break;
-        }
-        matched++;
-      }
-      if (matched === -1) break;
-      if (matched === TRAILER_BYTES.length) {
-        trailerChunk = i;
-        trailerAt = j + 1;
-      }
+    boundary = null;
+    let total = 0;
+    for (const chunk of batch) total += chunk.byteLength;
+    if (total === 0) {
+      batch.length = 0;
+      return;
     }
 
-    for (let i = 0; i < batch.length; i++) {
-      const chunk = batch[i]!;
-      if (trailerChunk !== -1 && i >= trailerChunk) {
-        if (i === trailerChunk && trailerAt > 0) controller.enqueue(chunk.subarray(0, trailerAt));
-        continue;
-      }
-      if (chunk.byteLength !== 0) controller.enqueue(chunk);
+    const joined = new Uint8Array(total);
+    let at = 0;
+    for (const chunk of batch) {
+      joined.set(chunk, at);
+      at += chunk.byteLength;
     }
     batch.length = 0;
-    boundary = null;
+
+    const end = endsWithTrailer(joined, total) ? total - TRAILER_BYTES.length : total;
+    if (end > 0) controller.enqueue(joined.subarray(0, end));
   }
 
   async function writeFlight(controller: TransformStreamDefaultController<Uint8Array>): Promise<void> {
@@ -164,7 +128,7 @@ export function injectFlightPayload(rscStream: ReadableStream<Uint8Array>, optio
     if (remaining.length) push(escapeScript(JSON.stringify(remaining)));
   }
 
-  return new TransformStream<Uint8Array, Uint8Array>({
+  const transformer: CancellableTransformer<Uint8Array, Uint8Array> = {
     transform(chunk, controller) {
       batch.push(chunk);
       if (boundary) return;
@@ -195,7 +159,11 @@ export function injectFlightPayload(rscStream: ReadableStream<Uint8Array>, optio
         emitBatch(controller);
       }
       controller.enqueue(encoder.encode(TRAILER));
-      onFlush?.();
+      onDone?.();
     },
-  });
+    cancel() {
+      onDone?.();
+    },
+  };
+  return new TransformStream<Uint8Array, Uint8Array>(transformer);
 }

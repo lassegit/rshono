@@ -128,7 +128,7 @@ export type PageComponent<P = any> = (props: P) => ReactNode | Promise<ReactNode
  * @example
  * ```ts
  * // src/health.ts
- * import type { Handler } from '@rshono/core';
+ * import type { Handler } from 'hono';
  *
  * export const handler: Handler = (c) => c.json({ ok: true });
  * ```

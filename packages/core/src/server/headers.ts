@@ -1,16 +1,16 @@
 /**
- * Small header utilities shared by the response-header defaults, the compressor and the
- * prerendered-page cache. Kept apart from any one of them because getting `Vary` and `ETag`
- * comparison subtly wrong is exactly the kind of thing that only shows up behind a CDN.
+ * Small header utilities shared by the response-header defaults and the prerendered-page cache. Kept
+ * apart from both because getting `Vary` and `ETag` comparison subtly wrong is exactly the kind of
+ * thing that only shows up behind a CDN.
  */
 
 /**
  * Adds `value` to the `Vary` header without discarding what is already there.
  *
- * `Vary` is a list, and two different concerns write to it here — content negotiation on `Accept`
- * (HTML document vs flight payload) and `Accept-Encoding` from the compressor. A plain `set` from
- * whichever ran last would drop the other, and a cache would then happily serve one variant in
- * place of the other. `*` is left alone: it already means "never reuse this".
+ * `Vary` is a list, and the framework's own entry (`Accept` — an HTML document or a flight payload from
+ * one URL) is not necessarily the only one: a route, a middleware or a proxy may have added its own.
+ * A plain `set` would drop the others, and a cache would then serve one variant in place of another.
+ * `*` is left alone: it already means "never reuse this".
  */
 export function appendVary(headers: Headers, value: string): void {
   const existing = headers.get('vary');
@@ -28,8 +28,8 @@ export function appendVary(headers: Headers, value: string): void {
  * exact body and should be answered with a 304.
  *
  * The header carries a *list*, and each entry may be weak (`W/"…"`). The weak prefix is ignored on
- * both sides because the compressor rewrites a strong tag to a weak one when it changes the bytes
- * on the wire — the representation is still the same one the client cached.
+ * both sides: a proxy or CDN that gzips on the way out changes the bytes without changing the
+ * representation, and is entitled to weaken the validator when it does.
  */
 export function etagMatches(ifNoneMatch: string | undefined, etag: string): boolean {
   if (!ifNoneMatch) return false;

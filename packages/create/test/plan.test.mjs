@@ -98,13 +98,12 @@ test('the deploy target reaches the config, the scripts and the README', () => {
   }
 });
 
-test('only the Node-shaped targets get a start script, and each gets its own runtime', () => {
+test('only the target that runs its own build gets a start script', () => {
   const start = (deploy) => JSON.parse(plan(answers({ deploy }), pm).files.get('package.json')).scripts.start;
   assert.equal(start('node'), 'rshono start');
-  assert.equal(start('bun'), 'bun dist/server/main.mjs');
-  assert.equal(start('deno'), 'deno serve -A dist/server/main.mjs');
-  // `rshono start` refuses a build made for another platform, so offering it here would be a broken script.
-  for (const deploy of ['cloudflare', 'vercel', 'netlify', 'aws-lambda']) {
+  // `rshono start` refuses a build made for another platform, so offering it here would be a broken
+  // script. (Bun and Deno had a target each and so a `start` of their own; they run the `node` build now.)
+  for (const deploy of ['cloudflare', 'vercel', 'aws-lambda']) {
     assert.equal(start(deploy), undefined, deploy);
   }
 });

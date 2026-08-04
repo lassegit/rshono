@@ -45,7 +45,7 @@
     "bin"
   ],
   "engines": {
-    "node": ">=22.1.0"
+    "node": ">=22.18.0"
   },
   "publishConfig": {
     "access": "public"
@@ -64,9 +64,7 @@
     "@rspack/core": "2.1.7",
     "@rspack/plugin-react-refresh": "2.0.2",
     "react-refresh": "0.18.0",
-    "react-server-dom-rspack": "0.0.3",
-    "rsc-html-stream": "^0.0.7",
-    "tsx": "^4.23.1"
+    "react-server-dom-rspack": "0.0.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.58.0",
