@@ -191,6 +191,10 @@ function loadSection(section, ids, labels) {
   lines.push(
     'Resident memory of the whole process tree, and of the single largest process in it — which is the server itself in all three. The tree total carries whatever `npm run start` left running and double-counts pages the processes share, so the **server** row is the one to compare.',
     '',
+    '**None of these are retained-memory figures.** RSS is a high-water mark that includes garbage V8 has not collected yet, and V8 sizes the old generation against the *allocation rate* — so under a fixed-duration load the fastest server churns the most and grows the largest heap. On this app a forced GC returned 362 MB of the 472 MB an uncapped `/api/health` run reported. All three are therefore given the same old-space budget' +
+      (heapMb(section) ? ` (\`--max-old-space-size=${heapMb(section)}\`)` : '') +
+      ', which is what makes the rows comparable; the per-route sequence is there so a plateau is distinguishable from a climb. Retention per request measured on the rshono app, after a full GC, was under 20 B — a leak is not what these numbers show.',
+    '',
   );
   lines.push(
     table(
@@ -200,16 +204,33 @@ function loadSection(section, ids, labels) {
         ['RSS idle — server', ...ids.map((id) => rssCell(section.targets?.[id]?.rssIdle, true))],
         ['RSS after load — tree', ...ids.map((id) => rssCell(section.targets?.[id]?.rssLoaded))],
         ['RSS after load — server', ...ids.map((id) => rssCell(section.targets?.[id]?.rssLoaded, true))],
+        // Flat across the last routes means the server had levelled off; a straight climb means the
+        // single after-load figure above is just wherever the run happened to stop.
+        ['RSS per route — server', ...ids.map((id) => rssTrajectory(section.targets?.[id]))],
         ['Requests served', ...ids.map((id) => requestsServed(section.targets?.[id]))],
-        // Growth per unit of work, because the load runs for a fixed *time*: a server that answers
-        // five times as many requests in those eight seconds allocates five times as much, and the
-        // raw after-load figure would read that as five times worse.
-        ['Growth per 1k requests', ...ids.map((id) => growthPerThousand(section.targets?.[id]))],
+        // Per unit of work, because the load runs for a fixed *time*: a server that answers five times
+        // as many requests in those eight seconds allocates five times as much, and the raw after-load
+        // figure would read that as five times worse. "Churn", not "growth" — almost none of it is
+        // retained, and calling it growth invited reading the row as a leak.
+        ['Churn per 1k requests', ...ids.map((id) => churnPerThousand(section.targets?.[id]))],
       ],
     ),
   );
   lines.push('');
   return lines;
+}
+
+/** The old-space cap the load ran under, or 0 when `--heap=0` opted out of one. */
+function heapMb(section) {
+  return section?.settings?.heapMb ?? 0;
+}
+
+/** Server RSS after each route in turn, so the shape of the curve survives into the report. */
+function rssTrajectory(target) {
+  const after = target?.rssAfter;
+  if (!after) return '—';
+  const trail = ROUTES.filter((r) => after[r.id]?.largest).map((r) => bytes(after[r.id].largest));
+  return trail.length ? trail.join(' → ') : '—';
 }
 
 function rssCell(rss, serverOnly = false) {
@@ -228,7 +249,14 @@ function requestsServed(target) {
   return n ? num(n) : '—';
 }
 
-function growthPerThousand(target) {
+/**
+ * RSS the server picked up per 1,000 requests served.
+ *
+ * Read as allocation churn, not retention: a full GC gives nearly all of it back. It is still the
+ * most useful row here, because it is the only one the fixed-duration load does not bias toward
+ * whichever server answered fewest requests.
+ */
+function churnPerThousand(target) {
   const n = totalRequests(target);
   const idle = target?.rssIdle?.largest;
   const loaded = target?.rssLoaded?.largest;

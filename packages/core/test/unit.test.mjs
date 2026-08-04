@@ -96,6 +96,85 @@ describe('injectFlightPayload', () => {
     const html = await inject(['<p>fragment</p>']);
     assert.equal(countOf(html, '</body></html>'), 1);
   });
+
+  // The client-disconnect path. @hono/node-server cancels the response reader when the socket's
+  // writable closes, and a page whose flight payload outlives its HTML — a suspended server component
+  // resolving after the shell has flushed — puts that cancel inside `flush`'s `await flightWritten`.
+  //
+  // The trap is that the transformer's `cancel` hook does *not* run there: per the Streams standard,
+  // cancelling the readable once the close algorithm has started returns the pending finish promise
+  // without performing the cancel. So the enqueue that follows throws `ERR_INVALID_STATE` out of an
+  // async transformer callback, where nothing owns the rejection — and `onDone` never fires, which is
+  // what `renderComponent` relies on to detach the abort forwarder holding the rendered tree.
+  describe('when the client disconnects mid-response', () => {
+    /** A flight stream that stays open until `release()`, so `flush` is parked when the cancel lands. */
+    function heldFlightStream() {
+      let release;
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode('0:"hi"\n'));
+          release = () => controller.close();
+        },
+      });
+      return { stream, release: () => release() };
+    }
+
+    test('cancelling while the flight payload is still open resolves, releases and does not throw', async () => {
+      const rejections = [];
+      const onRejection = (error) => rejections.push(error);
+      process.on('unhandledRejection', onRejection);
+      try {
+        const flight = heldFlightStream();
+        let rscCancelled = false;
+        // Interposed so the test can see whether the RSC branch is torn down: left un-cancelled it
+        // keeps being pumped for a response nobody will read, and a tee's other half buffers for it.
+        const watched = new ReadableStream({
+          start: async (c) => {
+            const reader = flight.stream.getReader();
+            for (;;) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              try {
+                c.enqueue(value);
+              } catch {
+                break;
+              }
+            }
+            try {
+              c.close();
+            } catch {
+              /* already gone */
+            }
+          },
+          cancel: () => {
+            rscCancelled = true;
+          },
+        });
+
+        let released = 0;
+        const out = streamOf(['<html><body><p>hi</p></body></html>']).pipeThrough(injectFlightPayload(watched, { onDone: () => released++ }));
+        const reader = out.getReader();
+        await reader.read(); // the shell; the trailer is held back and `flush` is now parked
+
+        await reader.cancel(new Error('Client connection prematurely closed.'));
+        flight.release();
+        await new Promise((resolve) => setTimeout(resolve, 50));
+
+        assert.equal(released, 1, 'onDone must fire, or the abort forwarder is never detached');
+        assert.equal(rscCancelled, true, 'the RSC branch must be released rather than left to be pumped');
+        assert.deepEqual(rejections, [], 'a disconnect must not produce an unhandled rejection');
+      } finally {
+        process.off('unhandledRejection', onRejection);
+      }
+    });
+
+    test('cancelling after the payload is written still reports done exactly once', async () => {
+      let released = 0;
+      const out = streamOf(['<html><body></body></html>']).pipeThrough(injectFlightPayload(streamOf(['0:"hi"\n']), { onDone: () => released++ }));
+      for await (const _chunk of out) void _chunk;
+      assert.equal(released, 1);
+    });
+  });
 });
 
 describe('parseByteSize', () => {
@@ -152,7 +231,6 @@ describe('resolveServerConfig', () => {
     assert.equal(cspDirectives['default-src'], "'self'", 'untouched defaults survive');
     assert.equal('frame-ancestors' in cspDirectives, false, "'' removes a directive entirely");
   });
-
 });
 
 describe('appendVary', () => {

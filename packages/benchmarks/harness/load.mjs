@@ -19,11 +19,36 @@ const durationMs = Number(flagValue('duration', '8')) * 1000;
 const warmupMs = Number(flagValue('warmup', '2')) * 1000;
 const quick = hasFlag('quick');
 
+/**
+ * An equal old-space budget for all three, because without one the memory numbers are not a
+ * comparison of anything.
+ *
+ * V8 grows the old generation to keep collection overhead roughly constant against the *allocation
+ * rate*, and only collects in earnest as the heap approaches its limit. Left at the default (4144 MB
+ * on a 16 GB machine) the after-load RSS therefore measures throughput, not memory: the fastest
+ * server churns the most garbage in the fixed eight seconds and so grows the largest heap. Measured
+ * on the rshono app, `/api/health` reached 472 MB RSS with 376 MB of heap in use — of which a single
+ * forced GC returned 362 MB. Under the same load capped here, the same route holds flat at 120 MB
+ * with throughput unchanged (37,961 rps capped vs 37,706 uncapped).
+ *
+ * So a cap does not restrain the servers, it stops the metric rewarding slowness. `--heap=0` opts out
+ * and restores whatever the runtime's default is; the value is reported alongside the numbers, since
+ * it is part of what they mean.
+ */
+const heapMb = Number(flagValue('heap', '256'));
+
 const settings = {
   connections,
   durationMs: quick ? 2000 : durationMs,
   warmupMs: quick ? 500 : warmupMs,
+  heapMb,
 };
+
+/**
+ * Inherited by whatever `npm run start` spawns, which is the point: Next and Vite both push the
+ * server into a child, and a cap only on the launcher would bound nothing.
+ */
+const serverEnv = heapMb > 0 ? { NODE_OPTIONS: `${process.env.NODE_OPTIONS ?? ''} --max-old-space-size=${heapMb}`.trim() } : undefined;
 
 for (const target of targets) {
   if (!(await portFree(target.port))) {
@@ -38,7 +63,7 @@ for (const target of targets) {
   console.log(`\n=== ${target.label} ===`);
   let server;
   try {
-    server = await startServer(target);
+    server = await startServer(target, { env: serverEnv });
   } catch (error) {
     out.targets[target.id] = { label: target.label, error: error.message };
     console.log(`  ✗ ${error.message.split('\n')[0]}`);
@@ -48,6 +73,11 @@ for (const target of targets) {
   const routes = {};
   let rssIdle = null;
   let rssLoaded = null;
+  // One sample per route rather than one at the end. The single after-load reading was always taken
+  // straight after the *last* route, which is the highest-throughput one for every target — so it
+  // caught each server at its churniest moment and could not show whether the figure had levelled
+  // off. The sequence can: flat across the last few routes means a plateau, a straight climb does not.
+  const rssAfter = {};
   try {
     rssIdle = await treeRss(server.pid);
     for (const route of ROUTES) {
@@ -60,14 +90,17 @@ for (const target of targets) {
           `  ${result.ok ? '' : `⚠ ${result.problem}`}`,
       );
       rssLoaded = await treeRss(server.pid);
+      if (rssLoaded) rssAfter[route.id] = { bytes: rssLoaded.bytes, largest: rssLoaded.largest };
     }
   } finally {
     await server.stop();
   }
 
-  out.targets[target.id] = { label: target.label, routes, rssIdle, rssLoaded, startupMs: server.readyMs };
+  out.targets[target.id] = { label: target.label, routes, rssIdle, rssLoaded, rssAfter, startupMs: server.readyMs };
   if (rssIdle) {
+    const trail = ROUTES.filter((r) => rssAfter[r.id]).map((r) => bytes(rssAfter[r.id].largest));
     console.log(`  rss idle ${bytes(rssIdle.bytes)} (${rssIdle.processes} proc) → loaded ${bytes(rssLoaded?.bytes)}`);
+    console.log(`  server rss per route: ${bytes(rssIdle.largest)} → ${trail.join(' → ')}`);
     // The tree total on its own invites the wrong conclusion — most of it is usually `npm` and a
     // shell sitting idle. Print who holds what so the number is attributable.
     for (const p of rssLoaded?.breakdown ?? []) console.log(`    ${bytes(p.bytes).padStart(10)}  ${p.comm} (pid ${p.pid})`);
