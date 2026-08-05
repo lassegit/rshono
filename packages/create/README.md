@@ -50,15 +50,13 @@ presets — a target added to rshono appears here with no edit.
 ## What you get
 
 ```
-rshono.config.ts        the chosen deploy target; everything else commented with its default
+rshono.config.ts        the chosen deploy target; every other setting takes its default
 tsconfig.json           strict, with @/* → ./src/*
 .env                    committed defaults; secrets go in .env.local
 public/                 favicon.svg, robots.txt
-src/routes.ts           one page, a 404 and a 500, with the other route kinds commented
-src/server.ts           AppEnv, request-id middleware, error reporting, /api/health, redirects, AppType
-src/actions.ts          a 'use server' action, called from a form that works without JavaScript
-src/components/         layout, home, greet-form ('use client'), 404, 500
-src/lib/env.ts          both sides of the PUBLIC_ boundary in one place
+src/routes.ts           one page, a 404 and a 500
+src/server.ts           error reporting, trailing-slash and old-path redirects, AppType
+src/components/         layout, home, 404, 500
 src/styles.css          element-level CSS, or the Tailwind entry
 pnpm-workspace.yaml     pnpm only: which dependency install scripts this app runs (none of them)
 ```

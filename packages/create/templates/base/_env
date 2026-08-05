@@ -1,7 +1,4 @@
-# Committed defaults — safe to share, and the values a fresh clone starts with.
-#
-# Secrets go in `.env.local`, which is gitignored and loaded first, so a value there wins over this
-# file. The real environment wins over both.
+# Every variable here is on `process.env` — the layout reads `process.env.PUBLIC_APP_NAME`.
 #
 # Only `PUBLIC_`-prefixed variables are compiled into the browser bundle. Anything else is server-only:
 # a stray read of it in client code compiles to `undefined` rather than shipping.

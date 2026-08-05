@@ -1,28 +1,13 @@
 import type { PageProps } from '@rshono/core';
-import { publicEnv } from '../lib/env';
-import type { AppEnv } from '../server';
-import { GreetForm } from './greet-form';
-import { Layout } from './layout';
+import { appName, Layout } from './layout';
 
-/**
- * A page is a React **server component**: it runs on the server only, may be `async`, and can await data
- * directly — no loaders, no client bundle for any of this.
- *
- * The `AppEnv` type argument is what types `ctx.var` key by key; without it `ctx.var` is an open record.
- */
-export default function Home({ url, ctx }: PageProps<'/', AppEnv>) {
+export default function Home({ url }: PageProps<'/'>) {
   return (
     <Layout description="A new rshono app.">
-      <h1>{publicEnv.appName}</h1>
+      <h1>{appName}</h1>
       <p>
-        Edit <code>src/components/home.tsx</code> and save. The page re-renders in place — the form below keeps what you typed.
+        Edit <code>src/components/home.tsx</code> and save — the page re-renders in place.
       </p>
-
-      <h2>Server actions</h2>
-      <p>
-        This form calls a <code>'use server'</code> function in <code>src/actions.ts</code> — before hydration, and without JavaScript.
-      </p>
-      <GreetForm />
 
       <h2>Where things are</h2>
       <ul>
@@ -33,7 +18,7 @@ export default function Home({ url, ctx }: PageProps<'/', AppEnv>) {
           <code>src/server.ts</code> — a Hono app for middleware and API routes, mounted ahead of the pages
         </li>
         <li>
-          <code>src/components/</code> — pages and components; <code>src/lib/</code> — everything else
+          <code>src/components/</code> — pages and components
         </li>
         <li>
           <code>rshono.config.ts</code> — deploy target, security and build settings
@@ -41,9 +26,7 @@ export default function Home({ url, ctx }: PageProps<'/', AppEnv>) {
       </ul>
 
       <p>
-        {/* `ctx` is the request context — cookies, headers, env, middleware variables — handed to the page as a
-            prop, so reading it needs no import. It is server-only and never crosses into a client component. */}
-        Rendered on the server for <code>{url.pathname}</code>, request <code>{ctx.var.requestId}</code>.
+        Rendered on the server for <code>{url.pathname}</code>.
       </p>
     </Layout>
   );

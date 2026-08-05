@@ -1,7 +1,5 @@
 # {{PROJECT_NAME}}
 
-A [rshono](https://github.com/rshono/rshono) app — [Hono](https://hono.dev) + [Rspack](https://rspack.rs) + [React Server Components](https://react.dev/reference/rsc/server-components).
-
 ```bash
 {{PM_RUN}} dev        # dev server with HMR, http://localhost:3000
 {{PM_RUN}} build      # production build for {{DEPLOY_TARGET}}
@@ -18,9 +16,7 @@ public/            served verbatim at the web root (favicon.svg → /favicon.svg
 src/
   routes.ts        the route table — the one file rshono requires
   server.ts        a Hono app: middleware, API routes, redirects, error reporting
-  actions.ts       'use server' functions the browser can call
   components/      pages and components
-  lib/             everything else
   styles.css       imported by the layout, so it loads with the page
 ```
 
@@ -31,7 +27,7 @@ Interactive parts are `'use client'` components a page imports — only those sh
 
 `.env` holds committed defaults; `.env.local` overrides it and is gitignored. Only `PUBLIC_`-prefixed
 variables reach the browser — everything else is server-only, and a stray read of it in client code
-compiles to `undefined` rather than shipping. `src/lib/env.ts` is where both sides are read.
+compiles to `undefined` rather than shipping. `src/components/layout.tsx` reads `PUBLIC_APP_NAME` that way.
 
 ## Deploying
 

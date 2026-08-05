@@ -128,16 +128,16 @@ test('Tailwind brings its own PostCSS pass — the framework has none', () => {
   assert.ok(!JSON.parse(plain.files.get('package.json')).devDependencies.postcss, 'a plain-CSS app should install none of it');
 });
 
-test('the two rshono.config.ts variants document the same options', () => {
-  // The Tailwind variant is a copy with a `rspack` hook in it, so the commented options are the thing
-  // that can drift. Every setting the base config names has to be named there too.
+test('the Tailwind rshono.config.ts is the base config plus the PostCSS hook', () => {
+  // The Tailwind variant is a copy of the base config with an `rspack` hook added, so what can drift is a
+  // setting written into one of them and not the other.
   const base = plan(answers({ styling: 'css' }), pm).files.get('rshono.config.ts');
   const tailwind = plan(answers({ styling: 'tailwind' }), pm).files.get('rshono.config.ts');
 
-  const settings = [...base.matchAll(/^\s*\/\/ (\w+):/gm)].map((match) => match[1]);
-  assert.ok(settings.length >= 8, 'the base config should document the framework settings');
-  for (const setting of settings) {
-    assert.match(tailwind, new RegExp(`// ${setting}:`), `the Tailwind config has drifted — it no longer documents ${setting}`);
+  const lines = base.split('\n').filter((line) => line.trim() && line.trim() !== '});');
+  assert.ok(lines.length >= 3, 'the base config should still be an import and a `defineConfig` call');
+  for (const line of lines) {
+    assert.ok(tailwind.includes(line), `the Tailwind config has drifted — it is missing ${line.trim()}`);
   }
 });
 

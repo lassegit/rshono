@@ -1,13 +1,10 @@
 import type { ReactNode } from 'react';
-import { publicEnv } from '../lib/env';
 import '../styles.css';
 
-/**
- * A page renders the whole document, so the shell lives in one component every page wraps its content
- * in. Importing the stylesheet here is what attaches it to each of those pages.
- */
+export const appName = process.env.PUBLIC_APP_NAME ?? '{{PROJECT_NAME}}';
+
 export function Layout({ title, description, children }: { title?: string; description?: string; children: ReactNode }) {
-  const heading = title ? `${title} · ${publicEnv.appName}` : publicEnv.appName;
+  const heading = title ? `${title} · ${appName}` : appName;
 
   return (
     <html lang="en">
@@ -22,9 +19,8 @@ export function Layout({ title, description, children }: { title?: string; descr
         <header>
           <nav>
             <a href="/">
-              <strong>{publicEnv.appName}</strong>
+              <strong>{appName}</strong>
             </a>
-            {/* `data-native` opts a link out of soft navigation and does a full browser load. */}
             <a href="/api/health" data-native>
               /api/health
             </a>
