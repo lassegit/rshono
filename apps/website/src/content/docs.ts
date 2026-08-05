@@ -13,18 +13,12 @@
 import sourceApi from '../../content/docs/api.md';
 import sourceConfiguration from '../../content/docs/configuration.md';
 import sourceDeployment from '../../content/docs/deployment.md';
-import sourceEnvironment from '../../content/docs/environment.md';
 import sourceGettingStarted from '../../content/docs/getting-started.md';
 import sourceHono from '../../content/docs/hono.md';
-import sourceHowItWorks from '../../content/docs/how-it-works.md';
-import sourceLimitations from '../../content/docs/limitations.md';
 import sourcePages from '../../content/docs/pages.md';
-import sourcePrerendering from '../../content/docs/prerendering.md';
 import sourceProjectLayout from '../../content/docs/project-layout.md';
 import sourceRouting from '../../content/docs/routing.md';
-import sourceSecurity from '../../content/docs/security.md';
 import sourceServerActions from '../../content/docs/server-actions.md';
-import sourceStaticFiles from '../../content/docs/static-files.md';
 import sourceStyling from '../../content/docs/styling.md';
 import { readFrontmatter } from './markdown.js';
 
@@ -45,6 +39,9 @@ export interface DocEntry {
 
 /**
  * Sections and their pages, in sidebar order.
+ *
+ * Ten pages, and that is a budget rather than a coincidence: the essentials are the first six, and
+ * everything a reader only needs once — styling, config, deploy targets — is grouped under Advanced.
  *
  * Titles are deliberately *not* repeated here — they live in each file's frontmatter, so the sidebar,
  * the `<title>`, the page heading and the markdown source can never disagree about what a page is
@@ -68,27 +65,11 @@ const SECTIONS: Array<{ title: string; pages: Array<{ slug: string; source: stri
     ],
   },
   {
-    title: 'Assets & rendering',
+    title: 'Advanced',
     pages: [
       { slug: 'styling', source: sourceStyling },
-      { slug: 'static-files', source: sourceStaticFiles },
-      { slug: 'prerendering', source: sourcePrerendering },
-    ],
-  },
-  {
-    title: 'Configuration & safety',
-    pages: [
-      { slug: 'environment', source: sourceEnvironment },
       { slug: 'configuration', source: sourceConfiguration },
-      { slug: 'security', source: sourceSecurity },
-    ],
-  },
-  {
-    title: 'Going live',
-    pages: [
       { slug: 'deployment', source: sourceDeployment },
-      { slug: 'how-it-works', source: sourceHowItWorks },
-      { slug: 'limitations', source: sourceLimitations },
     ],
   },
   {

@@ -1,6 +1,6 @@
 ---
 title: Pages
-description: Every page is a React server component that renders the whole document.
+description: A page is a React server component that renders the whole document and receives the request.
 ---
 
 Every page module **default-exports a server component** — nothing else. It may be `async` and await
@@ -13,88 +13,89 @@ import { db } from '../db';
 export default async function Profile({ params, ctx }: PageProps<'/profile/:id'>) {
   const user = await db.getUser(params.id);
   const theme = ctx.cookies.get('theme') ?? 'light';
-  return <Layout>…</Layout>;
+  return <Layout theme={theme}>{user.name}</Layout>;
 }
 ```
 
-Pages render the **entire document** (`<html>…</html>`), usually via a shared layout component.
-Interactive parts are `'use client'` components the page imports — only those ship JavaScript, and a
-fully interactive page is a thin server component wrapping one.
+Pages render the **entire document** (`<html>…</html>`), usually through a shared layout component.
+Interactive parts are `'use client'` components the page imports — only those ship JavaScript.
 
-## The `'use server-entry'` directive
-
-Under the hood each page carries Rspack's `'use server-entry'` directive. It attaches the page's client
-JS and CSS assets to the component, which is what gives per-page code splitting with no asset manifest.
-
-The framework **injects it automatically** for every component referenced with the inline
-`component: () => import('…')` thunk form in `routes.ts`, including routes added while the dev server is
-running.
-
-If a component is wired up some other way — variable indirection, barrel re-exports, computed
-specifiers — write `'use server-entry'` as the first line of the page module yourself. A manually
-written directive is always respected, and the framework throws a descriptive error when neither
-happened.
+There is no `<Link>`, `<Image>`, `<Script>` or `<Head>`: links are `<a href>`, images are `<img>`, forms
+are `<form action>`. Same-origin anchors are soft-navigated automatically; `data-native` opts one out.
 
 ## Page props
 
-Pages receive `{ url, params, ctx }`.
+Every page receives `{ url, params, ctx }`. They are server-only and never serialized — React puts a
+server component's _output_ on the wire, not its props.
 
-### `url`
-
-A real `URL` — read `url.pathname` and `url.searchParams` off it. It is the absolute browser-facing
-request URL, proxy-header aware (see [`trustProxy`](/docs/security)), and a fresh instance per request
-that nothing else holds, so mutating it is local to the page.
-
-It pairs with what a `'use client'` component gets from `useNavigation()` — same names, same types — so
-moving a read across the server/client line is a copy-paste.
-
-### `params`
-
-The matched route params. `PageProps<'/profile/:id'>` types `params.id` as `string`; without the type
-argument `params` falls back to an open `Record<string, string>`.
-
-### `ctx`
-
-The request context — cookies, headers, env, middleware variables, the proxy-aware URL. It is the same
-object `getRequestContext()` returns from `@rshono/core/server`, handed to the page so it needs no import.
-Reach for `getRequestContext()` in the places that get no props: a nested server component, a `'use server'`
-action.
+| Prop     | What it is                                                                                            |
+| -------- | ----------------------------------------------------------------------------------------------------- |
+| `url`    | The absolute browser-facing `URL`, proxy-header aware. A fresh instance per request.                  |
+| `params` | The matched route params. `PageProps<'/profile/:id'>` types `params.id` as `string`.                  |
+| `ctx`    | The request context — cookies, headers, env, middleware variables. Same object `getRequestContext()` returns. |
 
 Type `ctx.var` and `ctx.env` for your app by passing its Hono `Env`:
 
 ```tsx
-export default function Dashboard({ ctx }: PageProps<'/dashboard', MyEnv>) {
+export default function Dashboard({ ctx }: PageProps<'/dashboard', AppEnv>) {
   const session = ctx.cookies.get('session');
   if (!session) redirect('/login');
   return <Layout>Signed in as {session}</Layout>;
 }
 ```
 
-## What props are, and are not
+Nested server components and `'use server'` actions get no props — they call `getRequestContext()` from
+`@rshono/core/server` for the same object.
 
-Page props are **server-only and never serialized** — React puts a server component's _output_ on the
-wire, not its props. `ctx` is additionally non-enumerable, which keeps it out of React's dev-only debug
-payload; an enumerable one would ship the whole Hono context, bindings included, to the browser in dev.
+### `ctx` cannot cross into the client
 
-That non-enumerability has three consequences worth knowing:
+`ctx` wraps the live request and response, so it is non-enumerable and never reaches the browser.
 
-- **`ctx` cannot cross into a `'use client'` component.** It wraps the live request and response, which
-  don't exist in the browser. Passing it explicitly (`<Counter ctx={ctx} />`) fails the render with
-  React's _"Only plain objects … can be passed to Client Components"_, naming the prop.
-- **Spreading page props drops it silently** (`<Counter {...props} />`), since a spread copies
-  enumerables only. That spread still fails, mind — on `url`, which is enumerable and just as
-  unserializable.
-- `Object.keys(props)`, `JSON.stringify(props)` and friends don't see it.
+- Passing it explicitly (`<Counter ctx={ctx} />`) fails the render with React's _"Only plain objects …
+  can be passed to Client Components"_.
+- Spreading page props (`<Counter {...props} />`) drops it silently — a spread copies enumerables only.
+  That spread still fails, on `url`, which is enumerable and just as unserializable.
 
-Either way the fix is the same: read what you need on the server and pass plain values down —
-`url.href`, not `url`.
+Read what you need on the server and pass plain values down: `url.href`, not `url`.
 
-## On a prerendered page
+On a [prerendered page](/docs/routing#static-rendering) reading `ctx` throws — there is no request.
 
-Reading `ctx` on a [`render: 'static'`](/docs/prerendering) page **throws**. A page rendered once at
-build time has no request to read. Use `params` and `url`, which are available either way, or make the
-route `render: 'dynamic'`.
+## Client components
 
-One quiet caveat: a prerendered `url` is the build-time one — `siteUrl` plus the path, no query — and
-that one file answers every request whatever its own query. So `url.searchParams` is always empty
-there. Read the query with `useNavigation().url` on the client instead.
+A `'use client'` module is the interactive part, and `useNavigation()` is the whole client-side routing
+API:
+
+```tsx
+'use client';
+import { useNavigation } from '@rshono/core/client';
+
+export function NextPage() {
+  const { url, router } = useNavigation();
+  const page = Number(url.searchParams.get('page') ?? '1');
+  return (
+    <button disabled={router.pending} onClick={() => router.push(`${url.pathname}?page=${page + 1}`)}>
+      Next
+    </button>
+  );
+}
+```
+
+`url` and `params` are the same names and types a page gets as props, so moving a read across the
+server/client line is a copy-paste. `router` holds `push`, `replace`, `refresh` and `pending`; all three
+are soft navigations, so client state outside the changed subtree survives. History traversal is
+`history.back()` / `history.forward()`.
+
+`<AsyncBoundary>` pairs a Suspense fallback with an error fallback, and `<CatchBoundary>` is the error
+half alone. Both are `'use client'` modules a server component can render directly. A `redirect()` is
+never absorbed by either — it is navigation, not failure.
+
+## The `'use server-entry'` directive
+
+Each page carries Rspack's `'use server-entry'` directive, which attaches the page's client JS and CSS
+to the component. That is what gives per-page code splitting with no asset manifest.
+
+The framework injects it for every component written with the inline `component: () => import('…')` form
+in `routes.ts`, including routes added while the dev server is running. If a component is wired up some
+other way — variable indirection, barrel re-exports, computed specifiers — write `'use server-entry'` as
+the first line of the page module yourself. The framework throws a descriptive error when neither
+happened.

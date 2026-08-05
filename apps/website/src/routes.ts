@@ -16,11 +16,6 @@ export const routes = defineRoutes({
       render: 'static',
       component: () => import('./components/home'),
     },
-    {
-      path: '/comparison',
-      render: 'static',
-      component: () => import('./components/comparison'),
-    },
     /*
      * Ahead of `/benchmarks`, for the same reason the markdown endpoint sits ahead of `/docs/:slug`:
      * a `.` is not a path separator, so a literal route would not match `/benchmarks.md` anyway — but

@@ -9,7 +9,7 @@
  *
  * The list is exactly `PACKAGE_MANAGERS` from `@rshono/create` — the four the scaffolder can write a
  * project for. That is not a coincidence: which runner you use is also how it learns which one you use,
- * because every one of them sets `npm_config_user_agent` for the process it spawns. `pnpm dlx
+ * because every one of them sets `npm_config_user_agent` for the process it spawns. `pnpx
  * @rshono/create` scaffolds a pnpm project without being asked.
  */
 
@@ -30,13 +30,14 @@ export interface PackageManager {
  * npm first: it is the runner everyone has, so it is the no-JavaScript default and the form commands are
  * authored in.
  *
- * `pnpm dlx` rather than `pnpx` or `pnx` — those are aliases of it, and this is the spelling that has
- * worked on every pnpm since 6.13. `yarn dlx` needs Yarn 2 or newer; Yarn Classic has no equivalent, so
- * its users want `npx` plus `--pm yarn`.
+ * `pnpx` is pnpm's own alias for `pnpm dlx` and is what the docs list first, so it is what a pnpm user
+ * would type. (`pnx` is the newer, shorter alias — pnpm 10.16 and up only, which is why it is not this
+ * one.) `yarn dlx` needs Yarn 2 or newer; Yarn Classic has no equivalent, so its users want `npx` plus
+ * `--pm yarn`.
  */
 export const PACKAGE_MANAGERS: readonly PackageManager[] = [
   { id: 'npm', label: 'npm', exec: 'npx', add: 'npm i', dev: '-D' },
-  { id: 'pnpm', label: 'pnpm', exec: 'pnpm dlx', add: 'pnpm add', dev: '-D' },
+  { id: 'pnpm', label: 'pnpm', exec: 'pnpx', add: 'pnpm add', dev: '-D' },
   { id: 'yarn', label: 'yarn', exec: 'yarn dlx', add: 'yarn add', dev: '-D' },
   { id: 'bun', label: 'bun', exec: 'bunx', add: 'bun add', dev: '--dev' },
 ];

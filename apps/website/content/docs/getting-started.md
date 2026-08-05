@@ -1,59 +1,52 @@
 ---
 title: Getting started
-description: Scaffold an rshono app, run the dev server, and ship a production build.
+description: Scaffold an app, run the dev server, ship a production build.
 ---
 
-rshono is a minimalist web framework built on [Hono](https://hono.dev), [Rspack](https://rspack.rs) and
-[React Server Components](https://react.dev/reference/rsc/server-components).
+rshono is a web framework built on [Hono](https://hono.dev), [Rspack](https://rspack.rs) and
+[React Server Components](https://react.dev/reference/rsc/server-components). One required file
+(`src/routes.ts`), one optional file (`src/server.ts`), nine exported values.
 
-One required file (`src/routes.ts`), one optional file (`src/server.ts`), and you get a dev server with
-HMR, streaming SSR with RSC hydration, server actions with progressive enhancement, soft navigation,
-build-time prerendering, and hard env/secret safety.
+> **Alpha.** Built on Rspack's experimental RSC support (`rspack.experiments.rsc`) and
+> `react-server-dom-rspack`, which is still `0.0.x`. Both are pinned to exact versions, so a release of
+> rshono is what moves them.
 
-> **Alpha.** The framework itself is covered by an end-to-end suite, but it is built on Rspack's
-> experimental RSC support (`rspack.experiments.rsc`) and `react-server-dom-rspack`, which is still
-> `0.0.x`. Those two move underneath us, so `@rspack/core` and `react-server-dom-rspack` are pinned to
-> exact versions and a release of rshono is what moves them.
-
-## Scaffold an app
+## Scaffold
 
 ```bash
 npx @rshono/create@latest my-app
 ```
 
-Which runner you use is also how the scaffolder learns which package manager you use: every one of them
-sets `npm_config_user_agent`, so `pnpm dlx` writes a pnpm project — its lockfile, its `pnpm-workspace.yaml`,
-and a `packageManager` field pinned to the version that ran. `--pm npm|pnpm|yarn|bun` overrides the guess,
-which is what Yarn Classic users want, since `yarn dlx` needs Yarn 2 or newer. (`pnpx` and `pnx` are the
-same command as `pnpm dlx`.)
+The runner you use is the package manager the project gets — read from `npm_config_user_agent`, written
+into `packageManager`, and used for the install. `--pm npm|pnpm|yarn|bun` overrides the guess.
 
-The scaffolder asks for a deploy target, a styling choice and a formatter/linter preset, then writes a
-working app. Every question is also a flag, and a non-interactive terminal implies `--yes` — so one
-command can answer all of them:
+The scaffolder asks for a deploy target, a styling choice and a formatter/linter preset. Every question
+is also a flag, and a non-interactive terminal implies `--yes`:
 
 ```bash
 npx @rshono/create@latest my-app -y --deploy cloudflare --tailwind --quality biome
 ```
 
-## The commands
+## Commands
 
 ```bash
 rshono dev     # dev server with HMR (default port 3000)
-rshono build   # production build: client + server bundles + SSG
+rshono build   # production build: client + server bundles + prerendered pages
 rshono start   # run the production build
 ```
 
-`rshono dev` always runs the Node dev server, whatever deploy target you picked — the target is a
+`rshono dev` always runs the Node dev server, whatever deploy target you picked. The target is a
 property of the build, not of developing.
 
 ## Requirements
 
-- **Node ≥ 22.18** — for worker threads, `process.loadEnvFile`, `Promise.withResolvers`, `URL.parse`, and native TypeScript stripping so a `.ts` config needs no loader.
-- **React ≥ 19.1** — the floor `react-server-dom-rspack` itself requires.
+- **Node ≥ 22.18** — worker threads, `process.loadEnvFile`, `Promise.withResolvers`, `URL.parse`, and
+  native TypeScript stripping, so a `.ts` config needs no loader.
+- **React ≥ 19.1** — the floor `react-server-dom-rspack` requires.
 
-## Where to go next
+## Next
 
-- [Project layout](/docs/project-layout) — what the framework knows about, and what is yours to arrange.
+- [Project layout](/docs/project-layout) — what the framework knows about.
 - [Routing](/docs/routing) — the one required file.
 - [Pages](/docs/pages) — how a server component becomes a page.
-- [API reference](/docs/api) — every export, and which entry point it comes from.
+- [API reference](/docs/api) — every export.

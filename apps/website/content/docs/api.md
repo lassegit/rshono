@@ -84,22 +84,22 @@ only — one instance exists per request and application code never constructs i
 | Member                               | What it is                                                                                     |
 | ------------------------------------ | ---------------------------------------------------------------------------------------------- |
 | `url`                                | The browser-facing `URL`, proxy-header aware. Parsed once and cached.                          |
-| `env`                                | Process env merged with runtime bindings (bindings win). See [Environment](/docs/environment). |
-| `var`                                | Typed variables a middleware set with `c.set(…)`.                                              |
+| `env`                                | Process env merged with runtime bindings (bindings win). See [Environment](/docs/configuration#environment-and-secrets). |
+| `var`                                | Typed variables a middleware set with `c.set(…)`.                                                    |
 | `raw`                                | The underlying Hono `Context` — the escape hatch for everything not above.                     |
 | `cookies.get(name)`                  | One cookie, or `undefined`.                                                                    |
 | `cookies.all()`                      | Every cookie as `{ name: value }`.                                                             |
 | `cookies.set(name, value, options?)` | Sets a cookie on the response.                                                                 |
 | `cookies.delete(name, options?)`     | Clears one. Pass the `path`/`domain` it was set with.                                          |
 
-That is the whole wrapper, and deliberately short: what it adds over Hono's own `Context` is a
-proxy-aware cached URL, an env that merges runtime bindings over process env, and cookies without a
-second import. Anything else is `ctx.raw` — `ctx.raw.req` for the parsed request, `ctx.raw.req.method`,
-`ctx.raw.header(name, value)` to set a response header. Those had one-line getters on `RequestContext` once; naming
-them twice bought nothing. Route params come to a page as its `params` prop.
+That is the whole wrapper. What it adds over Hono's own `Context` is a proxy-aware cached URL, an env
+that merges runtime bindings over process env, and cookies without a second import. Anything else is
+`ctx.raw` — `ctx.raw.req` for the parsed request, `ctx.raw.header(name, value)` to set a response header.
+Route params come to a page as its `params` prop.
 
-`ctx` can't be handed to a `'use client'` component — it wraps the live request. Reading it on a
-[`render: 'static'`](/docs/prerendering) page throws, because there is no request at build time.
+`ctx` cannot be handed to a `'use client'` component — it wraps the live request. Reading it on a
+[`render: 'static'`](/docs/routing#static-rendering) page throws, because there is no request at build
+time.
 
 ### Types
 

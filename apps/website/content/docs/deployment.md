@@ -1,68 +1,82 @@
 ---
 title: Deployment
-description: Seven targets, one build command, and the notes worth reading before choosing one.
+description: Four targets behind one interface, how the build produces them, and the known limitations.
 ---
 
-`rshono build` targets one platform. Pick it with `deploy` in the config, `--deploy <name>`, or
-`RSHONO_DEPLOY` — in that precedence order. The default is `node`.
-
-`rshono dev` always runs the Node dev server whatever you choose. The target is a property of the build,
-not of developing.
+`rshono build` targets one platform. Pick it with `deploy` in the config, `--deploy <name>` or
+`RSHONO_DEPLOY`, in that precedence order. The default is `node`. `rshono dev` always runs the Node dev
+server whatever you choose.
 
 ## The targets
 
-| `deploy`     | Handoff                          | Assets & prerendered pages                                      | After `build`                                         |
-| ------------ | -------------------------------- | --------------------------------------------------------------- | ----------------------------------------------------- |
-| `node`       | binds a port                     | from `dist/` on disk                                            | `rshono start`                                        |
-| `bun`        | `{ fetch, port }` default export | from `dist/` on disk                                            | `bun dist/server/main.mjs`                            |
-| `deno`       | `{ fetch }` default export       | from `dist/` on disk                                            | `deno serve -A dist/server/main.mjs`                  |
-| `cloudflare` | `{ fetch }` default export       | Workers Assets; prerendered pages read via the `ASSETS` binding | `wrangler deploy`                                     |
-| `vercel`     | web handler in a Node function   | CDN for assets; prerendered pages inside the function           | `vercel deploy --prebuilt`                            |
-| `netlify`    | web handler, Functions v2        | CDN for assets; prerendered pages inside the function           | `netlify deploy --build=false --dir=.netlify/publish` |
-| `aws-lambda` | streaming handler (Function URL) | from the deployment package                                     | zip `dist/`, handler `dist/server/main.mjs`           |
+| `deploy`     | Handoff                          | Assets & prerendered pages                                      | After `build`                               |
+| ------------ | -------------------------------- | ---------------------------------------------------------------- | ------------------------------------------- |
+| `node`       | binds a port                     | from `dist/` on disk                                             | `rshono start`                              |
+| `cloudflare` | `{ fetch }` default export       | Workers Assets; prerendered pages read via the `ASSETS` binding  | `wrangler deploy`                           |
+| `vercel`     | web handler in a Node function   | CDN for assets; prerendered pages inside the function            | `vercel deploy --prebuilt`                  |
+| `aws-lambda` | streaming handler (Function URL) | from the deployment package                                      | zip `dist/`, handler `dist/server/main.mjs` |
 
-**Every target streams.** A page's HTML reaches the browser as it renders, which is the whole reason the
-SSR shell is worth having. That is the bar a new target has to clear.
+**Every target streams** — a page's HTML reaches the browser as it renders. That is the bar a new target
+has to clear. Bun and Deno run the `node` build through their `node:` compatibility
+(`bun dist/server/main.mjs`), so neither needs a preset of its own.
+
+`rshono start` refuses a build made for another platform rather than starting a bundle with no listener
+in it.
 
 ## Cloudflare
 
-A Worker resolves no `node_modules` at runtime, so the build bundles **all** your dependencies. A
-dependency that needs a real `node:` API beyond `nodejs_compat` will not work.
+A Worker resolves no `node_modules` at runtime, so the build bundles **all** dependencies; one that
+needs a real `node:` API beyond `nodejs_compat` will not work. The build scaffolds a `wrangler.jsonc` if
+the project has none — including `nodejs_compat`, which the request context needs for
+`AsyncLocalStorage` — and never touches it again.
 
-The build scaffolds a `wrangler.jsonc` if the project has none — including `nodejs_compat`, which the
-request context needs for `AsyncLocalStorage` — and never touches it again.
+Bindings (D1, KV, R2) arrive as `getRequestContext().env`. They are not available under `rshono dev`,
+which is plain Node.
 
-Bindings (D1, KV, R2) arrive as `getRequestContext().env`. They are **not** available under `rshono dev`, which
-is plain Node.
+## AWS
+
+A Lambda Function URL with the invoke mode set to `RESPONSE_STREAM`, usually with CloudFront in front for
+`/_static` and `public/`. **Lambda@Edge is deliberately not a target**: CloudFront returns the response
+as a value rather than a stream, caps a generated origin-request response near 1 MB, and supports no
+environment variables, so `getRequestContext().env` would be empty there.
 
 ## Prerendered pages are never CDN-served
 
 One URL answers with an HTML document or a flight payload depending on `Accept`, and a path-keyed CDN
-cannot choose. So the app always handles page URLs.
+cannot choose. The app always handles page URLs. Assets under `/_static` and `public/` do go straight to
+the CDN where there is one.
 
-Assets under `/_static` and `public/` _do_ go straight to the CDN where there is one.
+## How the build works
 
-## Compression
+Two coordinated Rspack compilers, using native RSC support (`rspack.experiments.rsc`):
 
-The framework ships no compressor. `cloudflare` and `vercel` compress at the edge regardless, and a
-`node` or `aws-lambda` deploy is almost always behind something that does — a reverse proxy, a load
-balancer, CloudFront.
+- **client** (`target: web`) → `dist/static`: hydration runtime, `'use client'` chunks, CSS.
+- **server** (`target: node`) → `dist/server/main.mjs`: a Hono app assembled from your routes, rendered
+  through two layers — the RSC layer, with the `react-server` condition, produces the flight payload;
+  the SSR layer turns it into an HTML stream with the payload inlined for hydration.
 
-rshono did ship a streaming-safe gzip, for the targets that might not be behind one. It was one
-target's feature by the end, and a proxy does it better. If you serve a bare Node process straight to
-the internet and want it back, `hono/compress` is one `app.use` in `src/server.ts` — read its docs on
-streaming first, because a buffering compressor undoes streamed SSR.
+Everything in that bundle that depends on *where* it runs — binding a port, serving `/_static` and
+`public/`, reading a prerendered page, loading `.env` — sits behind a single interface the build resolves
+per target. The request-handling code has no platform in it.
 
-## AWS
+In development the CLI watches both bundles and runs the server bundle **in a worker thread**, restarted
+per rebuild, with requests gated on readiness so nothing drops across a restart. Client edits hot-apply
+via react-refresh; server component edits re-fetch the payload in place. Browser state survives both.
 
-A Lambda Function URL with the invoke mode set to `RESPONSE_STREAM`, usually with CloudFront in front
-for `/_static` and `public/`.
+In production `dist/server/main.mjs` is self-contained — React, Hono and the framework are bundled in;
+your other dependencies resolve from `node_modules`.
 
-**Lambda@Edge is deliberately not a target.** CloudFront returns the response as a value rather than a
-stream, caps a generated origin-request response near 1 MB, and supports no environment variables at all
-— so `getRequestContext().env` would be empty there, which is a documented feature quietly doing nothing.
+## Limitations
 
-## A build knows what it is for
-
-`rshono start` refuses a build made for another platform rather than starting a bundle with no listener
-in it.
+- **No compression.** It belongs in a proxy, a load balancer or a CDN, and every hosted target already
+  does it. `hono/compress` in `src/server.ts` if you need it in-process — read its docs on streaming
+  first, because a buffering compressor undoes streamed SSR.
+- **No prefetching.** A navigation fetches when it is asked for; there is no speculative warming.
+- **Scroll restoration is the browser's.** `history.scrollRestoration` stays `auto`, so a traversal's
+  offset is the browser's to restore. A new page starts at the top, or at the `#hash` the link named.
+- **No base path.** `siteUrl` must be a bare origin.
+- **Wildcard, optional and regex params cannot be prerendered.**
+- **The dev-mode proxy does not forward WebSocket upgrades** to a custom sub-app. Production is
+  unaffected.
+- **Dev source maps embed the original source of `'use server'` modules.** Dev binds to 127.0.0.1 only,
+  and production ships no client source maps.
