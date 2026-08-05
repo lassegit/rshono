@@ -96,7 +96,7 @@ test('soft-navigation requests get a flight payload', async () => {
   assert.match(await res.text(), /Ada Lovelace/);
 });
 
-test('getContext() exposes url/pathname, headers, cookies and env in an async server component', async () => {
+test('getRequestContext() exposes url/pathname, headers, cookies and env in an async server component', async () => {
   const res = await fetch(`${base}/whoami`, {
     headers: { 'x-test': 'hello-ctx', cookie: 'visitor=ada-cookie' },
   });
@@ -108,7 +108,7 @@ test('getContext() exposes url/pathname, headers, cookies and env in an async se
   assert.ok(html.includes(APP_ENV.PUBLIC_API_ENDPOINT), 'ctx.env did not expose the PUBLIC_ variable');
 });
 
-test('the ctx page prop is the request context, without importing getContext()', async () => {
+test('the ctx page prop is the request context, without importing getRequestContext()', async () => {
   const res = await fetch(`${base}/`, { headers: { cookie: 'visitor=Ada%20Lovelace' } });
   assert.equal(res.status, 200);
   const html = await res.text();
@@ -236,7 +236,7 @@ test('progressive-enhancement form action works without JavaScript', async () =>
   assert.equal(res.status, 200);
   assert.ok(
     res.headers.getSetCookie().some((cookie) => /welcomed=/.test(cookie)),
-    'server action cookie (getContext + setCookie) did not reach the response',
+    'server action cookie (getRequestContext + setCookie) did not reach the response',
   );
   assert.match(await res.text(), /Welcome aboard, NoScript Nancy/);
 });

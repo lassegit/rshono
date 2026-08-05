@@ -3,7 +3,7 @@ import { ReactRefreshRspackPlugin } from '@rspack/plugin-react-refresh';
 import { existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { basename, dirname, join, win32 } from 'node:path';
-import type { RSHonoConfig } from '../config.js';
+import type { RshonoConfig } from '../config.js';
 import type { DeployPreset } from '../deploy/presets.js';
 import { resolveServerConfig } from '../server/server-config.js';
 import { scanPageFiles } from './page-files.js';
@@ -85,7 +85,7 @@ const NODE_TARGETS = ['node >= 22'];
  * Rspack's native CSS pipeline, which both compilers get.
  *
  * It parses *finished* CSS, so a stylesheet needing a PostCSS plugin — Tailwind, most obviously — adds
- * the loader through the {@link RSHonoConfig.rspack} hook, along with the two packages a PostCSS pass
+ * the loader through the {@link RshonoConfig.rspack} hook, along with the two packages a PostCSS pass
  * takes. The framework stays out of it: `postcss` is a dependency an app that wants one can have, rather
  * than one every app pays for. The Styling section of the README has the four lines involved.
  *
@@ -99,8 +99,8 @@ function cssRule(): RuleSetRule {
 export interface RspackConfigOptions {
   rootDir: string;
   isDev: boolean;
-  /** The project's resolved config — supplies the {@link RSHonoConfig.rspack} hook and the runtime settings baked into the server bundle. */
-  config: RSHonoConfig;
+  /** The project's resolved config — supplies the {@link RshonoConfig.rspack} hook and the runtime settings baked into the server bundle. */
+  config: RshonoConfig;
   /** The platform being built for: decides the `@rshono/deploy` runtime and any server-compiler overrides. */
   preset: DeployPreset;
   onServerComponentChanges?: () => void;

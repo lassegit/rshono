@@ -1,6 +1,6 @@
 'use server';
 
-import { getContext, redirect } from '@rshono/core/server';
+import { getRequestContext, redirect } from '@rshono/core/server';
 import { fakeDB, type User } from './db';
 
 export async function createUser(data: { name: string; email: string }): Promise<User> {
@@ -17,7 +17,7 @@ export interface LoginState {
 export async function login(_prev: LoginState, formData: FormData): Promise<LoginState> {
   const email = String(formData.get('email') ?? '').trim();
   if (!email.includes('@')) return { error: 'Enter a valid email address.' };
-  getContext().cookies.set('session', encodeURIComponent(email), { path: '/', httpOnly: true, sameSite: 'Lax' });
+  getRequestContext().cookies.set('session', encodeURIComponent(email), { path: '/', httpOnly: true, sameSite: 'Lax' });
   redirect('/dashboard');
 }
 
@@ -46,6 +46,6 @@ export async function signup(_prev: SignupState, formData: FormData): Promise<Si
     return { error: 'Please provide a name and a valid email address.' };
   }
   const user = await fakeDB.createUser({ name, email });
-  getContext().cookies.set('welcomed', encodeURIComponent(user.name), { path: '/', httpOnly: true });
+  getRequestContext().cookies.set('welcomed', encodeURIComponent(user.name), { path: '/', httpOnly: true });
   return { message: `Welcome aboard, ${user.name}! (user #${user.id})` };
 }

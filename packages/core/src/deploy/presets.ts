@@ -150,7 +150,7 @@ export interface DeploySources {
   flag?: string;
   /** The `RSHONO_DEPLOY` env var — for a CI job that deploys the same app to more than one place. */
   env?: string;
-  /** {@link RSHonoConfig.deploy} from `rshono.config.ts`. */
+  /** {@link RshonoConfig.deploy} from `rshono.config.ts`. */
   config?: string;
 }
 

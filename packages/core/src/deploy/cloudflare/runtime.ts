@@ -65,7 +65,7 @@ const pageCache = createPageCache();
 export const runtime: DeployRuntime = {
   serveApp(app: Hono): unknown {
     // What Workers looks for on the default export. `app.fetch` already takes `(request, env, ctx)`,
-    // which is why bindings arrive as `c.env` — and so why `getContext().env` sees them.
+    // which is why bindings arrive as `c.env` — and so why `getRequestContext().env` sees them.
     return { fetch: app.fetch };
   },
 
@@ -108,6 +108,6 @@ export const runtime: DeployRuntime = {
 
   loadEnv(): void {
     // Nothing to load: a Worker has no filesystem and no `.env`. Secrets and bindings arrive per
-    // request as `c.env`, which `getContext().env` already merges — see `runtime/context.ts`.
+    // request as `c.env`, which `getRequestContext().env` already merges — see `runtime/context.ts`.
   },
 };

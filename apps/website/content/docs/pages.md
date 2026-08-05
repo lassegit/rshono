@@ -56,8 +56,8 @@ argument `params` falls back to an open `Record<string, string>`.
 ### `ctx`
 
 The request context — cookies, headers, env, middleware variables, the proxy-aware URL. It is the same
-object `getContext()` returns from `@rshono/core/server`, handed to the page so it needs no import.
-Reach for `getContext()` in the places that get no props: a nested server component, a `'use server'`
+object `getRequestContext()` returns from `@rshono/core/server`, handed to the page so it needs no import.
+Reach for `getRequestContext()` in the places that get no props: a nested server component, a `'use server'`
 action.
 
 Type `ctx.var` and `ctx.env` for your app by passing its Hono `Env`:

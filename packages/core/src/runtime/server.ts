@@ -1,6 +1,6 @@
 /**
  * `@rshono/core/server` — the request-scoped surface, for use inside server components
- * and `'use server'` action modules: {@link getContext} for the URL, cookies,
+ * and `'use server'` action modules: {@link getRequestContext} for the URL, cookies,
  * params, env and middleware variables, the {@link redirect} and {@link notFound}
  * control-flow helpers, and {@link onServerError} for reporting the errors the
  * framework catches.
@@ -22,15 +22,15 @@
  */
 
 export {
-  getContext,
+  getRequestContext,
   notFound,
   onServerError,
   redirect,
-  // A type, not a value: `Ctx` is handed to you by `getContext()` or the `ctx` page
-  // prop — one instance per request — and is never constructed by application code.
-  type Ctx,
   type EnvVars,
   type RedirectStatus,
+  // A type, not a value: `RequestContext` is handed to you by `getRequestContext()` or the `ctx` page
+  // prop — one instance per request — and is never constructed by application code.
+  type RequestContext,
   type ServerErrorContext,
   type ServerErrorHandler,
   type ServerErrorSource,

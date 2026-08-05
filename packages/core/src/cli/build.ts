@@ -5,7 +5,7 @@ import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { createConfigs } from '../builder/rspack-config.js';
-import type { RSHonoConfig } from '../config.js';
+import type { RshonoConfig } from '../config.js';
 import { writeBuildMarker } from '../deploy/build-marker.js';
 import type { DeployPreset } from '../deploy/presets.js';
 import type { Route } from '../router.js';
@@ -13,7 +13,7 @@ import { prerenderStaticRoutes } from '../server/ssg.js';
 
 interface BuildOptions {
   rootDir: string;
-  config: RSHonoConfig;
+  config: RshonoConfig;
   /** The platform to build for, already resolved from the flag, the environment and the config. */
   preset: DeployPreset;
 }

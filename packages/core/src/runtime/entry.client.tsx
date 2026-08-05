@@ -10,7 +10,7 @@ import {
 import { isControlDigest, parseRedirectDigest } from './control.js';
 import type { DevMessage } from './dev-protocol.js';
 import type { RscPayload } from './entry.rsc.js';
-import { RouterContext, type Router } from './navigation.js';
+import { RouterContext, type NavigationRouter } from './navigation.js';
 import { createRscRequest } from './request.js';
 
 const isDev = process.env.NODE_ENV === 'development';
@@ -242,7 +242,7 @@ async function main() {
       };
     }, []);
 
-    const router = React.useMemo<Router>(() => ({ push, replace, refresh, pending }), [pending]);
+    const router = React.useMemo<NavigationRouter>(() => ({ push, replace, refresh, pending }), [pending]);
 
     return <RouterContext.Provider value={router}>{payload.root}</RouterContext.Provider>;
   }

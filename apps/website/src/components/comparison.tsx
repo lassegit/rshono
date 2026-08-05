@@ -98,7 +98,7 @@ const MATRIX: Array<{ dimension: string; note?: string; cells: Record<(typeof FR
   {
     dimension: 'Reading the request on the server',
     cells: {
-      rshono: 'ctx prop on the page, or getContext()',
+      rshono: 'ctx prop on the page, or getRequestContext()',
       'Next.js': 'await cookies(), await headers(), await connection()',
       'TanStack Start': 'getRequest() inside a server function',
       Waku: 'unstable_getHeaders() from waku/router/server',
@@ -375,10 +375,10 @@ function Arguments({ linksHtml, contextHtml }: { linksHtml: string; contextHtml:
           <h3 className="mb-3 text-lg font-medium text-zinc-900 dark:text-white">An API you can finish reading</h3>
           <p className="mb-4 text-zinc-600 dark:text-zinc-400">
             rshono exports <strong>nine values</strong> across three import paths. <code>defineRoutes</code> and <code>defineConfig</code> from the
-            root; <code>getContext</code>, <code>redirect</code>, <code>notFound</code> and <code>onServerError</code> from <code>/server</code>;{' '}
-            <code>useNavigation</code>, <code>Boundary</code> and <code>ErrorBoundary</code> from <code>/client</code>. That is the whole framework.
-            There is no second router to learn later, no <code>unstable_</code> tier, and nothing that behaves differently depending on which directory
-            you called it from.
+            root; <code>getRequestContext</code>, <code>redirect</code>, <code>notFound</code> and <code>onServerError</code> from{' '}
+            <code>/server</code>; <code>useNavigation</code>, <code>Boundary</code> and <code>ErrorBoundary</code> from <code>/client</code>. That is
+            the whole framework. There is no second router to learn later, no <code>unstable_</code> tier, and nothing that behaves differently
+            depending on which directory you called it from.
           </p>
           <p className="text-zinc-600 dark:text-zinc-400">
             For contrast, <code>next/navigation</code> alone exports five hooks and a family of control-flow throws, and it is one of twenty-three
@@ -459,7 +459,7 @@ function Arguments({ linksHtml, contextHtml }: { linksHtml: string; contextHtml:
           <p className="mb-4 text-zinc-600 dark:text-zinc-400">
             Every page is handed <code>{'{ url, params, ctx }'}</code>. No async accessor to import, no rule about which call makes a route dynamic,
             no cache to reason about — <code>ctx</code> is the live Hono context, and reading a cookie off it is just reading a property. Nested
-            components that got no props call <code>getContext()</code> and get the same object.
+            components that got no props call <code>getRequestContext()</code> and get the same object.
           </p>
           <div className="prose mb-4" dangerouslySetInnerHTML={{ __html: contextHtml }} />
           <p className="text-zinc-600 dark:text-zinc-400">
@@ -582,9 +582,7 @@ function Tradeoffs() {
             <p className="text-sm text-zinc-600 dark:text-zinc-400">{item.body}</p>
             {item.href && (
               <p className="mt-3 text-sm">
-                <a href={item.href}>
-                  {item.hrefLabel} →
-                </a>
+                <a href={item.href}>{item.hrefLabel} →</a>
               </p>
             )}
           </li>
@@ -626,11 +624,9 @@ function Method() {
         <p>
           There are no performance numbers on this page on purpose — the table above is about design choices, which don&rsquo;t have a unit. What can
           be measured honestly is what the framework costs: bytes to the browser, build time, cold start, install size. That is a separate page,{' '}
-          <a href="/benchmarks">
-            benchmarks
-          </a>
-          , with one app built three ways and the method and caveats next to the numbers. Request throughput is barely in it, and deliberately so: all
-          three render through the same React, so a throughput chart of our own making would tell you about our fixture rather than about your app.
+          <a href="/benchmarks">benchmarks</a>, with one app built three ways and the method and caveats next to the numbers. Request throughput is
+          barely in it, and deliberately so: all three render through the same React, so a throughput chart of our own making would tell you about our
+          fixture rather than about your app.
         </p>
       </div>
 

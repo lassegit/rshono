@@ -32,7 +32,7 @@ dependency that needs a real `node:` API beyond `nodejs_compat` will not work.
 The build scaffolds a `wrangler.jsonc` if the project has none — including `nodejs_compat`, which the
 request context needs for `AsyncLocalStorage` — and never touches it again.
 
-Bindings (D1, KV, R2) arrive as `getContext().env`. They are **not** available under `rshono dev`, which
+Bindings (D1, KV, R2) arrive as `getRequestContext().env`. They are **not** available under `rshono dev`, which
 is plain Node.
 
 ## Prerendered pages are never CDN-served
@@ -60,7 +60,7 @@ for `/_static` and `public/`.
 
 **Lambda@Edge is deliberately not a target.** CloudFront returns the response as a value rather than a
 stream, caps a generated origin-request response near 1 MB, and supports no environment variables at all
-— so `getContext().env` would be empty there, which is a documented feature quietly doing nothing.
+— so `getRequestContext().env` would be empty there, which is a documented feature quietly doing nothing.
 
 ## A build knows what it is for
 

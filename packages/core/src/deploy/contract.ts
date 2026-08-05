@@ -2,7 +2,7 @@ import type { Context, Hono } from 'hono';
 import type { PrerenderVariant, PrerenderedPage } from '../server/prerendered.js';
 
 /**
- * A hosting platform rshono can build for. Selected with {@link RSHonoConfig.deploy}, the
+ * A hosting platform rshono can build for. Selected with {@link RshonoConfig.deploy}, the
  * `--deploy` flag or the `RSHONO_DEPLOY` env var, and resolved to a preset by `deploy/presets.ts`.
  *
  * One per *handoff*, which is the thing an app cannot arrange for itself: `node` binds its own port (and

@@ -27,9 +27,9 @@ import { runtime } from '@rshono/deploy';
 import { routes as userRoutes } from '@rshono/routes';
 // @ts-expect-error — resolved by the '@rshono/server-app' alias (src/server.ts or the empty fallback)
 import * as serverAppModule from '@rshono/server-app';
-import { isPageRoute, type ErrorInfo, type FallbackPage, type PageComponent, type PageProps, type Route, type RouteConfig } from '../router.js';
+import { isPageRoute, type ErrorPageInfo, type FallbackPage, type PageComponent, type PageProps, type Route, type RouteConfig } from '../router.js';
 import { appendVary, etagMatches } from '../server/headers.js';
-import { getContext, publicUrl, readParams, reportServerError, runWithContext } from './context.js';
+import { getRequestContext, publicUrl, readParams, reportServerError, runWithContext } from './context.js';
 import { isControlSignal, RedirectSignal, type ControlSignal } from './control.js';
 import { renderHTML } from './entry.ssr.js';
 // Type-only, so it is erased — the RSC layer does not take its own instance of the SSR layer's module.
@@ -182,7 +182,7 @@ interface ComponentRenderOptions {
   returnValue?: RscPayload['returnValue'];
   temporaryReferences?: TemporaryReferenceSet;
   /** Passed when the page being rendered is the `error` page, which takes it as an extra prop. */
-  errorInfo?: ErrorInfo;
+  errorInfo?: ErrorPageInfo;
   /** Marks the payload as the not-found page, so a soft navigation can tell it apart from the page it asked for. */
   notFound?: boolean;
 }
@@ -215,13 +215,13 @@ interface ComponentRenderOptions {
  * Builds the props a page component is called with.
  *
  * `url` and `params` match `useNavigation()` field for field, so a read can move between a page and
- * a `'use client'` component unchanged. The `URL` is this page's own — `Ctx` parses its own — so a
+ * a `'use client'` component unchanged. The `URL` is this page's own — `RequestContext` parses its own — so a
  * page that mutates it cannot disturb anything else on the request.
  *
  * `ctx` is *defined* rather than assigned, and both parts of how carry their weight:
  *
  * - **A getter**, so nothing is built for the pages that never read it, and so a `render: 'static'`
- *   page that does read it gets {@link getContext}'s own "no per-request context while
+ *   page that does read it gets {@link getRequestContext}'s own "no per-request context while
  *   prerendering" error rather than a bare `undefined` — one explanation, in one place.
  * - **Non-enumerable**, so React's *development-only* serialization of a server component's props
  *   (the debug channel behind component stacks and the performance track) skips it. That walks own
@@ -233,10 +233,10 @@ interface ComponentRenderOptions {
  * The cost is that the element has to be created by handing this object to `jsx()` *by reference*:
  * a `<Page {...props} />` spread copies enumerable properties only, and would drop `ctx` silently.
  */
-function pageProps(c: Context, errorInfo: ErrorInfo | undefined): PageProps & { error?: ErrorInfo } {
+function pageProps(c: Context, errorInfo: ErrorPageInfo | undefined): PageProps & { error?: ErrorPageInfo } {
   const props = { url: publicUrl(c), params: readParams(c), ...(errorInfo ? { error: errorInfo } : null) };
-  Object.defineProperty(props, 'ctx', { get: getContext, enumerable: false, configurable: true });
-  return props as PageProps & { error?: ErrorInfo };
+  Object.defineProperty(props, 'ctx', { get: getRequestContext, enumerable: false, configurable: true });
+  return props as PageProps & { error?: ErrorPageInfo };
 }
 
 async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opts: ComponentRenderOptions): Promise<Response> {
@@ -472,7 +472,7 @@ function buildApp(): Hono {
               // revalidation that follows into a 304 rather than the page all over again.
               //
               // Answered outside `runWithContext`: no app code runs on this path, so there is no
-              // `getContext()` to serve and no reason to pay for the AsyncLocalStorage scope.
+              // `getRequestContext()` to serve and no reason to pay for the AsyncLocalStorage scope.
               if (page !== null) {
                 const headers = {
                   'cache-control': SSG_CACHE_CONTROL,
@@ -520,7 +520,7 @@ function buildApp(): Hono {
     reportServerError(error, { source: 'request', request: c.req.raw, message: '[rshono] request error:' });
     const isRsc = requestWantsRsc(c.req.raw);
     if (loadErrorPage && (isRsc || acceptsHtml(c))) {
-      const errorInfo: ErrorInfo = isDev
+      const errorInfo: ErrorPageInfo = isDev
         ? {
             message: error instanceof Error ? error.message : String(error),
             stack: error instanceof Error ? error.stack : undefined,

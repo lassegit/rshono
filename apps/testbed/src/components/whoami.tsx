@@ -1,10 +1,10 @@
-import { getContext } from '@rshono/core/server';
+import { getRequestContext } from '@rshono/core/server';
 import { Layout } from './layout';
 
 export default async function WhoAmI() {
   await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
-  const ctx = getContext();
+  const ctx = getRequestContext();
   const testHeader = ctx.raw.req.header('x-test') ?? '(no x-test header)';
   const visitor = ctx.cookies.get('visitor') ?? '(no visitor cookie)';
   const apiEndpoint = ctx.env.PUBLIC_API_ENDPOINT ?? '(unset)';

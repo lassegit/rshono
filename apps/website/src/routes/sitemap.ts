@@ -1,4 +1,4 @@
-import type { Handler } from '@rshono/core';
+import type { Handler } from 'hono';
 import { DOCS } from '../content/docs';
 import { origin } from './llms';
 

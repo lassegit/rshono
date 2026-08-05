@@ -1,4 +1,4 @@
-import type { RSHonoConfig } from '../config.js';
+import type { RshonoConfig } from '../config.js';
 
 /**
  * The framework settings the server bundle needs at request time, fully resolved
@@ -46,8 +46,8 @@ export const SERVER_DEFAULTS = {
 } as const;
 
 /**
- * The built-in {@link RSHonoConfig.csp} policy, keyed by directive so
- * {@link RSHonoConfig.cspDirectives} can override entries individually.
+ * The built-in {@link RshonoConfig.csp} policy, keyed by directive so
+ * {@link RshonoConfig.cspDirectives} can override entries individually.
  *
  * `script-src` carries the per-request nonce, appended at request time (see `entry.rsc.tsx`).
  * `style-src` needs `'unsafe-inline'` because React writes inline styles.
@@ -68,7 +68,7 @@ export const CSP_DEFAULTS: Record<string, string> = {
 
 const UNITS: Record<string, number> = { b: 1, kb: 1024, mb: 1024 ** 2, gb: 1024 ** 3 };
 
-/** Parse a {@link RSHonoConfig.bodySizeLimit} value into a byte count (`false`/`0` → `0`, disabling the cap). */
+/** Parse a {@link RshonoConfig.bodySizeLimit} value into a byte count (`false`/`0` → `0`, disabling the cap). */
 export function parseByteSize(value: string | number | false | undefined): number | undefined {
   if (value === undefined) return undefined;
   if (value === false) return 0;
@@ -105,13 +105,13 @@ function resolveCspDirectives(overrides: Record<string, string> | undefined): Re
 }
 
 /**
- * Resolve the user's {@link RSHonoConfig} into the {@link ServerConfig} baked into the bundle.
+ * Resolve the user's {@link RshonoConfig} into the {@link ServerConfig} baked into the bundle.
  *
  * `isDev` is a build-time input rather than a config field because it decides one thing the user
  * shouldn't have to: `trustProxy` is forced on under `rshono dev`, where the framework's own proxy
  * is the only way in (it sets the forwarded headers itself and binds to localhost).
  */
-export function resolveServerConfig(config: RSHonoConfig, { isDev }: { isDev: boolean }): ServerConfig {
+export function resolveServerConfig(config: RshonoConfig, { isDev }: { isDev: boolean }): ServerConfig {
   return {
     isDev,
     trustProxy: isDev || (config.trustProxy ?? false),

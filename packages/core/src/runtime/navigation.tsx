@@ -9,7 +9,7 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react';
  * payload is fetched and applied in place, so client component state outside the
  * changed subtree survives. Off-site or non-HTTP hrefs fall back to a full load.
  */
-export interface Router {
+export interface NavigationRouter {
   /** Navigates to `href` and pushes a new history entry. */
   push(href: string): void;
   /** Navigates to `href`, replacing the current history entry instead of adding one. */
@@ -23,8 +23,8 @@ export interface Router {
 // No `back()` / `forward()`: they were verbatim aliases for `history.back()` and `history.forward()`,
 // which need no framework. Traversal is picked up by the `popstate` listener either way.
 
-/** The current location plus the {@link Router}, as returned by {@link useNavigation}. */
-export interface Navigation {
+/** The current location plus the {@link NavigationRouter}, as returned by {@link useNavigation}. */
+export interface NavigationState {
   /**
    * The full current {@link URL} — read `url.pathname`, `url.searchParams` and the
    * rest off it. A fresh instance per navigation, so mutating it affects nothing
@@ -34,23 +34,23 @@ export interface Navigation {
   /** Matched route params for the current page, e.g. `{ id: '42' }` for `/profile/:id`. */
   params: Record<string, string>;
   /** Imperative navigation actions and the `pending` flag. */
-  router: Router;
+  router: NavigationRouter;
 }
 
 const noop = () => {};
 
-const defaultRouter: Router = { push: noop, replace: noop, refresh: noop, pending: false };
+const defaultRouter: NavigationRouter = { push: noop, replace: noop, refresh: noop, pending: false };
 
 /**
- * Carries the live {@link Router} implementation from the hydration runtime down
+ * Carries the live {@link NavigationRouter} implementation from the hydration runtime down
  * to {@link RouterProvider}. Framework internal — read the router through
  * {@link useNavigation} instead.
  *
  * @internal
  */
-export const RouterContext = createContext<Router>(defaultRouter);
+export const RouterContext = createContext<NavigationRouter>(defaultRouter);
 
-const NavigationContext = createContext<Navigation | null>(null);
+const NavigationContext = createContext<NavigationState | null>(null);
 
 /**
  * Publishes the per-render location and params so {@link useNavigation} can read
@@ -60,7 +60,7 @@ const NavigationContext = createContext<Navigation | null>(null);
  */
 export function RouterProvider({ href, params, children }: { href: string; params: Record<string, string>; children: ReactNode }) {
   const router = useContext(RouterContext);
-  const value = useMemo<Navigation>(() => ({ url: new URL(href), params, router }), [href, params, router]);
+  const value = useMemo<NavigationState>(() => ({ url: new URL(href), params, router }), [href, params, router]);
 
   return <NavigationContext.Provider value={value}>{children}</NavigationContext.Provider>;
 }
@@ -75,7 +75,7 @@ export function RouterProvider({ href, params, children }: { href: string; param
  * `pending` flag that is `true` while a client navigation is in flight.
  *
  * Hooks can't run in a server component; read the same URL data there from
- * `getContext()` (`@rshono/core/server`) instead.
+ * `getRequestContext()` (`@rshono/core/server`) instead.
  *
  * @example
  * ```tsx
@@ -93,16 +93,16 @@ export function RouterProvider({ href, params, children }: { href: string; param
  * }
  * ```
  *
- * @returns The current {@link Navigation}: `url` and `params`, plus `router`
- * ({@link Router}) with `push` / `replace` / `refresh` / `pending`.
+ * @returns The current {@link NavigationState}: `url` and `params`, plus `router`
+ * ({@link NavigationRouter}) with `push` / `replace` / `refresh` / `pending`.
  * @throws If called outside a page's React tree, where there is no navigation
  *   context to read.
  */
-export function useNavigation(): Navigation {
+export function useNavigation(): NavigationState {
   const value = useContext(NavigationContext);
   if (!value) {
     throw new Error(
-      "[rshono] useNavigation() must be called inside a 'use client' component rendered by a page. In a server component, read the URL from getContext() instead.",
+      "[rshono] useNavigation() must be called inside a 'use client' component rendered by a page. In a server component, read the URL from getRequestContext() instead.",
     );
   }
   return value;

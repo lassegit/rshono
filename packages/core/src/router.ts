@@ -3,7 +3,7 @@ import type { ParamKeys, ParamKeyToRecord } from 'hono/types';
 import type { ReactNode } from 'react';
 // Type-only, so this stays a build-time module: the import is erased and none of `context.ts`'s
 // runtime machinery (AsyncLocalStorage, hono/cookie) is pulled in by importing `@rshono/core`.
-import type { Ctx } from './runtime/context.js';
+import type { RequestContext } from './runtime/context.js';
 
 type Simplify<T> = { [K in keyof T]: T[K] } & {};
 type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never) extends (k: infer I) => void ? I : never;
@@ -38,8 +38,8 @@ export type PathParams<P extends string> =
  * the server/client line is a copy-paste.
  *
  * @typeParam Path - The literal path this page is mounted at, e.g. `'/profile/:id'`.
- * @typeParam E - The app's Hono {@link Env}, to type {@link Ctx.var} and
- *   {@link Ctx.env} on {@link PageProps.ctx}.
+ * @typeParam E - The app's Hono {@link Env}, to type {@link RequestContext.var} and
+ *   {@link RequestContext.env} on {@link PageProps.ctx}.
  *
  * @example
  * ```tsx
@@ -72,7 +72,7 @@ export interface PageProps<Path extends string = string, E extends Env = Env> {
   /** Matched route params for this request, e.g. `{ id: '42' }` for `/profile/:id`. */
   params: string extends Path ? Record<string, string> : PathParams<Path>;
   /**
-   * The request context — the very object `getContext()` returns, handed to the
+   * The request context — the very object `getRequestContext()` returns, handed to the
    * page so cookies, headers, env and middleware variables are reachable without
    * an import.
    *
@@ -105,7 +105,7 @@ export interface PageProps<Path extends string = string, E extends Env = Env> {
    * }
    * ```
    */
-  ctx: Ctx<E>;
+  ctx: RequestContext<E>;
 }
 
 /**
@@ -220,12 +220,11 @@ export type Route = PageRoute | EndpointRoute;
  * Type guard narrowing a {@link Route} to a {@link PageRoute}. Because `type` is
  * optional on page routes, anything not explicitly `'endpoint'` is a page.
  *
- * @example
- * ```ts
- * for (const route of routes) {
- *   if (isPageRoute(route)) console.log(route.render ?? 'dynamic');
- * }
- * ```
+ * Framework internal — deliberately absent from `index.ts`, so it is not part of the
+ * `@rshono/core` surface. The request renderer and the builder use it to split the
+ * route table; an app declares its routes rather than walking them.
+ *
+ * @internal
  */
 export function isPageRoute(route: Route): route is PageRoute {
   return route.type !== 'endpoint';
@@ -246,7 +245,7 @@ export interface FallbackPage {
  * message is a generic `'Internal Server Error'` and there is no `stack`. In dev
  * you get the real message plus the stack.
  */
-export interface ErrorInfo {
+export interface ErrorPageInfo {
   /** The thrown error's message in dev; `'Internal Server Error'` in production. */
   message: string;
   /** The stack trace. Present in dev only. */
@@ -255,7 +254,7 @@ export interface ErrorInfo {
 
 /**
  * Props for the `error` page declared in {@link RouteConfig.error} — the usual
- * {@link PageProps} plus the redaction-aware {@link ErrorInfo}.
+ * {@link PageProps} plus the redaction-aware {@link ErrorPageInfo}.
  *
  * @typeParam E - The app's Hono {@link Env}, forwarded to {@link PageProps.ctx}.
  *
@@ -268,7 +267,7 @@ export interface ErrorInfo {
  * }
  * ```
  */
-export type ErrorPageProps<E extends Env = Env> = PageProps<string, E> & { error: ErrorInfo };
+export type ErrorPageProps<E extends Env = Env> = PageProps<string, E> & { error: ErrorPageInfo };
 
 /**
  * The object form accepted by {@link defineRoutes}: the route table plus the two
@@ -288,7 +287,7 @@ export interface RouteConfig<TRoutes extends readonly Route[] = readonly Route[]
 
 // `PageProps<P, any>`, not `PageProps<P>`: this check is about the *path* matching the page's
 // `params`, and pinning the Env to the default would additionally demand that a page declaring its
-// own (`PageProps<'/x', MyEnv>`, to type `ctx.var`) accept a `Ctx<Env>` — which it doesn't, so every
+// own (`PageProps<'/x', MyEnv>`, to type `ctx.var`) accept a `RequestContext<Env>` — which it doesn't, so every
 // such page would fail its own route check. `any` makes `ctx` compatible either way.
 type ValidateRoute<R> = R extends {
   path: infer P extends string;

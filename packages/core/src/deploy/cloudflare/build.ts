@@ -39,7 +39,7 @@ function wranglerConfig(rootDir: string, today: string): string {
       name: workerName(rootDir),
       main: 'dist/server/main.mjs',
       compatibility_date: today,
-      // AsyncLocalStorage — how the framework binds the request context that `getContext()` reads.
+      // AsyncLocalStorage — how the framework binds the request context that `getRequestContext()` reads.
       compatibility_flags: ['nodejs_compat'],
       assets: {
         directory: `dist/${ASSETS_DIR.split(/[\\/]/).join('/')}`,

@@ -1,4 +1,4 @@
-import type { Handler } from '@rshono/core';
+import type { Handler } from 'hono';
 import source from '../../content/benchmarks.md';
 import { MARKDOWN_HEADERS } from './llms';
 

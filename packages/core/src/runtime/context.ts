@@ -1,6 +1,6 @@
 /// <reference path="../types/rshono-config.d.ts" />
 /**
- * The request context: {@link getContext} and the {@link Ctx} wrapper it returns,
+ * The request context: {@link getRequestContext} and the {@link RequestContext} wrapper it returns,
  * the {@link redirect} / {@link notFound} control-flow helpers, and the
  * {@link onServerError} reporting funnel — plus the `@internal` plumbing that binds
  * a request to the async context in the first place.
@@ -29,14 +29,14 @@ export type RedirectStatus = 301 | 302 | 303 | 307 | 308;
 
 const contextStorage = new AsyncLocalStorage<Context>();
 
-/** One {@link Ctx} per Hono {@link Context}, so repeated `getContext()` calls in a request share its lazy getters. */
-const wrappers = new WeakMap<Context, Ctx>();
+/** One {@link RequestContext} per Hono {@link Context}, so repeated `getRequestContext()` calls in a request share its lazy getters. */
+const wrappers = new WeakMap<Context, RequestContext>();
 
 /**
  * `process.env`, snapshotted on first read.
  *
  * It is not a plain object — every enumeration crosses into the host environment, which made
- * spreading it (~20µs) by far the most expensive thing {@link Ctx.env} did, once per request that
+ * spreading it (~20µs) by far the most expensive thing {@link RequestContext.env} did, once per request that
  * touched it. Snapshotted lazily rather than at module load because `loadEnvFiles()` runs *after*
  * this module is imported, so an eager copy would miss everything from `.env`. The trade-off: a
  * `process.env` mutation after the first `ctx.env` read is not picked up.
@@ -52,7 +52,7 @@ function processEnv(): Record<string, string | undefined> {
  * rather than a server handling real requests. `build.ts` sets `RSHONO_PRERENDER`
  * before importing the app bundle and starting the prerender pass; the app bundle
  * inlines its own copy of this module, so a shared `process.env` (not a module-level
- * flag) is what reliably crosses that boundary. Read by {@link getContext} to turn a
+ * flag) is what reliably crosses that boundary. Read by {@link getRequestContext} to turn a
  * static route's request-context read into a clear build-time error instead of
  * silently baking synthetic build-time values (a `localhost` URL, no cookies, build
  * env) into the snapshot.
@@ -61,10 +61,10 @@ const prerendering = typeof process !== 'undefined' && !!process.env?.RSHONO_PRE
 
 /**
  * Runs `fn` with the given Hono {@link Context} bound as the ambient request
- * context, so that {@link getContext} resolves to it anywhere in the call tree.
+ * context, so that {@link getRequestContext} resolves to it anywhere in the call tree.
  *
  * Framework internal — the request handler wraps every render and action in
- * this. Application code should reach for {@link getContext} instead.
+ * this. Application code should reach for {@link getRequestContext} instead.
  *
  * @internal
  */
@@ -74,11 +74,11 @@ export function runWithContext<T>(c: Context, fn: () => T): T {
 
 /**
  * Reads the matched route params, returning an empty object when there is no
- * active route match (rather than throwing). Shared by {@link Ctx.params} and the
- * request renderer so the fallback behaviour stays in one place.
+ * active route match (rather than throwing), so the fallback behaviour stays in
+ * one place.
  *
- * Framework internal — read params from {@link Ctx.params} or a page's
- * `PageProps` instead.
+ * Framework internal — the request renderer calls this to build a page's `params`
+ * prop. Read them from that prop (or `ctx.raw.req.param()` outside a page) instead.
  *
  * @internal
  */
@@ -111,7 +111,7 @@ const trustProxy = typeof __RSHONO_CONFIG__ !== 'undefined' && __RSHONO_CONFIG__
  * dictate the origin of every absolute URL the app builds — canonical tags, emails, redirects — and
  * poison a shared cache with them. So the default is to ignore them entirely.
  *
- * Framework internal — prefer {@link Ctx.url}, which caches the result per request.
+ * Framework internal — prefer {@link RequestContext.url}, which caches the result per request.
  *
  * @internal
  */
@@ -139,7 +139,7 @@ export function publicUrl(c: Context): URL {
 /**
  * The environment available to a request: Cloudflare/Workers `Bindings` merged
  * with process env vars. Values not declared in `Bindings` are typed as
- * `string | undefined`. See {@link Ctx.env}.
+ * `string | undefined`. See {@link RequestContext.env}.
  */
 export type EnvVars<E extends Env> = E['Bindings'] & Record<string, string | undefined>;
 
@@ -147,26 +147,26 @@ export type EnvVars<E extends Env> = E['Bindings'] & Record<string, string | und
  * Ergonomic, read-mostly wrapper around Hono's {@link Context} for use inside
  * server components and server actions.
  *
- * Obtain one with {@link getContext}, or — in a page component — take it straight
+ * Obtain one with {@link getRequestContext}, or — in a page component — take it straight
  * off the `ctx` prop, which is this same object. Never construct it yourself. One
  * instance is reused for the lifetime of a request, so its lazy getters
- * ({@link Ctx.url}, {@link Ctx.env}) are computed at most once.
+ * ({@link RequestContext.url}, {@link RequestContext.env}) are computed at most once.
  *
  * @typeParam E - The Hono {@link Env} describing this app's `Bindings` and
- *   `Variables`, so {@link Ctx.var} and {@link Ctx.env} stay typed.
+ *   `Variables`, so {@link RequestContext.var} and {@link RequestContext.env} stay typed.
  *
  * @example
  * ```tsx
- * import { getContext } from '@rshono/core/server';
+ * import { getRequestContext } from '@rshono/core/server';
  *
  * export default async function Whoami() {
- *   const ctx = getContext();
+ *   const ctx = getRequestContext();
  *   const session = ctx.cookies.get('session');
  *   return <p>{ctx.url.pathname} — {session ?? 'anonymous'}</p>;
  * }
  * ```
  */
-export class Ctx<E extends Env = Env> {
+export class RequestContext<E extends Env = Env> {
   #raw: Context<E>;
   #url?: URL;
   #env?: EnvVars<E>;
@@ -187,7 +187,7 @@ export class Ctx<E extends Env = Env> {
    * one — which matters more than it looks. React's diagnostic for a value that cannot be sent to a
    * client component (`describeObjectForErrorMessage`) walks `Object.keys` recursively with no depth
    * limit and no cycle guard, and the Hono context graph reaches the socket and the whole server
-   * through `req.raw` and `env`. While this was a plain property, passing a `Ctx` to a `'use client'`
+   * through `req.raw` and `env`. While this was a plain property, passing a `RequestContext` to a `'use client'`
    * component blew the stack *inside that message builder* — so React's actual, accurate "you cannot
    * pass this" error never got printed. Hidden from `Object.keys`, the walk stops here.
    */
@@ -217,7 +217,7 @@ export class Ctx<E extends Env = Env> {
    * Environment for the request: process env vars merged with runtime bindings
    * (bindings win on conflict). Computed once and cached.
    *
-   * @example `const key = getContext().env.STRIPE_SECRET_KEY;`
+   * @example `const key = getRequestContext().env.STRIPE_SECRET_KEY;`
    */
   get env(): EnvVars<E> {
     if (this.#env) return this.#env;
@@ -231,7 +231,7 @@ export class Ctx<E extends Env = Env> {
    *
    * @example
    * ```ts
-   * const ctx = getContext();
+   * const ctx = getRequestContext();
    * ctx.cookies.get('session');                       // string | undefined
    * ctx.cookies.set('session', id, { httpOnly: true, sameSite: 'Lax', path: '/' });
    * ctx.cookies.delete('session', { path: '/' });
@@ -252,7 +252,7 @@ export class Ctx<E extends Env = Env> {
 }
 
 /**
- * Returns the {@link Ctx} for the current request.
+ * Returns the {@link RequestContext} for the current request.
  *
  * This is the primary entry point for reading request data from a server
  * component or server action — the URL, cookies, params, env, and middleware
@@ -263,7 +263,7 @@ export class Ctx<E extends Env = Env> {
  * import is for everywhere else: a nested server component, or a `'use server'`
  * action module — neither of which receives props from the framework.
  *
- * @typeParam E - The app's Hono {@link Env}, to type {@link Ctx.var} and {@link Ctx.env}.
+ * @typeParam E - The app's Hono {@link Env}, to type {@link RequestContext.var} and {@link RequestContext.env}.
  * @throws If called at module load, where there is no ambient context to resolve.
  * @throws If called while prerendering a `render: 'static'` route, which has no
  *   per-request context at build time — mark the route `render: 'dynamic'` instead.
@@ -271,35 +271,35 @@ export class Ctx<E extends Env = Env> {
  * @example
  * ```ts
  * 'use server';
- * import { getContext, redirect } from '@rshono/core/server';
+ * import { getRequestContext, redirect } from '@rshono/core/server';
  *
  * export async function login(form: FormData) {
- *   getContext().cookies.set('session', String(form.get('email')), { httpOnly: true });
+ *   getRequestContext().cookies.set('session', String(form.get('email')), { httpOnly: true });
  *   redirect('/dashboard');
  * }
  * ```
  */
-export function getContext<E extends Env = Env>(): Ctx<E> {
+export function getRequestContext<E extends Env = Env>(): RequestContext<E> {
   if (prerendering) {
     throw new Error(
-      "[rshono] getContext() was called while prerendering a `render: 'static'` route. A static page " +
+      "[rshono] getRequestContext() was called while prerendering a `render: 'static'` route. A static page " +
         'is rendered once at build time, so it has no per-request context to read (URL, cookies, ' +
         "headers, env). Change this route to `render: 'dynamic'` so it renders per request, or remove " +
-        'the getContext() call.',
+        'the getRequestContext() call.',
     );
   }
   const c = contextStorage.getStore();
   if (!c) {
     throw new Error(
-      '[rshono] getContext() was called outside a request. It only works inside a server component or a server action, not at module load.',
+      '[rshono] getRequestContext() was called outside a request. It only works inside a server component or a server action, not at module load.',
     );
   }
   let ctx = wrappers.get(c);
   if (!ctx) {
-    ctx = new Ctx(c);
+    ctx = new RequestContext(c);
     wrappers.set(c, ctx);
   }
-  return ctx as unknown as Ctx<E>;
+  return ctx as unknown as RequestContext<E>;
 }
 
 /**
@@ -316,7 +316,7 @@ export function getContext<E extends Env = Env>(): Ctx<E> {
  *
  * @example
  * ```ts
- * const session = getContext().cookies.get('session');
+ * const session = getRequestContext().cookies.get('session');
  * if (!session) redirect('/login');
  * // session is defined below this line
  * ```
@@ -333,9 +333,11 @@ export function redirect(location: string, status: RedirectStatus = 303): never 
  *
  * @example
  * ```tsx
- * const user = await db.user.find(getContext().params.id);
- * if (!user) notFound();
- * return <Profile user={user} />; // user is non-null here
+ * export default async function Page({ params }: PageProps<'/users/:id'>) {
+ *   const user = await db.user.find(params.id);
+ *   if (!user) notFound();
+ *   return <Profile user={user} />; // user is non-null here
+ * }
  * ```
  */
 export function notFound(): never {

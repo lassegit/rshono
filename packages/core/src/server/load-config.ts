@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs';
 import { isAbsolute, join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import type { RSHonoConfig } from '../config.js';
+import type { RshonoConfig } from '../config.js';
 
 const CONFIG_FILES = ['rshono.config.ts', 'rshono.config.js', 'rshono.config.mjs'];
 
@@ -16,15 +16,15 @@ const CONFIG_FILES = ['rshono.config.ts', 'rshono.config.js', 'rshono.config.mjs
  * that imports a sibling module has to name it with its real extension. {@link loadConfig} turns the
  * resulting resolution failure into that advice rather than letting a raw `ERR_MODULE_NOT_FOUND` out.
  */
-function importConfig(file: string): Promise<{ default?: RSHonoConfig }> {
-  return import(pathToFileURL(file).href) as Promise<{ default?: RSHonoConfig }>;
+function importConfig(file: string): Promise<{ default?: RshonoConfig }> {
+  return import(pathToFileURL(file).href) as Promise<{ default?: RshonoConfig }>;
 }
 
 /**
  * Load the project config, or `{}` if none exists. Scans `rshono.config.{ts,js,mjs}` at
  * {@link rootDir} unless an explicit {@link configPath} is given (resolved relative to `cwd`).
  */
-export async function loadConfig(rootDir: string, configPath?: string): Promise<RSHonoConfig> {
+export async function loadConfig(rootDir: string, configPath?: string): Promise<RshonoConfig> {
   const file = configPath
     ? isAbsolute(configPath)
       ? configPath
@@ -34,7 +34,7 @@ export async function loadConfig(rootDir: string, configPath?: string): Promise<
   if (!existsSync(file)) {
     throw new Error(`[rshono] config file not found: ${file}`);
   }
-  let mod: { default?: RSHonoConfig };
+  let mod: { default?: RshonoConfig };
   try {
     mod = await importConfig(file);
   } catch (error) {

@@ -5,7 +5,7 @@ import { mkdir, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { createConfigs } from '../builder/rspack-config.js';
-import type { RSHonoConfig } from '../config.js';
+import type { RshonoConfig } from '../config.js';
 import { NODE_PRESET } from '../deploy/presets.js';
 import type { DevMessage } from '../runtime/dev-protocol.js';
 import { SERVER_DEFAULTS } from '../server/server-config.js';
@@ -16,7 +16,7 @@ const WORKER_READY_TIMEOUT_MS = 15_000;
 interface DevOptions {
   rootDir: string;
   port?: number;
-  config: RSHonoConfig;
+  config: RshonoConfig;
 }
 
 export async function devCommand(options: DevOptions): Promise<void> {

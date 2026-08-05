@@ -1,4 +1,4 @@
-import type { Handler } from '@rshono/core';
+import type { Handler } from 'hono';
 import { DOC_SECTIONS } from '../content/docs';
 import { MARKDOWN_HEADERS, origin, SUMMARY } from './llms';
 

@@ -2,17 +2,25 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { dirname, join, resolve, sep } from 'node:path';
 import { isPageRoute, type PageRoute, type Route } from '../router.js';
-import { createPageCache, prerenderedRelPath, ssgFilePath, toPrerenderedPage, VARIANTS, type PrerenderedPage, type PrerenderVariant } from './prerendered.js';
+import {
+  createPageCache,
+  prerenderedRelPath,
+  ssgFilePath,
+  toPrerenderedPage,
+  VARIANTS,
+  type PrerenderedPage,
+  type PrerenderVariant,
+} from './prerendered.js';
 
 /**
- * Stand-in origin for a build that didn't declare {@link RSHonoConfig.siteUrl}. Deliberately
+ * Stand-in origin for a build that didn't declare {@link RshonoConfig.siteUrl}. Deliberately
  * obviously-wrong rather than a guess: a page that bakes this into a canonical tag should be easy
  * to spot, and the build warns when static routes are prerendered without a real origin.
  */
 const DEFAULT_SSG_ORIGIN = 'http://localhost';
 
 /**
- * Resolve {@link RSHonoConfig.siteUrl} to the origin prerendering should render against.
+ * Resolve {@link RshonoConfig.siteUrl} to the origin prerendering should render against.
  *
  * A path is rejected rather than dropped: `'https://example.com/docs'` almost certainly means the
  * author expects a base path, and silently serving from the root would be a confusing way to find
@@ -92,7 +100,7 @@ interface PrerenderOptions {
   routes: readonly Route[];
   fetch: (request: Request) => Response | Promise<Response>;
   ssgDir: string;
-  /** {@link RSHonoConfig.siteUrl} — the origin absolute URLs in the output are built against. */
+  /** {@link RshonoConfig.siteUrl} — the origin absolute URLs in the output are built against. */
   siteUrl?: string;
 }
 

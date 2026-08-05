@@ -3,7 +3,7 @@ import { Counter } from './counter';
 import { Layout } from './layout';
 
 export default function Home({ url, ctx }: PageProps) {
-  // `ctx` is the request context — the same object `getContext()` returns, handed over as a prop
+  // `ctx` is the request context — the same object `getRequestContext()` returns, handed over as a prop
   // so a page can read cookies, headers and env without importing anything.
   const visitor = ctx.cookies.get('visitor');
 

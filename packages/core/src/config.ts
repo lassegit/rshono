@@ -1,7 +1,7 @@
 import type { RspackOptions } from '@rspack/core';
 import type { DeployTarget } from './deploy/contract.js';
 
-/** Which of the two Rspack compilers the {@link RSHonoConfig.rspack} hook is being called for. */
+/** Which of the two Rspack compilers the {@link RshonoConfig.rspack} hook is being called for. */
 export interface RspackHookContext {
   /** `true` for the server (`target: node`) bundle, `false` for the client (`target: web`) bundle. */
   isServer: boolean;
@@ -24,7 +24,7 @@ export interface RspackHookContext {
  * });
  * ```
  */
-export interface RSHonoConfig {
+export interface RshonoConfig {
   /**
    * The hosting platform `rshono build` targets. Default `'node'` — a long-lived server process, for
    * a VPS, a container or anywhere else you run `rshono start`.
@@ -48,7 +48,7 @@ export interface RSHonoConfig {
   siteUrl?: string;
   /**
    * Honour `X-Forwarded-Host` / `X-Forwarded-Proto` when resolving the browser-facing request
-   * URL (`getContext().url`, a page's `url` prop, and the origin the CSRF check compares against).
+   * URL (`getRequestContext().url`, a page's `url` prop, and the origin the CSRF check compares against).
    *
    * **Off by default, and leave it off unless a proxy you control sets those headers**, because
    * any client can send them: with it on and nothing stripping them at the edge, one request can
@@ -107,6 +107,6 @@ export interface RSHonoConfig {
 }
 
 /** Identity helper that types a config object — gives editor autocomplete without an explicit annotation. */
-export function defineConfig(config: RSHonoConfig): RSHonoConfig {
+export function defineConfig(config: RshonoConfig): RshonoConfig {
   return config;
 }

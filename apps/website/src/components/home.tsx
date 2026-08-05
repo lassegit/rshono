@@ -46,7 +46,7 @@ export default async function Profile({ params, ctx }: PageProps<'/profile/:id'>
 const REASONS = [
   {
     title: 'An API you can finish reading',
-    body: 'Nine exported values across three import paths. defineRoutes, getContext, useNavigation and six more — that is the framework. No second router to learn later, no unstable_ tier, nothing that behaves differently depending on which directory you called it from.',
+    body: 'Nine exported values across three import paths. defineRoutes, getRequestContext, useNavigation and six more — that is the framework. No second router to learn later, no unstable_ tier, nothing that behaves differently depending on which directory you called it from.',
   },
   {
     title: 'Your architecture, not the router’s',
@@ -241,9 +241,7 @@ function Reasons() {
       </ul>
 
       <p className="mt-10">
-        <a href="/comparison">
-          See it next to Next.js, TanStack Start, Waku and Astro — including where they win →
-        </a>
+        <a href="/comparison">See it next to Next.js, TanStack Start, Waku and Astro — including where they win →</a>
       </p>
     </section>
   );
@@ -315,9 +313,7 @@ function Deployment() {
           ))}
         </ul>
         <p className="mt-6">
-          <a href="/docs/deployment">
-            Compare the targets →
-          </a>
+          <a href="/docs/deployment">Compare the targets →</a>
         </p>
       </div>
     </section>

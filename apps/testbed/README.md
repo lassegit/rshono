@@ -10,7 +10,7 @@ is not a starting point for your own app — `npx @rshono/create@latest` generat
 | `/users`            | Async server component reading the `db` module directly + direct server action call           |
 | `/signup`           | `useActionState` form action with progressive enhancement (works without JS)                  |
 | `/profile/:id`      | Typed route params (`PageProps<'/profile/:id'>`)                                              |
-| `/whoami`           | `getContext()` inside a nested async server component (headers, cookies, env)                 |
+| `/whoami`           | `getRequestContext()` inside a nested async server component (headers, cookies, env)          |
 | `/docs/:slug`       | `render: 'static'` — prerendered at build time via `staticPaths`                              |
 | `/api/quick-health` | `type: 'endpoint'` route with a Hono handler in a server module (`health.ts`)                 |
 | `/api/*`            | Hono sub-app (`src/server.ts`) mounted at `/`                                                 |

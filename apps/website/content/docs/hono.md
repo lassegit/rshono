@@ -12,7 +12,7 @@ server.
 
 ```ts
 // src/health.ts
-import type { Handler } from '@rshono/core';
+import type { Handler } from 'hono';
 
 export const handler: Handler = (c) => c.json({ ok: true });
 ```

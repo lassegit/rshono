@@ -4,7 +4,7 @@ import { trimTrailingSlash } from 'hono/trailing-slash';
 
 /**
  * What this app's middleware puts on the Hono context. Pass it to `PageProps<path, AppEnv>` (or
- * `getContext<AppEnv>()`) and `ctx.var` is typed key by key instead of an open record — see
+ * `getRequestContext<AppEnv>()`) and `ctx.var` is typed key by key instead of an open record — see
  * `components/home.tsx`.
  */
 export type AppEnv = { Variables: { requestId: string } };

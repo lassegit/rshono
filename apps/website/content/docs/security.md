@@ -28,7 +28,7 @@ origins or bare hosts; a malformed entry fails the build.
 ## Proxy headers are not trusted by default
 
 `X-Forwarded-Host` and `X-Forwarded-Proto` are client-supplied. Honouring them blindly lets anyone who
-can reach the server dictate the origin of every absolute URL the app builds — `getContext().url`, a
+can reach the server dictate the origin of every absolute URL the app builds — `getRequestContext().url`, a
 page's `url` prop — poisoning canonical tags, emails and redirects, and any shared cache in front.
 
 Set `trustProxy: true` only when a proxy you control sets those headers. `rshono dev` forces it on for
@@ -92,7 +92,7 @@ user's page and serve it to the next. `private` forbids exactly that, and `no-ca
 revalidate rather than re-show a stale personalised page. Neither disables bfcache the way `no-store`
 would.
 
-Set your own value, from middleware or `getContext().raw.header(…)`, and it is left alone.
+Set your own value, from middleware or `getRequestContext().raw.header(…)`, and it is left alone.
 
 **Prerendered pages** keep `public, max-age=300` and carry a weak `ETag`, so a revalidation costs a 304
 instead of the page.

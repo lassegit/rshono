@@ -5,11 +5,11 @@
  *
  * Every export is itself a `'use client'` module, so a server component can
  * render {@link Boundary} directly — but the hook needs a client component. In a
- * server component, read the same request data from `getContext()` in
+ * server component, read the same request data from `getRequestContext()` in
  * `@rshono/core/server`.
  *
  * @packageDocumentation
  */
 
-export { useNavigation, type Navigation, type Router } from './navigation.js';
+export { useNavigation, type NavigationRouter, type NavigationState } from './navigation.js';
 export { Boundary, ErrorBoundary, type BoundaryProps, type ErrorBoundaryProps, type ErrorFallback } from './boundaries.js';

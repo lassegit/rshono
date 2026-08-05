@@ -25,7 +25,7 @@ export default defineConfig({
 ```
 
 `defineConfig` is an identity helper for editor autocomplete; `export default { … } satisfies
-RSHonoConfig` works too.
+RshonoConfig` works too.
 
 ## What is compiled in, and what is not
 

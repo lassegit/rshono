@@ -1,6 +1,6 @@
 import type { PageProps } from '@rshono/core';
 import { Boundary } from '@rshono/core/client';
-import { getContext } from '@rshono/core/server';
+import { getRequestContext } from '@rshono/core/server';
 import { Layout } from './layout';
 
 // A slow async server component — shows the Suspense loading half of <Boundary>.
@@ -17,7 +17,7 @@ function Section({ fail }: { fail: boolean }) {
 }
 
 export default function BoundaryDemo(_props: PageProps) {
-  const fail = getContext().url.searchParams.get('fail') === '1';
+  const fail = getRequestContext().url.searchParams.get('fail') === '1';
 
   return (
     <Layout title="Boundary — rshono">
