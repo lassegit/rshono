@@ -2,7 +2,6 @@ import { defineRoutes } from '@rshono/core';
 
 export const routes = defineRoutes({
   routes: [
-    {},
     {
       path: '/',
       component: () => import('./components/home'),
