@@ -53,12 +53,9 @@ function scaffold(name, flags, tarball) {
 
   run('npm', ['install', '--no-audit', '--no-fund'], dir, `npm install (${name})`);
 
-  // The CLI formats the scaffold right after installing, which the tarball edit above has to work around
-  // — so the step is replicated here rather than skipped, or `check` would report a diff a real user
-  // would never see.
-  const scripts = JSON.parse(readFileSync(manifestPath, 'utf8')).scripts;
-  if (scripts.format) run('npm', ['run', 'format'], dir, `format (${name})`);
-
+  // Deliberately no `format` run: the CLI does not format either, so the `format:check` further down is a
+  // real check that the templates ship clean. The tarball edit above is written back with the same
+  // two-space indent a formatter would produce, so it does not disturb that.
   return dir;
 }
 
@@ -144,7 +141,8 @@ test('every quality preset produces configs its own tools accept', { skip: enabl
     writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
     run('npm', ['install', '--no-audit', '--no-fund'], dir, `npm install (${name})`);
-    run('npm', ['run', 'format'], dir, `format (${preset})`);
+    // No `format` first: the templates are written to satisfy every formatter at its configured width, and
+    // this is the assertion that keeps them that way now that the CLI no longer formats what it scaffolds.
     run('npm', ['run', 'format:check'], dir, `format:check (${preset})`);
     run('npm', ['run', 'lint'], dir, `lint (${preset})`);
   }

@@ -18,7 +18,7 @@ import {
   type Styling,
 } from './options.js';
 import { plan as buildPlan } from './plan.js';
-import { detectPackageManager, packageManager, runInstall, runScript } from './pm.js';
+import { detectPackageManager, packageManager, runInstall } from './pm.js';
 import { nextSteps, summary, unwrap } from './ui.js';
 import { RSHONO_VERSION } from './versions.js';
 import { conflictingEntries, writePlan } from './write.js';
@@ -256,18 +256,6 @@ async function main(): Promise<void> {
     prompts.log.step(`Installing dependencies with ${pm.name}…`);
     installed = runInstall(pm, targetDir);
     if (!installed) prompts.log.warn(`${pm.name} install failed — the files are all written, so run it yourself in the project.`);
-  }
-
-  /*
-   * Format the scaffold with the tool it was scaffolded with, so a fresh project passes its own
-   * `format:check` instead of reporting a diff nobody made. Needs the install, since the formatter is a
-   * devDependency — hence the skip, rather than a failure, when there is none.
-   *
-   * Whether there is a `format` script is the plan's answer, not the formatter answer's: `--formatter
-   * none --linter biome` has no formatter and a `format` script all the same, because Biome brings one.
-   */
-  if (installed && plan.features.some((feature) => feature.scripts?.format)) {
-    if (!runScript(pm, 'format', targetDir)) prompts.log.warn(`\`${pm.run} format\` failed — the scaffold is written, just not formatted.`);
   }
 
   if (git) {

@@ -63,8 +63,9 @@ src/styles.css          element-level CSS, or the Tailwind entry
 pnpm-workspace.yaml     pnpm only: which dependency install scripts this app runs (none of them)
 ```
 
-Then, if the dependencies were installed, the scaffold is run through its own formatter — so a fresh
-project passes its own `format:check` rather than reporting a diff nobody made.
+Scaffolding runs the install and nothing else — no formatter, no linter. The templates are written to
+satisfy every formatter option at its configured width, so a fresh project passes its own `format:check`
+without a write pass first.
 
 `react` and `react-dom` are pinned **exactly**, at the versions the framework is tested against, and those
 pins are generated from rshono's own manifest. That is not tidiness: the RSC runtime reaches into React's

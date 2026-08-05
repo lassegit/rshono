@@ -57,11 +57,6 @@ export function runInstall(pm: PackageManager, cwd: string): boolean {
   return run(pm, pm.install, cwd);
 }
 
-/** `<pm> run <script>` — the one form every package manager accepts, Yarn v1 included. */
-export function runScript(pm: PackageManager, script: string, cwd: string): boolean {
-  return run(pm, ['run', script], cwd);
-}
-
 function run(pm: PackageManager, args: string[], cwd: string): boolean {
   const result = spawnSync(pm.name, args, { cwd, stdio: 'inherit', shell: process.platform === 'win32' });
   return result.status === 0;

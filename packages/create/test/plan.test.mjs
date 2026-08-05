@@ -202,16 +202,16 @@ test('"none" leaves the app without a formatter, a linter, or scripts for either
 });
 
 /*
- * The half-answer the two axes make possible, and the reason the CLI decides whether to format from the
- * plan rather than from `formatter`: `--formatter none --linter biome` has no formatter and a `format`
- * script all the same, because Biome is one tool and brings both halves whichever slot selected it.
+ * The half-answer the two axes make possible: `--formatter none --linter biome` has no formatter and a
+ * `format` script all the same, because Biome is one tool and brings both halves whichever slot selected
+ * it. So the scripts an app ends up with are the plan's answer, never the `formatter` answer read alone.
  */
 test('a linter that also formats still contributes its format script', () => {
   const result = plan(answers({ formatter: 'none', linter: 'biome' }), pm);
   assert.ok(JSON.parse(result.files.get('package.json')).scripts.format, 'Biome brings a format script through the linter slot');
   assert.ok(
     result.features.some((feature) => feature.scripts?.format),
-    'and the plan says so, which is what the CLI runs the formatter on',
+    'and the plan says so, not just the rendered manifest',
   );
 
   const neither = plan(answers({ formatter: 'none', linter: 'oxlint' }), pm);

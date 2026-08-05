@@ -15,12 +15,12 @@ export default function Home({ url, ctx }: PageProps<'/', AppEnv>) {
     <Layout description="A new rshono app.">
       <h1 className="mb-2 text-4xl font-semibold tracking-tight">{publicEnv.appName}</h1>
       <p className="mb-4">
-        Edit <code>src/components/home.tsx</code> and save. The page re-renders in place — the form below keeps whatever you have typed in it.
+        Edit <code>src/components/home.tsx</code> and save. The page re-renders in place — the form below keeps what you typed.
       </p>
 
       <h2 className="mt-10 mb-2 text-lg font-semibold">Server actions</h2>
       <p className="mb-4">
-        This form calls a <code>'use server'</code> function in <code>src/actions.ts</code>. It works before hydration and with JavaScript disabled.
+        This form calls a <code>'use server'</code> function in <code>src/actions.ts</code> — before hydration, and without JavaScript.
       </p>
       <GreetForm />
 
