@@ -209,10 +209,10 @@ test.describe('fragment links', () => {
     expect(payloadRequests, 'a same-page anchor needs nothing from the server').toEqual([]);
   });
 
-  // A cross-page `#hash` is a known regression of dropping the framework's scroll handling: the heading
-  // does not exist until the new payload commits, and nothing waits for it any more. The navigation
-  // still has to be *soft* and land on the right URL — that is what this pins.
-  test('a cross-page anchor soft-navigates, landing on the page if not the heading', async ({ page }) => {
+  // The other kind: the heading is in a page that has not been fetched yet, so landing on it means the
+  // scroll waiting for the payload to commit rather than firing when the fetch resolves. Both halves are
+  // asserted — the jump, and that getting there was still a soft navigation.
+  test('a cross-page anchor soft-navigates and lands on the heading', async ({ page }) => {
     await page.setViewportSize({ width: 500, height: 400 });
     await page.goto('/docs/getting-started');
     const id = await markDocument(page);
@@ -221,7 +221,24 @@ test.describe('fragment links', () => {
 
     await expect(page).toHaveURL('/docs/deployment#targets');
     await expect(page.locator('#targets')).toBeVisible();
+    await expect.poll(() => headingOffset(page, 'targets'), { message: 'the cross-page jump must land on the heading' }).toBeLessThan(2);
     expect(await documentId(page), 'it should still be a soft navigation').toBe(id);
+  });
+
+  // A fragment that names nothing gets what a browser gives it: the top of the new page, not the offset
+  // the outgoing one happened to be scrolled to.
+  test('a cross-page anchor with no such heading lands at the top', async ({ page }) => {
+    await page.setViewportSize({ width: 500, height: 400 });
+    await page.goto('/docs/getting-started');
+
+    await page.evaluate(() => window.scrollTo(0, 300));
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(100);
+    await page.evaluate(() => document.querySelector('a[href="/docs/deployment#targets"]').setAttribute('href', '/docs/deployment#no-such-heading'));
+
+    await page.getByRole('link', { name: 'Deployment: Targets' }).click();
+
+    await expect(page).toHaveURL('/docs/deployment#no-such-heading');
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   });
 
   test('back out of an anchor does not re-fetch the page', async ({ page }) => {

@@ -426,6 +426,191 @@
       }
     },
     {
+      "id": "home-rps",
+      "label": "Prerendered page throughput",
+      "hint": "served from disk",
+      "anchor": "throughput",
+      "lowerIsBetter": false,
+      "comparative": "more",
+      "winner": "rshono",
+      "values": [
+        {
+          "target": "rshono",
+          "label": "rshono",
+          "value": 35103.24868617115,
+          "display": "35,103 rps",
+          "relativeToBest": 1
+        },
+        {
+          "target": "next",
+          "label": "Next.js",
+          "value": 6413.559728602805,
+          "display": "6,414 rps",
+          "relativeToBest": 0.18270558904507928
+        },
+        {
+          "target": "tanstack-start",
+          "label": "TanStack Start",
+          "value": 4961.9269846609295,
+          "display": "4,962 rps",
+          "relativeToBest": 0.14135235826807305
+        }
+      ],
+      "gap": {
+        "factor": 7.1,
+        "bestLabel": "rshono",
+        "worstLabel": "TanStack Start"
+      }
+    },
+    {
+      "id": "interactive-rps",
+      "label": "Interactive page throughput",
+      "hint": "three client components",
+      "anchor": "throughput",
+      "lowerIsBetter": false,
+      "comparative": "more",
+      "winner": "rshono",
+      "values": [
+        {
+          "target": "rshono",
+          "label": "rshono",
+          "value": 1374.791462730383,
+          "display": "1,375 rps",
+          "relativeToBest": 1
+        },
+        {
+          "target": "next",
+          "label": "Next.js",
+          "value": 676.3011114614723,
+          "display": "676 rps",
+          "relativeToBest": 0.49192996159454977
+        },
+        {
+          "target": "tanstack-start",
+          "label": "TanStack Start",
+          "value": 974.8918464950771,
+          "display": "975 rps",
+          "relativeToBest": 0.7091197995650252
+        }
+      ],
+      "gap": {
+        "factor": 2,
+        "bestLabel": "rshono",
+        "worstLabel": "Next.js"
+      }
+    },
+    {
+      "id": "rss-idle",
+      "label": "Server memory, idle",
+      "hint": "RSS before any load",
+      "anchor": "memory",
+      "lowerIsBetter": true,
+      "comparative": "smaller",
+      "winner": "rshono",
+      "values": [
+        {
+          "target": "rshono",
+          "label": "rshono",
+          "value": 77037568,
+          "display": "73.47 MB",
+          "relativeToBest": 1
+        },
+        {
+          "target": "next",
+          "label": "Next.js",
+          "value": 99778560,
+          "display": "95.16 MB",
+          "relativeToBest": 0.7720853858784893
+        },
+        {
+          "target": "tanstack-start",
+          "label": "TanStack Start",
+          "value": 167297024,
+          "display": "159.55 MB",
+          "relativeToBest": 0.46048379198903144
+        }
+      ],
+      "gap": {
+        "factor": 2.2,
+        "bestLabel": "rshono",
+        "worstLabel": "TanStack Start"
+      }
+    },
+    {
+      "id": "rss-loaded",
+      "label": "Server memory, after load",
+      "hint": "RSS high-water mark, 256 MB old space",
+      "anchor": "memory",
+      "lowerIsBetter": true,
+      "comparative": "smaller",
+      "winner": "rshono",
+      "values": [
+        {
+          "target": "rshono",
+          "label": "rshono",
+          "value": 164855808,
+          "display": "157.22 MB",
+          "relativeToBest": 1
+        },
+        {
+          "target": "next",
+          "label": "Next.js",
+          "value": 209256448,
+          "display": "199.56 MB",
+          "relativeToBest": 0.7878170999060444
+        },
+        {
+          "target": "tanstack-start",
+          "label": "TanStack Start",
+          "value": 219987968,
+          "display": "209.80 MB",
+          "relativeToBest": 0.7493855663960676
+        }
+      ],
+      "gap": {
+        "factor": 1.3,
+        "bestLabel": "rshono",
+        "worstLabel": "TanStack Start"
+      }
+    },
+    {
+      "id": "churn",
+      "label": "Memory churn per 1k requests",
+      "hint": "growth ÷ requests served",
+      "anchor": "memory",
+      "lowerIsBetter": true,
+      "comparative": "smaller",
+      "winner": "rshono",
+      "values": [
+        {
+          "target": "rshono",
+          "label": "rshono",
+          "value": 163404.35666850876,
+          "display": "159.6 kB",
+          "relativeToBest": 1
+        },
+        {
+          "target": "next",
+          "label": "Next.js",
+          "value": 1145357.8841647138,
+          "display": "1.09 MB",
+          "relativeToBest": 0.1426666362782112
+        },
+        {
+          "target": "tanstack-start",
+          "label": "TanStack Start",
+          "value": 349597.223973089,
+          "display": "341.4 kB",
+          "relativeToBest": 0.46740747770093033
+        }
+      ],
+      "gap": {
+        "factor": 7,
+        "bestLabel": "rshono",
+        "worstLabel": "Next.js"
+      }
+    },
+    {
       "id": "build-output",
       "label": "Build output size",
       "hint": "everything the build wrote",

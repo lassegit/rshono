@@ -158,6 +158,75 @@ const METRICS = [
     pick: (s, t) => s.load?.targets?.[t]?.routes?.ssr?.rps,
   },
   {
+    id: 'home-rps',
+    comparative: 'more',
+    label: 'Prerendered page throughput',
+    hint: 'served from disk',
+    lowerIsBetter: false,
+    anchor: 'throughput',
+    format: (v) => `${num(v)} rps`,
+    pick: (s, t) => s.load?.targets?.[t]?.routes?.home?.rps,
+  },
+  {
+    id: 'interactive-rps',
+    comparative: 'more',
+    label: 'Interactive page throughput',
+    hint: 'three client components',
+    lowerIsBetter: false,
+    anchor: 'throughput',
+    format: (v) => `${num(v)} rps`,
+    pick: (s, t) => s.load?.targets?.[t]?.routes?.interactive?.rps,
+  },
+  /*
+   * Memory, and only the three rows that mean something.
+   *
+   * `largest` rather than the tree total on both RSS rows: the tree sums whatever `npm run start` left
+   * running and double-counts shared pages, and the largest process is the server itself in all three
+   * apps — so it is the only one of the two that compares like with like.
+   *
+   * `churn` is the row to trust. RSS after a fixed-duration load is a high-water mark that includes
+   * garbage V8 has not collected, and V8 sizes the old generation against the *allocation rate*, so the
+   * server that answered the most requests grows the largest heap. Dividing the growth by requests
+   * served is what removes that bias.
+   */
+  {
+    id: 'rss-idle',
+    comparative: 'smaller',
+    label: 'Server memory, idle',
+    hint: 'RSS before any load',
+    lowerIsBetter: true,
+    anchor: 'memory',
+    format: bytes,
+    pick: (s, t) => s.load?.targets?.[t]?.rssIdle?.largest,
+  },
+  {
+    id: 'rss-loaded',
+    comparative: 'smaller',
+    label: 'Server memory, after load',
+    hint: 'RSS high-water mark, 256 MB old space',
+    lowerIsBetter: true,
+    anchor: 'memory',
+    format: bytes,
+    pick: (s, t) => s.load?.targets?.[t]?.rssLoaded?.largest,
+  },
+  {
+    id: 'churn',
+    comparative: 'smaller',
+    label: 'Memory churn per 1k requests',
+    hint: 'growth ÷ requests served',
+    lowerIsBetter: true,
+    anchor: 'memory',
+    format: bytes,
+    pick: (s, t) => {
+      const target = s.load?.targets?.[t];
+      const served = Object.values(target?.routes ?? {}).reduce((sum, route) => sum + (route?.requests ?? 0), 0);
+      const idle = target?.rssIdle?.largest;
+      const loaded = target?.rssLoaded?.largest;
+      if (!served || !idle || !loaded) return undefined;
+      return Math.max(0, ((loaded - idle) / served) * 1000);
+    },
+  },
+  {
     id: 'build-output',
     comparative: 'smaller',
     label: 'Build output size',

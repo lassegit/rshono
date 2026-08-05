@@ -1,25 +1,10 @@
 ---
-title: Full Hono underneath
-description: Endpoint routes, the src/server.ts sub-app, and end-to-end type safety.
+title: Hono & middleware
+description: src/server.ts is a Hono sub-app — middleware, endpoints, end-to-end types, error reporting.
 ---
 
-There is a whole Hono app under the pages, and it is yours.
-
-## Endpoint routes
-
-`{ type: 'endpoint' }` routes export a Hono `handler` from a server module. It only ever runs on the
-server.
-
-```ts
-// src/health.ts
-import type { Handler } from 'hono';
-
-export const handler: Handler = (c) => c.json({ ok: true });
-```
-
-## The `src/server.ts` sub-app
-
-`src/server.ts` may default-export a whole Hono sub-app: any method, streaming, cookies, middleware.
+There is a whole Hono app under the pages, and it is yours. `src/server.ts` may default-export a sub-app:
+any method, streaming, cookies, middleware.
 
 ```ts
 import { Hono } from 'hono';
@@ -45,12 +30,12 @@ export type AppType = typeof server;
 The sub-app is mounted at `/` **ahead of the page routes**, so its middleware — auth, logging,
 trailing-slash — wraps page requests too.
 
-The flip side: a _terminal_ handler in `src/server.ts` at the same path as a page route **shadows the
-page**. Middleware that calls `next()` is fine; a handler that returns a response is not.
+The flip side: a _terminal_ handler at the same path as a page route **shadows the page**. Middleware
+that calls `next()` is fine; a handler that returns a response is not.
 
 ## Typing the context
 
-The `Env` you give the Hono app is the same one that types `ctx` on a page. Pass it to `PageProps` and
+The `Env` given to the Hono app is the same one that types `ctx` on a page. Pass it to `PageProps` and
 `ctx.var` is typed key by key instead of being an open record:
 
 ```tsx
@@ -64,8 +49,8 @@ export default function Home({ ctx }: PageProps<'/', AppEnv>) {
 
 ## End-to-end types for a client
 
-`export type AppType = typeof server` gives full type safety with `hono/client` — typed paths, params
-and responses, checked against the handlers themselves:
+`export type AppType = typeof server` gives typed paths, params and responses with `hono/client`,
+checked against the handlers themselves:
 
 ```ts
 import { hc } from 'hono/client';
@@ -77,8 +62,8 @@ const res = await client.api.health.$get();
 
 ## Error reporting
 
-Register a handler at the top level of `src/server.ts` and every error the framework catches reaches one
-place — a thrown action, a failed render, SSR falling over:
+One handler, registered at the top level of `src/server.ts`, catches every error the framework sees — a
+thrown action, a failed render, SSR falling over, anything reaching the top-level handler:
 
 ```ts
 import { onServerError } from '@rshono/core/server';
@@ -88,5 +73,5 @@ onServerError((error, { source, request }) => {
 });
 ```
 
-Errors keep going to `stderr` either way, and a handler that throws is caught rather than failing the
-request.
+`source` is `'action' | 'render' | 'ssr' | 'request'`. Errors keep going to `stderr` either way, and a
+handler that throws is caught rather than failing the request.

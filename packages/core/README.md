@@ -284,6 +284,6 @@ Notes worth knowing before choosing one:
 
 - Node ≥ 22.18 (worker threads, `process.loadEnvFile`, `Promise.withResolvers`, `URL.parse`, and native TypeScript stripping so a `.ts` config needs no loader), React ≥ 19.1 (the floor `react-server-dom-rspack` itself requires).
 - Responses are not compressed. A proxy, a load balancer or a CDN is where that belongs, and every hosted target already does it.
-- Scroll restoration is the browser's (`history.scrollRestoration = 'auto'`). A soft navigation to a new page starts at the top; a traversal is restored by the browser. A `#hash` on a link to a _different_ page is not chased — the target does not exist until the new payload commits — so it lands on the page rather than the heading. Same-page anchors are untouched and jump natively.
+- Scroll restoration is the browser's (`history.scrollRestoration = 'auto'`). A soft navigation to a new page starts at the top — or at the `#hash` the link named, once that page's payload is on screen — and a traversal is restored by the browser. Same-page anchors are untouched and jump natively.
 - Dev-mode proxy doesn't forward WebSocket upgrades to a custom sub-app (prod is unaffected — the bundle owns the socket there).
 - Dev source maps embed the original source of `'use server'` action modules (dev binds to 127.0.0.1 only; production ships no client source maps).

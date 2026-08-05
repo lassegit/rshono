@@ -5,7 +5,7 @@ import { MARKDOWN_HEADERS, origin, SUMMARY } from './llms';
 /**
  * `/llms-full.txt` — every page concatenated, in reading order.
  *
- * The companion to the index: one request instead of fifteen, for a reader that wants the whole thing.
+ * The companion to the index: one request instead of ten, for a reader that wants the whole thing.
  */
 export const handler: Handler = (c) => {
   const base = origin(c.req.url);

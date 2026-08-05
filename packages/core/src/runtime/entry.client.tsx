@@ -218,18 +218,33 @@ async function main() {
   function BrowserRoot() {
     const [payload, setPayloadState] = React.useState(initialPayload);
     const [pending, startTransition] = React.useTransition();
+    // The scroll a fetched navigation still owes, held until its payload is on screen.
+    const pendingScroll = React.useRef<(() => void) | null>(null);
 
     React.useEffect(() => {
       setPayload = (v) => setPayloadState(v);
       startNav = (run) => startTransition(run);
     }, [startTransition]);
 
+    /**
+     * Scrolls where the navigation asked, once React has put its payload in the DOM.
+     *
+     * This has to wait for the commit rather than the fetch: a `#hash` target does not exist until the
+     * new tree does, and until then the page a scroll would move is still the outgoing one. A layout
+     * effect runs before the browser paints, so the pre-scroll position is never on screen.
+     */
+    React.useLayoutEffect(() => {
+      const scroll = pendingScroll.current;
+      pendingScroll.current = null;
+      scroll?.();
+    }, [payload]);
+
     React.useEffect(() => {
       const stopNavigating = listenNavigation((afterRender) =>
         startNav(async () => {
           try {
             await fetchRscPayload();
-            afterRender();
+            pendingScroll.current = afterRender;
           } catch {
             window.location.reload();
           }
@@ -360,13 +375,30 @@ function listenLinks(): () => void {
   return () => disposeAll(undo);
 }
 
+/**
+ * The element the current `#fragment` names, if it is on the page.
+ *
+ * A fragment in a URL is percent-encoded and an `id` attribute is not, so one has to be decoded into the
+ * other. A hand-written URL can carry a `%` that is not an escape, and `decodeURIComponent` throws on
+ * that rather than passing it through — in which case the fragment is taken literally, since that is the
+ * closest thing to an id it could have meant.
+ */
+function fragmentTarget(): HTMLElement | null {
+  const fragment = location.hash.slice(1);
+  if (!fragment) return null;
+  let id = fragment;
+  try {
+    id = decodeURIComponent(fragment);
+  } catch {}
+  return document.getElementById(id);
+}
+
 function listenNavigation(onNavigation: (afterRender: () => void) => void): () => void {
   const undo: Array<() => void> = [];
 
   // Scroll restoration is the browser's. It used to be ours: each history entry was tagged with a key
   // in `history.state`, `scrollY` was remembered per key, and `manual` handed restoration over — about
-  // 130 lines to restore a traversal exactly and to chase a `#hash` target across the frames before
-  // React had committed the new payload. `auto` is set explicitly rather than left at the default,
+  // 130 lines to restore a traversal exactly. `auto` is set explicitly rather than left at the default,
   // because it is a statement: the browser remembers a traversal's offset for us.
   const prevRestoration = window.history.scrollRestoration;
   try {
@@ -381,17 +413,23 @@ function listenNavigation(onNavigation: (afterRender: () => void) => void): () =
   /**
    * A push is not a real navigation as far as the browser is concerned, so nothing resets the scroll
    * offset — a click through to a new page would otherwise land wherever the last one was scrolled to.
-   * `replace` keeps its position deliberately, and a traversal is the browser's to restore.
+   * A `#hash` on that link names where to land instead, and a fragment naming nothing on the page falls
+   * back to the top, which is what a browser does with one it cannot resolve. `replace` keeps its
+   * position deliberately, and a traversal is the browser's to restore.
    *
-   * Deferred a frame because the payload is *set* before React commits it, so the layout being scrolled
-   * is still the outgoing one until one has passed.
+   * `scrollIntoView` rather than measuring the element and calling `scrollTo`: it is the same algorithm a
+   * browser's own fragment jump uses, so a `scroll-padding-top` — how an app clears a sticky header —
+   * still applies. Neither call passes a `behavior`, so `scroll-behavior: smooth` is likewise the app's
+   * to ask for.
    *
-   * A `#hash` on a cross-page link is no longer chased: the target does not exist until the new payload
-   * commits, and following it was the other half of what came out with the scroll memory.
+   * The caller decides *when* this runs, and for a navigation that fetched a payload that has to be
+   * after the commit — see the layout effect in `BrowserRoot`.
    */
   const afterRenderFor = (type: NavigationType) => () => {
     if (type !== 'push') return;
-    requestAnimationFrame(() => window.scrollTo(0, 0));
+    const target = fragmentTarget();
+    if (target) target.scrollIntoView();
+    else window.scrollTo(0, 0);
   };
 
   const documentUrl = () => location.pathname + location.search;

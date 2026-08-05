@@ -98,7 +98,6 @@ function SiteHeader() {
 
         <nav className="order-last flex w-full items-center gap-5 text-sm sm:order-none sm:w-auto" aria-label="Main">
           <HeaderLink href="/docs/getting-started">Docs</HeaderLink>
-          <HeaderLink href="/comparison">Compare</HeaderLink>
           <HeaderLink href="/benchmarks">Benchmarks</HeaderLink>
         </nav>
 
@@ -186,7 +185,7 @@ function SiteFooter() {
           rshono
         </span>
         <span>
-          Built with rshono — <a href="/docs/how-it-works">how that works</a>.
+          Built with rshono — <a href="/docs/deployment#how-the-build-works">how that works</a>.
         </span>
         <span className="ml-auto flex gap-5">
           <a href={GITHUB_URL} data-native>
