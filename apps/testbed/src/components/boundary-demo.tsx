@@ -1,16 +1,16 @@
 import type { PageProps } from '@rshono/core';
-import { Boundary } from '@rshono/core/client';
+import { AsyncBoundary } from '@rshono/core/client';
 import { getRequestContext } from '@rshono/core/server';
 import { Layout } from './layout';
 
-// A slow async server component — shows the Suspense loading half of <Boundary>.
+// A slow async server component — shows the Suspense loading half of <AsyncBoundary>.
 async function SlowOk() {
   await new Promise((resolve) => setTimeout(resolve, 20));
   return <p data-section="ok">Section loaded fine.</p>;
 }
 
-// Sync so `fail` throws during render (caught by the error half of <Boundary>)
-// rather than suspending first.
+// Sync so `fail` throws during render (caught by the error half of
+// <AsyncBoundary>) rather than suspending first.
 function Section({ fail }: { fail: boolean }) {
   if (fail) throw new Error('the section blew up on purpose');
   return <SlowOk />;
@@ -20,20 +20,20 @@ export default function BoundaryDemo(_props: PageProps) {
   const fail = getRequestContext().url.searchParams.get('fail') === '1';
 
   return (
-    <Layout title="Boundary — rshono">
+    <Layout title="AsyncBoundary — rshono">
       <div className="page">
-        <h1>Boundary</h1>
+        <h1>AsyncBoundary</h1>
         <p className="description">
-          A single <code>&lt;Boundary&gt;</code> wraps an async section with both a loading and an error fallback. Add <code>?fail=1</code> to make
-          the section throw — the error stays contained here instead of taking down the page.
+          A single <code>&lt;AsyncBoundary&gt;</code> wraps an async section with both a loading and an error fallback. Add <code>?fail=1</code> to
+          make the section throw — the error stays contained here instead of taking down the page.
         </p>
 
-        <Boundary
+        <AsyncBoundary
           loading={<p data-section="loading">Loading section…</p>}
           error={<p data-section="error">This section failed to load, but the rest of the page is fine.</p>}
         >
           <Section fail={fail} />
-        </Boundary>
+        </AsyncBoundary>
       </div>
     </Layout>
   );

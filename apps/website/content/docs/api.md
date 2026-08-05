@@ -117,8 +117,8 @@ in production, so a handler is the only place the real error is visible.
 
 ## `@rshono/core/client`
 
-Every export is itself a `'use client'` module, so a server component can render `Boundary` directly. The
-hook needs a client component.
+Every export is itself a `'use client'` module, so a server component can render `AsyncBoundary` directly.
+The hook needs a client component.
 
 ### Hook
 
@@ -153,12 +153,13 @@ and `history.forward()` — the router wrapped them once and added nothing, so i
 
 | Component         | Props                                      | What it does                                                                                     |
 | ----------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------ |
-| `<Boundary>`      | `loading`, `error`, `onError`, `resetKeys` | A Suspense fallback and an error fallback in one wrapper — the common case for an async section. |
-| `<ErrorBoundary>` | `fallback`, `onError`, `resetKeys`         | Error boundary alone. Omit `fallback` to report and re-throw to the next boundary out.           |
+| `<AsyncBoundary>` | `loading`, `error`, `onError`, `resetKeys` | A Suspense fallback and an error fallback in one wrapper — the common case for an async section. |
+| `<CatchBoundary>` | `fallback`, `onError`, `resetKeys`         | Error boundary alone. Omit `fallback` to report and re-throw to the next boundary out.           |
 
-Both fallbacks on `Boundary` are optional: no `loading` shows nothing while loading, no `error` lets
-throws propagate to the next boundary out or the global error page. A `redirect()` is never absorbed by
-either boundary — it's navigation, not failure.
+`loading` on `AsyncBoundary` is required — a loading state is the reason to reach for it over
+`CatchBoundary`, so showing nothing while loading is an explicit `loading={null}`. `error` is optional:
+omit it and throws propagate to the next boundary out or the global error page. A `redirect()` is never
+absorbed by either boundary — it's navigation, not failure.
 
 ### Types
 
@@ -166,6 +167,6 @@ either boundary — it's navigation, not failure.
 | -------------------- | --------------------------------------------------------------------------------------------------------- |
 | `NavigationState`    | `{ url, params, router }` — what `useNavigation()` returns.                                               |
 | `NavigationRouter`   | The imperative actions plus `pending`.                                                                    |
-| `BoundaryProps`      | Props of `<Boundary>`.                                                                                    |
-| `ErrorBoundaryProps` | Props of `<ErrorBoundary>`.                                                                               |
+| `AsyncBoundaryProps` | Props of `<AsyncBoundary>`.                                                                               |
+| `CatchBoundaryProps` | Props of `<CatchBoundary>`.                                                                               |
 | `ErrorFallback`      | `ReactNode`, or `(error, reset) => ReactNode`. The function form only works from a `'use client'` module. |

@@ -341,13 +341,13 @@ test('onServerError sees the errors the framework catches, tagged by source, wit
   assert.match(logged, /\[rshono\] request error:/, 'stderr stays the fallback signal even with a reporter wired up');
 });
 
-test('<Boundary> renders its children on the happy path', async () => {
+test('<AsyncBoundary> renders its children on the happy path', async () => {
   const res = await fetch(`${base}/boundary`);
   assert.equal(res.status, 200);
   assert.match(await res.text(), /data-section="ok"/, 'the async section should resolve and render through the boundary');
 });
 
-test('<Boundary> contains a thrown error locally instead of failing the whole page', async () => {
+test('<AsyncBoundary> contains a thrown error locally instead of failing the whole page', async () => {
   const logsBefore = getOutput().length;
   for (const accept of ['text/html', 'text/x-component']) {
     const res = await fetch(`${base}/boundary?fail=1`, { headers: { Accept: accept } });

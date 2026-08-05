@@ -6,7 +6,7 @@ import { isControlDigest } from './control.js';
 /**
  * `redirect()` and `notFound()` reach the browser as a thrown error carrying a control digest.
  * They are navigation, not failure, so no boundary may absorb one — otherwise a `redirect()` from
- * a component inside a `<Boundary>` would render "something went wrong" instead of navigating.
+ * a component inside a `<CatchBoundary>` would render "something went wrong" instead of navigating.
  * They're re-thrown to the root, where the runtime turns the digest into a real navigation.
  */
 function isControlError(error: unknown): boolean {
@@ -14,7 +14,7 @@ function isControlError(error: unknown): boolean {
 }
 
 /**
- * What an {@link ErrorBoundary} / {@link Boundary} renders once a child throws.
+ * What a {@link CatchBoundary} / {@link AsyncBoundary} renders once a child throws.
  * Either a static node, or a render function that also gets a `reset` callback
  * to clear the error and re-render the children (e.g. a "Try again" button).
  *
@@ -24,7 +24,7 @@ function isControlError(error: unknown): boolean {
  */
 export type ErrorFallback = ReactNode | ((error: Error, reset: () => void) => ReactNode);
 
-export interface ErrorBoundaryProps {
+export interface CatchBoundaryProps {
   /**
    * Rendered in place of the children after one of them throws. Omit it to
    * report the error via `onError` and re-throw to the next boundary out (or
@@ -42,7 +42,7 @@ export interface ErrorBoundaryProps {
   children: ReactNode;
 }
 
-interface ErrorBoundaryState {
+interface CatchBoundaryState {
   error: Error | null;
 }
 
@@ -57,27 +57,27 @@ function keysChanged(a: readonly unknown[], b: readonly unknown[]): boolean {
  * tearing down the whole page.
  *
  * It's a `'use client'` component (React error boundaries must be), so drop it
- * anywhere in the tree from a server or client component. Use {@link Boundary}
+ * anywhere in the tree from a server or client component. Use {@link AsyncBoundary}
  * when you also want a Suspense loading fallback in the same wrapper.
  *
  * @example
  * ```tsx
- * import { ErrorBoundary } from '@rshono/core/client';
+ * import { CatchBoundary } from '@rshono/core/client';
  *
- * <ErrorBoundary fallback={(error, reset) => (
+ * <CatchBoundary fallback={(error, reset) => (
  *   <div role="alert">
  *     <p>{error.message}</p>
  *     <button onClick={reset}>Try again</button>
  *   </div>
  * )}>
  *   <RiskyWidget />
- * </ErrorBoundary>
+ * </CatchBoundary>
  * ```
  */
-export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { error: null };
+export class CatchBoundary extends Component<CatchBoundaryProps, CatchBoundaryState> {
+  state: CatchBoundaryState = { error: null };
 
-  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+  static getDerivedStateFromError(error: Error): CatchBoundaryState {
     return { error };
   }
 
@@ -86,7 +86,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     this.props.onError?.(error);
   }
 
-  componentDidUpdate(prev: ErrorBoundaryProps): void {
+  componentDidUpdate(prev: CatchBoundaryProps): void {
     const { resetKeys } = this.props;
     if (this.state.error && prev.resetKeys && resetKeys && keysChanged(prev.resetKeys, resetKeys)) {
       this.reset();
@@ -109,14 +109,19 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
   }
 }
 
-export interface BoundaryProps {
-  /** Suspense fallback, shown while the children (or their data) are still loading. */
-  loading?: ReactNode;
+export interface AsyncBoundaryProps {
+  /**
+   * Suspense fallback, shown while the children (or their data) are still
+   * loading. Required — a loading state is the reason to reach for this over
+   * {@link CatchBoundary}, so showing nothing is an explicit `loading={null}`
+   * rather than something you get by leaving the prop off.
+   */
+  loading: ReactNode;
   /** Error fallback, shown if a child throws. See {@link ErrorFallback}. */
   error?: ErrorFallback;
   /** Called with the caught error. */
   onError?: (error: Error) => void;
-  /** Clears the error fallback when any value changes — see {@link ErrorBoundaryProps.resetKeys}. */
+  /** Clears the error fallback when any value changes — see {@link CatchBoundaryProps.resetKeys}. */
   resetKeys?: readonly unknown[];
   children: ReactNode;
 }
@@ -126,30 +131,29 @@ export interface BoundaryProps {
  * section of a page. It always renders the same shape:
  *
  * ```tsx
- * <ErrorBoundary fallback={error}>
+ * <CatchBoundary fallback={error}>
  *   <Suspense fallback={loading}>{children}</Suspense>
- * </ErrorBoundary>
+ * </CatchBoundary>
  * ```
  *
  * so `error` catches anything the children throw (including while suspended) and
- * `loading` shows until they resolve. Both fallbacks are optional: omit
- * `loading` and nothing shows while loading; omit `error` and thrown errors
- * propagate to the next boundary out (or the global error page) rather than
- * being caught here.
+ * `loading` shows until they resolve. `error` is optional: omit it and thrown
+ * errors propagate to the next boundary out (or the global error page) rather
+ * than being caught here.
  *
  * @example
  * ```tsx
- * import { Boundary } from '@rshono/core/client';
+ * import { AsyncBoundary } from '@rshono/core/client';
  *
- * <Boundary loading={<Spinner />} error={(e, reset) => <Retry onClick={reset} />}>
+ * <AsyncBoundary loading={<Spinner />} error={(e, reset) => <Retry onClick={reset} />}>
  *   <SlowServerComponent />
- * </Boundary>
+ * </AsyncBoundary>
  * ```
  */
-export function Boundary({ loading = null, error, onError, resetKeys, children }: BoundaryProps): ReactNode {
+export function AsyncBoundary({ loading, error, onError, resetKeys, children }: AsyncBoundaryProps): ReactNode {
   return (
-    <ErrorBoundary fallback={error} onError={onError} resetKeys={resetKeys}>
+    <CatchBoundary fallback={error} onError={onError} resetKeys={resetKeys}>
       <Suspense fallback={loading}>{children}</Suspense>
-    </ErrorBoundary>
+    </CatchBoundary>
   );
 }

@@ -155,7 +155,7 @@ test.describe('boundaries', () => {
     // SSR streams the *loading* fallback; the error fallback is what the boundary swaps in once the
     // payload carrying the failure is applied — so this asserts the client half of the mechanism.
     await expect(page.locator('[data-section="error"]')).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Boundary' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'AsyncBoundary' })).toBeVisible();
     await expect(page.locator('[data-rshono-fatal]')).toHaveCount(0, { timeout: 1000 });
   });
 

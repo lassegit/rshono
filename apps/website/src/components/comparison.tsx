@@ -376,9 +376,9 @@ function Arguments({ linksHtml, contextHtml }: { linksHtml: string; contextHtml:
           <p className="mb-4 text-zinc-600 dark:text-zinc-400">
             rshono exports <strong>nine values</strong> across three import paths. <code>defineRoutes</code> and <code>defineConfig</code> from the
             root; <code>getRequestContext</code>, <code>redirect</code>, <code>notFound</code> and <code>onServerError</code> from{' '}
-            <code>/server</code>; <code>useNavigation</code>, <code>Boundary</code> and <code>ErrorBoundary</code> from <code>/client</code>. That is
-            the whole framework. There is no second router to learn later, no <code>unstable_</code> tier, and nothing that behaves differently
-            depending on which directory you called it from.
+            <code>/server</code>; <code>useNavigation</code>, <code>AsyncBoundary</code> and <code>CatchBoundary</code> from <code>/client</code>.
+            That is the whole framework. There is no second router to learn later, no <code>unstable_</code> tier, and nothing that behaves
+            differently depending on which directory you called it from.
           </p>
           <p className="text-zinc-600 dark:text-zinc-400">
             For contrast, <code>next/navigation</code> alone exports five hooks and a family of control-flow throws, and it is one of twenty-three
@@ -445,8 +445,8 @@ function Arguments({ linksHtml, contextHtml }: { linksHtml: string; contextHtml:
             JavaScript fails to arrive, because that is what it was.
           </p>
           <p className="text-zinc-600 dark:text-zinc-400">
-            Two caveats, since this section is the one most likely to oversell. rshono does export three components — <code>Boundary</code>,{' '}
-            <code>ErrorBoundary</code> and <code>NavigationProgress</code> — but none replaces an element: the first two wrap React primitives that
+            Two caveats, since this section is the one most likely to oversell. rshono does export three components — <code>AsyncBoundary</code>,{' '}
+            <code>CatchBoundary</code> and <code>NavigationProgress</code> — but none replaces an element: the first two wrap React primitives that
             have no HTML equivalent, and the third is optional chrome you can delete. And the honest cost of no <code>&lt;Image&gt;</code> is that you
             get no resizing, no format negotiation and no blur placeholder either. Next.js and Astro give you those; rshono gives you an{' '}
             <code>&lt;img&gt;</code> and expects you to point it at a CDN that does it. Astro, for its part, takes the plain-anchor idea further than

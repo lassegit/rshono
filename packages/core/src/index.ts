@@ -8,7 +8,7 @@
  *   server components and actions (`getRequestContext`, `redirect`, `notFound`), plus
  *   `onServerError` for reporting the errors the framework catches.
  * - `@rshono/core/client` — hooks and components for `'use client'` modules
- *   (`useNavigation`, `Boundary`, `ErrorBoundary`).
+ *   (`useNavigation`, `AsyncBoundary`, `CatchBoundary`).
  *
  * @packageDocumentation
  */
