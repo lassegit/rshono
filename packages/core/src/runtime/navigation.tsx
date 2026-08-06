@@ -8,6 +8,14 @@ import { createContext, useContext, useMemo, type ReactNode } from 'react';
  * `push` / `replace` / `refresh` are **soft** navigations: the new page's flight
  * payload is fetched and applied in place, so client component state outside the
  * changed subtree survives. Off-site or non-HTTP hrefs fall back to a full load.
+ *
+ * @example
+ * ```tsx
+ * const { router } = useNavigation();
+ * router.push('/dashboard');    // navigate, new history entry
+ * router.replace('/login');     // navigate, no new entry
+ * router.refresh();             // re-run this route's server components
+ * ```
  */
 export interface NavigationRouter {
   /** Navigates to `href` and pushes a new history entry. */
@@ -97,6 +105,9 @@ export function RouterProvider({ href, params, children }: { href: string; param
  * ({@link NavigationRouter}) with `push` / `replace` / `refresh` / `pending`.
  * @throws If called outside a page's React tree, where there is no navigation
  *   context to read.
+ *
+ * @see {@link https://www.rshono.com/docs/api#rshonocoreclient | Docs — `@rshono/core/client`}
+ * @see {@link https://www.rshono.com/docs/pages#client-components | Docs — client components}
  */
 export function useNavigation(): NavigationState {
   const value = useContext(NavigationContext);

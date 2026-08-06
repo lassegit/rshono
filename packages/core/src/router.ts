@@ -21,6 +21,8 @@ type UnionToIntersection<U> = (U extends unknown ? (k: U) => void : never) exten
  * ```ts
  * type P = PathParams<'/users/:id/posts/:postId'>; // { id: string; postId: string }
  * ```
+ *
+ * @see {@link https://hono.dev/docs/api/routing#path-parameter | Hono — path parameters}
  */
 export type PathParams<P extends string> =
   ParamKeys<P> extends never ? Record<string, never> : Simplify<UnionToIntersection<ParamKeyToRecord<ParamKeys<P>>>>;
@@ -51,6 +53,8 @@ export type PathParams<P extends string> =
  *   return <Layout>{user.name} — {tab}</Layout>;
  * }
  * ```
+ *
+ * @see {@link https://www.rshono.com/docs/pages#page-props | Docs — page props}
  */
 export interface PageProps<Path extends string = string, E extends Env = Env> {
   /**
@@ -76,25 +80,22 @@ export interface PageProps<Path extends string = string, E extends Env = Env> {
    * page so cookies, headers, env and middleware variables are reachable without
    * an import.
    *
-   * Server-only, and never serialized: React renders a server component and puts
-   * its *output* on the wire, not its props. It is also deliberately a
-   * non-enumerable property, which has three consequences worth knowing:
+   * Server-only and never serialized: React puts a server component's *output* on
+   * the wire, not its props. It is also a deliberately non-enumerable property, so:
    *
-   * - It **cannot be handed to a `'use client'` component** — it wraps the live
-   *   request and response, which do not exist in the browser. Passing it
-   *   explicitly (`<Counter ctx={ctx} />`) fails the render with React's *"Only
-   *   plain objects … can be passed to Client Components"*. Read what you need on
-   *   the server and pass plain values down.
-   * - Spreading the page's props instead (`<Counter {...props} />`) drops `ctx`
-   *   silently rather than failing, since the spread copies enumerables only.
-   *   (That spread still fails, mind — on `url`, which is enumerable and just as
-   *   unserializable. Pass the values you need.)
+   * - Handing it to a `'use client'` component (`<Counter ctx={ctx} />`) fails the
+   *   render with React's *"Only plain objects … can be passed to Client
+   *   Components"* — it wraps the live request and response, which do not exist in
+   *   the browser. Read what you need here and pass plain values down.
+   * - Spreading the page's props (`<Counter {...props} />`) drops `ctx` silently
+   *   instead, since a spread copies enumerables only. (That spread still fails,
+   *   mind — on `url`, which is enumerable and just as unserializable.)
    * - `Object.keys(props)`, `JSON.stringify(props)` and friends don't see it.
    *
    * Reading it on a `render: 'static'` route throws: a prerendered page has no
-   * per-request context at build time. Mark the route `render: 'dynamic'` (or use
-   * the `url` / `params` props, which are available either way — with the
-   * build-time caveats noted on `url`).
+   * per-request context at build time. Mark the route `render: 'dynamic'`, or use
+   * the `url` / `params` props — available either way, with the build-time caveat
+   * noted on `url`.
    *
    * @example
    * ```tsx
@@ -117,6 +118,9 @@ export interface PageProps<Path extends string = string, E extends Env = Env> {
  * belong in `'use client'` components the page imports — only those ship JS.
  *
  * @typeParam P - The component's props; for a page these are {@link PageProps}.
+ *
+ * @see {@link https://react.dev/reference/rsc/server-components | React — Server Components}
+ * @see {@link https://www.rshono.com/docs/pages | Docs — pages}
  */
 export type PageComponent<P = any> = (props: P) => ReactNode | Promise<ReactNode>;
 
@@ -132,9 +136,17 @@ export type PageComponent<P = any> = (props: P) => ReactNode | Promise<ReactNode
  *
  * export const handler: Handler = (c) => c.json({ ok: true });
  * ```
+ *
+ * @see {@link https://www.rshono.com/docs/routing#endpoint-routes | Docs — endpoint routes}
  */
 export interface EndpointServerModule {
-  /** A Hono {@link Handler} handling every request matched by the route. */
+  /**
+   * A Hono {@link Handler} handling every request matched by the route. It is passed Hono's
+   * `Context`, so the request, response builders (`c.json`, `c.text`, `c.body`) and middleware
+   * variables are all reached through it.
+   *
+   * @see {@link https://hono.dev/docs/api/context | Hono — Context}
+   */
   handler: Handler;
 }
 
@@ -150,7 +162,12 @@ export interface EndpointServerModule {
 export interface PageRoute {
   /** Discriminates a page from an endpoint; optional because `'page'` is the default. */
   type?: 'page';
-  /** Hono-style path pattern, e.g. `/`, `/profile/:id`, `/files/*`. */
+  /**
+   * Hono-style path pattern, e.g. `/`, `/profile/:id`, `/files/*`. Routes are matched in
+   * declaration order.
+   *
+   * @see {@link https://hono.dev/docs/api/routing | Hono — routing}
+   */
   path: string;
   /**
    * Dynamic import of the page module, whose default export is the
@@ -163,6 +180,8 @@ export interface PageRoute {
    * component up any other way — a variable, a barrel re-export, a computed
    * specifier — add `'use server-entry'` as the first line of the page module
    * yourself; the framework throws a descriptive error when neither happened.
+   *
+   * @see {@link https://www.rshono.com/docs/pages#the-use-server-entry-directive | Docs — the `'use server-entry'` directive}
    */
   component: () => Promise<{ default: PageComponent }>;
   /** `'static'` prerenders the route at build time; `'dynamic'` (the default) renders per request. */
@@ -185,6 +204,8 @@ export interface PageRoute {
    *   staticPaths: async () => (await db.docs.all()).map((d) => ({ slug: d.slug })),
    * }
    * ```
+   *
+   * @see {@link https://www.rshono.com/docs/routing#static-rendering | Docs — static rendering}
    */
   staticPaths?: () => Array<Record<string, string>> | Promise<Array<Record<string, string>>>;
 }
@@ -198,11 +219,17 @@ export interface PageRoute {
  * ```ts
  * { type: 'endpoint', path: '/api/health', server: () => import('./health') }
  * ```
+ *
+ * @see {@link https://www.rshono.com/docs/routing#endpoint-routes | Docs — endpoint routes}
  */
 export interface EndpointRoute {
   /** Marks this route as an endpoint rather than a page. Required. */
   type: 'endpoint';
-  /** Hono-style path pattern, e.g. `/api/health`, `/api/users/:id`. */
+  /**
+   * Hono-style path pattern, e.g. `/api/health`, `/api/users/:id`.
+   *
+   * @see {@link https://hono.dev/docs/api/routing | Hono — routing}
+   */
   path: string;
   /** HTTP method to match. Defaults to `'all'` — every method. */
   method?: HTTPMethod;
@@ -267,7 +294,10 @@ export interface ErrorPageInfo {
  * }
  * ```
  */
-export type ErrorPageProps<E extends Env = Env> = PageProps<string, E> & { error: ErrorPageInfo };
+export type ErrorPageProps<E extends Env = Env> = PageProps<string, E> & {
+  /** The error that failed the request, redacted in production — see {@link ErrorPageInfo}. */
+  error: ErrorPageInfo;
+};
 
 /**
  * The object form accepted by {@link defineRoutes}: the route table plus the two
@@ -275,6 +305,8 @@ export type ErrorPageProps<E extends Env = Env> = PageProps<string, E> & { error
  *
  * @typeParam TRoutes - Inferred tuple of route literals, which is what makes the
  *   per-route `path` → props check possible.
+ *
+ * @see {@link https://www.rshono.com/docs/routing#notfound-and-error | Docs — notFound and error pages}
  */
 export interface RouteConfig<TRoutes extends readonly Route[] = readonly Route[]> {
   /** Every page and endpoint in the app, matched in order. */
@@ -313,8 +345,10 @@ type ValidateRoutes<TRoutes extends readonly Route[]> = { [K in keyof TRoutes]: 
  * PageProps<'/…'>`. Fix it by matching the page's `PageProps<Path>` type
  * argument to the path it's mounted at.
  *
- * @param config - A {@link RouteConfig}, or a bare {@link Route} array as
- *   shorthand when there are no `notFound` / `error` pages.
+ * A bare {@link Route} array is accepted as shorthand — see the second overload.
+ *
+ * @param config - A {@link RouteConfig}: the `routes` array plus the optional
+ *   `notFound` and `error` pages.
  * @returns The config, unchanged and fully typed.
  *
  * @example
@@ -339,14 +373,25 @@ type ValidateRoutes<TRoutes extends readonly Route[]> = { [K in keyof TRoutes]: 
  * });
  * ```
  *
- * @example Array shorthand
- * ```ts
- * export const routes = defineRoutes([{ path: '/', component: () => import('./components/home') }]);
- * ```
+ * @see {@link https://www.rshono.com/docs/routing | Docs — routing}
  */
 export function defineRoutes<const TRoutes extends readonly Route[]>(
   config: RouteConfig<TRoutes> & { routes: ValidateRoutes<TRoutes> },
 ): RouteConfig<TRoutes>;
+/**
+ * Array shorthand for {@link defineRoutes} — equivalent to `defineRoutes({ routes })`, for an app
+ * with no `notFound` or `error` page.
+ *
+ * @param routes - The {@link Route} array; each page is checked against its own `path`.
+ * @returns A {@link RouteConfig} wrapping them.
+ *
+ * @example
+ * ```ts
+ * export const routes = defineRoutes([{ path: '/', component: () => import('./components/home') }]);
+ * ```
+ *
+ * @see {@link https://www.rshono.com/docs/routing | Docs — routing}
+ */
 export function defineRoutes<const TRoutes extends readonly Route[]>(routes: TRoutes & ValidateRoutes<TRoutes>): RouteConfig<TRoutes>;
 export function defineRoutes(input: readonly Route[] | RouteConfig): RouteConfig {
   return Array.isArray(input) ? { routes: input } : (input as RouteConfig);

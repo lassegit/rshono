@@ -1,6 +1,6 @@
+import { onServerError } from '@rshono/core/server';
 import { Hono } from 'hono';
 import { trimTrailingSlash } from 'hono/trailing-slash';
-import { onServerError } from '@rshono/core/server';
 import { fakeDB } from './db';
 
 /**
@@ -8,7 +8,7 @@ import { fakeDB } from './db';
  * `getRequestContext<AppEnv>()`) and `ctx.var` is typed key-by-key instead of an open record — see
  * `components/dashboard.tsx`.
  */
-export type AppEnv = { Variables: { requestId: string } };
+export type AppEnv = { Variables: { requestId: string }; Bindings: { DATABASE_URL: string } };
 
 const server = new Hono<AppEnv>();
 const startedAt = Date.now();

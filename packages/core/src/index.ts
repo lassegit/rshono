@@ -10,6 +10,8 @@
  * - `@rshono/core/client` — hooks and components for `'use client'` modules
  *   (`useNavigation`, `AsyncBoundary`, `CatchBoundary`).
  *
+ * @see {@link https://www.rshono.com/docs/api | Docs — API reference}
+ *
  * @packageDocumentation
  */
 

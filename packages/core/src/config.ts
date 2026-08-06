@@ -23,6 +23,8 @@ export interface RspackHookContext {
  *   allowedOrigins: ['https://admin.example.com'],
  * });
  * ```
+ *
+ * @see {@link https://www.rshono.com/docs/configuration | Docs — configuration}
  */
 export interface RshonoConfig {
   /**
@@ -32,6 +34,8 @@ export interface RshonoConfig {
    * Overridden by the `--deploy` flag or the `RSHONO_DEPLOY` env var, so one config can still be
    * built for more than one place. `rshono dev` ignores it entirely and always runs the Node dev
    * server.
+   *
+   * @see {@link https://www.rshono.com/docs/deployment | Docs — deployment}
    */
   deploy?: DeployTarget;
   /**
@@ -44,6 +48,8 @@ export interface RshonoConfig {
    * `og:url`. Dynamic routes are unaffected: they resolve the URL per request.
    *
    * The origin is what's used; a path is rejected rather than silently dropped.
+   *
+   * @see {@link https://www.rshono.com/docs/configuration#siteurl | Docs — siteUrl}
    */
   siteUrl?: string;
   /**
@@ -56,11 +62,16 @@ export interface RshonoConfig {
    * Turn it on when you terminate TLS or rewrite `Host` at a reverse proxy / load balancer.
    * Always `true` under `rshono dev`, where the framework's own proxy sets them and binds to
    * localhost. Default `false`.
+   *
+   * @see {@link https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-Host | MDN — X-Forwarded-Host}
+   * @see {@link https://www.rshono.com/docs/configuration#proxy-headers | Docs — proxy headers}
    */
   trustProxy?: boolean;
   /**
    * CSRF origin check on server-action POSTs — rejects a cross-origin request with 403.
    * Turn off only behind a gateway that already enforces it. Default `true`.
+   *
+   * @see {@link https://www.rshono.com/docs/configuration#csrf | Docs — CSRF}
    */
   checkOrigin?: boolean;
   /**
@@ -72,6 +83,9 @@ export interface RshonoConfig {
    * Send a strict per-request-nonce `Content-Security-Policy` with every HTML document.
    * While enabled, `render: 'static'` routes render per request (a prerendered file can't carry a
    * per-request nonce). Default `false`.
+   *
+   * @see {@link https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy | MDN — Content-Security-Policy}
+   * @see {@link https://www.rshono.com/docs/configuration#csp-opt-in | Docs — CSP}
    */
   csp?: boolean;
   /**
@@ -90,23 +104,53 @@ export interface RshonoConfig {
    *   'frame-ancestors': "'self'",
    * }
    * ```
+   *
+   * @see {@link https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy#directives | MDN — CSP directives}
    */
   cspDirectives?: Record<string, string>;
   /**
    * Max server-action request body before it's rejected with 413 — a memory-exhaustion guard.
    * A number is bytes; a string carries a unit (`'512kb'`, `'4mb'`); `false` (or `0`) disables the cap.
    * Default `'1mb'`.
+   *
+   * @see {@link https://www.rshono.com/docs/configuration#request-body-limit | Docs — request-body limit}
    */
   bodySizeLimit?: string | number | false;
   /**
    * Escape hatch: mutate the generated Rspack config just before it's compiled. Called once per
    * compiler — inspect {@link RspackHookContext.isServer} to tell them apart. Mutate `config` in
    * place and return nothing, or return a replacement.
+   *
+   * @example
+   * ```ts
+   * rspack(config, { isServer }) {
+   *   config.module?.rules?.push({ test: /\.svg$/, type: 'asset/source' });
+   * }
+   * ```
+   *
+   * @see {@link https://rspack.rs/config/ | Rspack — configuration reference}
+   * @see {@link https://www.rshono.com/docs/configuration#the-rspack-hook | Docs — the rspack hook}
    */
   rspack?: (config: RspackOptions, ctx: RspackHookContext) => RspackOptions | void;
 }
 
-/** Identity helper that types a config object — gives editor autocomplete without an explicit annotation. */
+/**
+ * Identity helper that types a config object — gives editor autocomplete without an explicit
+ * annotation. Default-export the result from `rshono.config.ts`.
+ *
+ * @param config - The project's {@link RshonoConfig}; every field is optional.
+ * @returns The config, unchanged and fully typed.
+ *
+ * @example
+ * ```ts
+ * // rshono.config.ts
+ * import { defineConfig } from '@rshono/core';
+ *
+ * export default defineConfig({ deploy: 'cloudflare', siteUrl: 'https://example.com' });
+ * ```
+ *
+ * @see {@link https://www.rshono.com/docs/configuration | Docs — configuration}
+ */
 export function defineConfig(config: RshonoConfig): RshonoConfig {
   return config;
 }

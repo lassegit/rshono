@@ -24,6 +24,8 @@ import { NotFoundSignal, RedirectSignal } from './control.js';
  * - `302` Found, `307` Temporary Redirect — temporary.
  * - `303` See Other — the default; forces a `GET` on the target, which is what
  *   you almost always want after a form action (post/redirect/get).
+ *
+ * @see {@link https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Status#redirection_messages | MDN — redirection status codes}
  */
 export type RedirectStatus = 301 | 302 | 303 | 307 | 308;
 
@@ -140,6 +142,8 @@ export function publicUrl(c: Context): URL {
  * The environment available to a request: Cloudflare/Workers `Bindings` merged
  * with process env vars. Values not declared in `Bindings` are typed as
  * `string | undefined`. See {@link RequestContext.env}.
+ *
+ * @see {@link https://hono.dev/docs/getting-started/cloudflare-workers#bindings | Hono — bindings}
  */
 export type EnvVars<E extends Env> = E['Bindings'] & Record<string, string | undefined>;
 
@@ -165,41 +169,64 @@ export type EnvVars<E extends Env> = E['Bindings'] & Record<string, string | und
  *   return <p>{ctx.url.pathname} — {session ?? 'anonymous'}</p>;
  * }
  * ```
+ *
+ * @see {@link https://www.rshono.com/docs/api#rshonocoreserver | Docs — `@rshono/core/server`}
+ * @see {@link https://hono.dev/docs/api/context | Hono — Context}, reachable in full via {@link RequestContext.raw}
  */
 export class RequestContext<E extends Env = Env> {
   #raw: Context<E>;
   #url?: URL;
   #env?: EnvVars<E>;
 
+  /**
+   * Framework internal — one instance is created per request and handed to you by
+   * {@link getRequestContext} or the `ctx` page prop. Application code never calls this.
+   *
+   * @internal
+   */
   constructor(c: Context<E>) {
     this.#raw = c;
   }
 
   /**
-   * The underlying Hono {@link Context}. Escape hatch for anything this wrapper does not expose — and
-   * deliberately most things. `req`, `method`, `params` and a `header()` setter used to sit on this class
-   * as one-line pass-throughs to `c.req`, `c.req.method`, `c.req.param()` and `c.header()`; they are
-   * reachable through here (`ctx.raw.req`, `ctx.raw.header(…)`) and adding no name of their own is the
-   * point. What stays below is what this wrapper actually *does*: a proxy-aware cached URL, an env that
-   * merges runtime bindings over process env, and cookies without a second import.
+   * The underlying Hono {@link Context} — the escape hatch for everything this wrapper does not
+   * expose, which is deliberately most things. Request data, the method, raw params and a response
+   * `header()` setter all live here (`ctx.raw.req`, `ctx.raw.req.method`, `ctx.raw.req.param()`,
+   * `ctx.raw.header(…)`) rather than being duplicated as pass-throughs. What this class adds on top
+   * is only what it improves on: a proxy-aware cached {@link RequestContext.url}, an
+   * {@link RequestContext.env} that merges runtime bindings over process env, and
+   * {@link RequestContext.cookies} without a second import.
    *
-   * A getter over a private field rather than a plain property, so it is not an *own enumerable*
-   * one — which matters more than it looks. React's diagnostic for a value that cannot be sent to a
-   * client component (`describeObjectForErrorMessage`) walks `Object.keys` recursively with no depth
-   * limit and no cycle guard, and the Hono context graph reaches the socket and the whole server
-   * through `req.raw` and `env`. While this was a plain property, passing a `RequestContext` to a `'use client'`
-   * component blew the stack *inside that message builder* — so React's actual, accurate "you cannot
-   * pass this" error never got printed. Hidden from `Object.keys`, the walk stops here.
+   * @example
+   * ```ts
+   * const ctx = getRequestContext();
+   * const auth = ctx.raw.req.header('authorization');
+   * ctx.raw.header('cache-control', 'no-store'); // set a response header
+   * ```
+   *
+   * @see {@link https://hono.dev/docs/api/context | Hono — Context}
    */
+  // A getter over a private field rather than a plain property, so it is not an *own enumerable*
+  // one — which matters more than it looks. React's diagnostic for a value that cannot be sent to a
+  // client component (`describeObjectForErrorMessage`) walks `Object.keys` recursively with no depth
+  // limit and no cycle guard, and the Hono context graph reaches the socket and the whole server
+  // through `req.raw` and `env`. While this was a plain property, passing a `RequestContext` to a
+  // `'use client'` component blew the stack *inside that message builder* — so React's actual,
+  // accurate "you cannot pass this" error never got printed. Hidden from `Object.keys`, the walk
+  // stops here.
   get raw(): Context<E> {
     return this.#raw;
   }
 
   /**
-   * The browser-facing request URL, proxy-header aware (see {@link publicUrl}) —
-   * read `url.pathname`, `url.searchParams` and the rest off it. Parsed once and
-   * cached, so the same instance comes back on every read within a request; treat
-   * it as read-only for that reason.
+   * The browser-facing request URL — read `url.pathname`, `url.searchParams` and the
+   * rest off it. Parsed once and cached, so the same instance comes back on every
+   * read within a request; treat it as read-only for that reason.
+   *
+   * `X-Forwarded-Host` / `-Proto` are honoured only when `trustProxy` is enabled in
+   * `rshono.config.ts`, since any client can send them.
+   *
+   * @see {@link https://www.rshono.com/docs/configuration#proxy-headers | Docs — proxy headers}
    */
   get url(): URL {
     return (this.#url ??= publicUrl(this.#raw as Context));
@@ -208,6 +235,15 @@ export class RequestContext<E extends Env = Env> {
   /**
    * Typed variables set by middleware via `c.set('user', …)`, read here as
    * `ctx.var.user`. Type them by parameterising this class's {@link Env}.
+   *
+   * @example
+   * ```ts
+   * type AppEnv = { Variables: { user: { id: string } } };
+   * const { user } = getRequestContext<AppEnv>().var; // typed, set by your middleware
+   * ```
+   *
+   * @see {@link https://hono.dev/docs/api/context#var | Hono — c.var}
+   * @see {@link https://www.rshono.com/docs/hono#typing-the-context | Docs — typing the context}
    */
   get var(): Readonly<E['Variables']> {
     return this.#raw.var;
@@ -218,6 +254,9 @@ export class RequestContext<E extends Env = Env> {
    * (bindings win on conflict). Computed once and cached.
    *
    * @example `const key = getRequestContext().env.STRIPE_SECRET_KEY;`
+   *
+   * @see {@link https://hono.dev/docs/api/context#env | Hono — c.env}
+   * @see {@link https://www.rshono.com/docs/configuration#environment-and-secrets | Docs — environment and secrets}
    */
   get env(): EnvVars<E> {
     if (this.#env) return this.#env;
@@ -236,13 +275,20 @@ export class RequestContext<E extends Env = Env> {
    * ctx.cookies.set('session', id, { httpOnly: true, sameSite: 'Lax', path: '/' });
    * ctx.cookies.delete('session', { path: '/' });
    * ```
+   *
+   * @see {@link https://hono.dev/docs/helpers/cookie | Hono — cookie helper}, which this wraps
    */
   cookies = {
     /** Reads a single cookie by name, or `undefined` if absent. */
     get: (name: string): string | undefined => getCookie(this.#raw, name),
     /** Reads every cookie as a `{ name: value }` record. */
     all: (): Record<string, string> => getCookie(this.#raw),
-    /** Sets a cookie on the response. See Hono's {@link CookieOptions} for `path`, `httpOnly`, `maxAge`, etc. */
+    /**
+     * Sets a cookie on the response. See Hono's {@link CookieOptions} for `path`, `httpOnly`,
+     * `maxAge`, etc.
+     *
+     * @see {@link https://hono.dev/docs/helpers/cookie#options | Hono — cookie options}
+     */
     set: (name: string, value: string, options?: CookieOptions): void => setCookie(this.#raw, name, value, options),
     /** Clears a cookie. Pass the same `path`/`domain` it was set with so the browser matches it. */
     delete: (name: string, options?: CookieOptions): void => {
@@ -278,6 +324,8 @@ export class RequestContext<E extends Env = Env> {
  *   redirect('/dashboard');
  * }
  * ```
+ *
+ * @see {@link https://www.rshono.com/docs/api#rshonocoreserver | Docs — `@rshono/core/server`}
  */
 export function getRequestContext<E extends Env = Env>(): RequestContext<E> {
   if (prerendering) {
@@ -389,6 +437,8 @@ let errorHandler: ServerErrorHandler | undefined;
  *   Sentry.captureException(error, { tags: { source }, extra: { url: request.url } });
  * });
  * ```
+ *
+ * @see {@link https://www.rshono.com/docs/hono#error-reporting | Docs — error reporting}
  */
 export function onServerError(handler: ServerErrorHandler): void {
   errorHandler = handler;

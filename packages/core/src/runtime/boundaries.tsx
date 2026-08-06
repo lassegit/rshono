@@ -24,6 +24,7 @@ function isControlError(error: unknown): boolean {
  */
 export type ErrorFallback = ReactNode | ((error: Error, reset: () => void) => ReactNode);
 
+/** Props for {@link CatchBoundary}. */
 export interface CatchBoundaryProps {
   /**
    * Rendered in place of the children after one of them throws. Omit it to
@@ -39,6 +40,7 @@ export interface CatchBoundaryProps {
    * recover when the user navigates away: `resetKeys={[useNavigation().url.pathname]}`.
    */
   resetKeys?: readonly unknown[];
+  /** The subtree this boundary protects. */
   children: ReactNode;
 }
 
@@ -73,6 +75,9 @@ function keysChanged(a: readonly unknown[], b: readonly unknown[]): boolean {
  *   <RiskyWidget />
  * </CatchBoundary>
  * ```
+ *
+ * @see {@link https://react.dev/reference/react/Component#catching-rendering-errors-with-an-error-boundary | React — error boundaries}
+ * @see {@link https://www.rshono.com/docs/api#rshonocoreclient | Docs — `@rshono/core/client`}
  */
 export class CatchBoundary extends Component<CatchBoundaryProps, CatchBoundaryState> {
   state: CatchBoundaryState = { error: null };
@@ -109,6 +114,7 @@ export class CatchBoundary extends Component<CatchBoundaryProps, CatchBoundarySt
   }
 }
 
+/** Props for {@link AsyncBoundary}. */
 export interface AsyncBoundaryProps {
   /**
    * Suspense fallback, shown while the children (or their data) are still
@@ -123,6 +129,7 @@ export interface AsyncBoundaryProps {
   onError?: (error: Error) => void;
   /** Clears the error fallback when any value changes — see {@link CatchBoundaryProps.resetKeys}. */
   resetKeys?: readonly unknown[];
+  /** The subtree this boundary suspends on and protects. */
   children: ReactNode;
 }
 
@@ -149,6 +156,9 @@ export interface AsyncBoundaryProps {
  *   <SlowServerComponent />
  * </AsyncBoundary>
  * ```
+ *
+ * @see {@link https://react.dev/reference/react/Suspense | React — `<Suspense>`}
+ * @see {@link https://www.rshono.com/docs/api#rshonocoreclient | Docs — `@rshono/core/client`}
  */
 export function AsyncBoundary({ loading, error, onError, resetKeys, children }: AsyncBoundaryProps): ReactNode {
   return (

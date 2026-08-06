@@ -2,19 +2,24 @@ import type { Context, Hono } from 'hono';
 import type { PrerenderVariant, PrerenderedPage } from '../server/prerendered.js';
 
 /**
- * A hosting platform rshono can build for. Selected with {@link RshonoConfig.deploy}, the
+ * A hosting platform `rshono build` targets. Selected with `deploy` in `rshono.config.ts`, the
  * `--deploy` flag or the `RSHONO_DEPLOY` env var, and resolved to a preset by `deploy/presets.ts`.
  *
- * One per *handoff*, which is the thing an app cannot arrange for itself: `node` binds its own port (and
- * so covers a VPS, a container, a PaaS, and — through `node:` compatibility — Bun and Deno);
- * `cloudflare`, `vercel` and `aws-lambda` are each handed a request by their host, in three different
- * shapes, two of which also need a specific on-disk layout and a config file to stream at all.
+ * - `'node'` (the default) — rshono binds the port itself and you run the build with `rshono start`.
+ *   Covers a VPS, a container, a PaaS, and — through `node:` compatibility — Bun and Deno.
+ * - `'cloudflare'` — a Worker; the entry exports `{ fetch }`.
+ * - `'vercel'` — a Vercel function, plus the on-disk layout and config file streaming needs there.
+ * - `'aws-lambda'` — a streaming Lambda handler.
  *
- * There is deliberately no target whose only content would be "run the Node build". Bun and Deno had one
- * each and that is all they were, so importing the bundle under those runtimes replaces them.
+ * One entry per *handoff* — who opens the socket, and what shape a request arrives in — because that
+ * is the part an app cannot arrange for itself. There is deliberately no target whose only content
+ * would be "run the Node build": Bun and Deno had one each and that is all they were, so importing
+ * the bundle under those runtimes replaces them.
  *
  * `rshono dev` always runs the `node` server whatever this says — the dev server owns the process,
  * watches both compilers and fronts them on one port, none of which a hosting platform provides.
+ *
+ * @see {@link https://www.rshono.com/docs/deployment#the-targets | Docs — the targets}
  */
 export type DeployTarget = 'node' | 'cloudflare' | 'vercel' | 'aws-lambda';
 
