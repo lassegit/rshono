@@ -1,8 +1,8 @@
-import { NavigationProgress } from './navigation-progress';
 import type { ReactNode } from 'react';
 import '../styles.css';
 import { InlineCommand, SCAFFOLD_COMMAND } from './command-tabs';
 import { Logo } from './logo';
+import { NavigationProgress } from './navigation-progress';
 import { PackageManagerChoice } from './package-manager-choice';
 
 const GITHUB_URL = 'https://github.com/rshono/rshono';

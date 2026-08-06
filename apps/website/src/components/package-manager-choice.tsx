@@ -30,9 +30,11 @@ function storedChoice(): string | undefined {
  * radios switched by CSS, so they work with this island absent. What CSS cannot do is carry a choice
  * from one selector to the next, or from one page to the next, and that is all this adds.
  *
- * Imperative, against the DOM, for the same reason the [copy buttons](./code-copy.tsx) are: most of the
- * markup it touches arrives as finished HTML injected with `dangerouslySetInnerHTML`, so there are no
- * React elements to hang state off. It renders nothing itself.
+ * Imperative, against the DOM: most of the markup it touches arrives as finished HTML injected with
+ * `dangerouslySetInnerHTML`, so there are no React elements to hang state off. It renders nothing itself.
+ * The one island on a docs page, now that the copy buttons carry their own handler — see
+ * [`content/markdown.ts`](../content/markdown.ts) for why that one needs no JavaScript of its own and
+ * this one does.
  *
  * A remembered choice is applied on hydration rather than during the first paint, so a reader who chose
  * pnpm sees npm for an instant. The alternative is a blocking script in `<head>`, which is a real cost on

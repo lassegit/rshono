@@ -84,19 +84,77 @@ function getHighlighter(): Promise<HighlighterCore> {
   return highlighterPromise;
 }
 
+/** How long the button holds its result before going back to saying `Copy`. */
+const COPY_RESET_DELAY = 2000;
+
+/**
+ * Copying, as an inline handler rather than a component.
+ *
+ * The whole feature is now built here: a docs page ships no JavaScript for it, mounts no island and has
+ * nothing to hydrate, because an `onclick` attribute is compiled by the parser wherever the markup came
+ * from. That last part is what makes this work at all — a `<script>` emitted alongside the block would
+ * run on a hard load and silently never run again, since the prose arrives as `innerHTML` on a soft
+ * navigation and scripts inserted that way do not execute. Attributes have no such rule.
+ *
+ * `previousElementSibling` is the `<pre>`, and `textContent` rather than `innerText` because the panels
+ * of a package manager selector are `display: none` until chosen — `innerText` is defined in terms of
+ * what is rendered, and would hand back nothing for three blocks out of four.
+ *
+ * **This costs a CSP directive.** An event-handler attribute is inline script, and a nonce cannot cover
+ * one, so `csp: true` would need `cspDirectives` to widen `script-src` with `'unsafe-hashes'` plus this
+ * handler's sha256. It is one constant string, so one hash covers every button on the site — but the
+ * hash changes with the string, so it has to be regenerated whenever this is edited.
+ */
+const COPY_HANDLER = `
+  clearTimeout(this.resetTimer);
+  Promise.resolve()
+    .then(() => navigator.clipboard.writeText(this.previousElementSibling.textContent))
+    .then(
+      () => { this.textContent = 'Copied'; this.dataset.copied = 'true' },
+      () => { this.textContent = 'Press ⌘C' }
+    )
+    .then(() => { this.resetTimer = setTimeout(() => { this.textContent = 'Copy'; delete this.dataset.copied }, ${COPY_RESET_DELAY}) });
+`
+  .replace(/\s+/g, ' ')
+  .trim();
+
+/**
+ * The copy button, emitted with the block rather than added to one afterwards.
+ *
+ * Markup this site invents, so it is built here with the rest of what this file invents — the table
+ * wrapper, the command tabs — instead of in an effect that walks the finished page looking for `<pre>`s
+ * to append to.
+ *
+ * A **sibling** of the `<pre>`, not a child. The `<pre>` is a horizontal scroll container, and an
+ * absolutely positioned child of one sits in its scrollable overflow — so on a block wide enough to
+ * scroll, the button slides out of view exactly when a reader is furthest from the code they wanted.
+ * Keeping it outside also keeps the word *Copy* out of the block's own text, which is what a reader who
+ * selects the code by hand and presses ⌘C would otherwise take with them.
+ *
+ * Interpolated raw: `COPY_HANDLER` is a constant in this file and carries no `"` or `&`, so there is
+ * nothing for the attribute to escape. (`>` inside a quoted attribute value is legal, arrows included.)
+ */
+const COPY_BUTTON = `<button type="button" class="code-copy" aria-label="Copy code to clipboard" onclick="${COPY_HANDLER}">Copy</button>`;
+
 /**
  * The one call every code block on this site goes through.
  *
  * `defaultColor: false` is what makes one build serve both themes: instead of baking one theme's colours
  * in, every token carries `--shiki-light` and `--shiki-dark` custom properties and `styles.css` picks
  * between them. No flash, no second stylesheet, no client JS.
+ *
+ * The wrapper is what the copy button is positioned against, and it goes here rather than in the fence
+ * rule so that a command tab panel and a landing page sample get one too — those reach Shiki through this
+ * function without passing through markdown at all.
  */
 function highlightWith(highlighter: HighlighterCore, code: string, lang: string): string {
-  return highlighter.codeToHtml(code, {
+  const block = highlighter.codeToHtml(code, {
     lang: KNOWN_LANGS.has(lang) ? lang : 'text',
     themes: { light: 'github-light', dark: 'github-dark' },
     defaultColor: false,
   });
+
+  return `<div class="code-block">${block}${COPY_BUTTON}</div>`;
 }
 
 /**
@@ -167,8 +225,8 @@ async function getMarkdownIt(): Promise<MarkdownIt> {
       linkify: true,
       typographer: false,
       /**
-       * Shiki emits the whole `<pre class="shiki">…</pre>`, so this returns finished HTML and
-       * markdown-it wraps it in nothing further.
+       * `highlightWith` returns the whole block — the `<pre class="shiki">` and its wrapper — so this is
+       * finished HTML and markdown-it wraps it in nothing further.
        */
       highlight,
     });
@@ -193,8 +251,7 @@ async function getMarkdownIt(): Promise<MarkdownIt> {
      * the command tabs are: `content/docs/*.md` is served verbatim at `/docs/:slug.md`, and a `<div>`
      * that only means something to this site does not belong in it.
      */
-    md.renderer.rules.table_open = (tokens, index, options, env, self) =>
-      `<div class="table-scroll">${self.renderToken(tokens, index, options)}`;
+    md.renderer.rules.table_open = (tokens, index, options, env, self) => `<div class="table-scroll">${self.renderToken(tokens, index, options)}`;
     md.renderer.rules.table_close = (tokens, index, options, env, self) => `${self.renderToken(tokens, index, options)}</div>`;
 
     const renderFence = md.renderer.rules.fence!;

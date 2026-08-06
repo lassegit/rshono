@@ -137,8 +137,16 @@
  * custom properties and these rules pick one. One build, both themes, no second stylesheet.
  */
 @layer components {
+  /*
+   * The wrapper `content/markdown.ts` puts around every block. It exists to be what the copy button is
+   * positioned against — see there for why that cannot be the `<pre>` itself.
+   */
+  .code-block {
+    @apply relative;
+  }
+
   .prose pre.shiki {
-    @apply relative overflow-x-auto rounded-lg border border-zinc-200 p-4 text-[0.8125rem]/6 dark:border-zinc-800;
+    @apply overflow-x-auto rounded-lg border border-zinc-200 p-4 text-[0.8125rem]/6 dark:border-zinc-800;
   }
 
   .shiki,
@@ -156,15 +164,17 @@
   }
 
   /*
-   * Appended by the copy-button island, so it is styled here rather than in the component — there is
-   * no React element to hang a className off.
+   * The button is built with the block in `content/markdown.ts` and carries its own behaviour, so it is
+   * styled here for the same reason it is written there: there is no component to hang a className off.
+   * The one case it cannot answer is a reader with no JavaScript at all — `layout.tsx` hides it from
+   * them with a `<noscript>` rule, since nothing on this side can tell.
    */
   .code-copy {
     @apply absolute top-2 right-2 cursor-pointer rounded-md border border-zinc-200 bg-white/90 px-2 py-1 text-xs text-zinc-600 opacity-0 transition-opacity;
     @apply hover:text-zinc-900 focus-visible:opacity-100 dark:border-zinc-700 dark:bg-zinc-800/90 dark:text-zinc-300 dark:hover:text-white;
   }
 
-  pre.shiki:hover .code-copy {
+  .code-block:hover .code-copy {
     @apply opacity-100;
   }
 

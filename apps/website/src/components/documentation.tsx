@@ -2,7 +2,6 @@ import type { PageProps } from '@rshono/core';
 import { notFound } from '@rshono/core/server';
 import { docNeighbours, getDoc } from '../content/docs';
 import { renderDoc } from '../content/markdown';
-import { CodeCopyButtons } from './code-copy';
 import { DocsSidebar } from './docs-sidebar';
 import { DocsToc } from './docs-toc';
 import { Layout } from './layout';
@@ -11,8 +10,8 @@ import { Layout } from './layout';
  * One documentation page.
  *
  * `render: 'static'` in `routes.ts`, so everything below — parsing the markdown, running Shiki over
- * every fenced block, building the table of contents — happens once at build time. What a browser gets
- * is finished HTML plus two small islands: the [copy buttons](./code-copy.tsx), and the [package manager
+ * every fenced block, building the table of contents, writing the copy button onto each one — happens
+ * once at build time. What a browser gets is finished HTML plus one small island, the [package manager
  * choice](./package-manager-choice.tsx) the layout mounts.
  *
  * That also means no `ctx`: a prerendered page has no request to read one from. `url` is the build-time
@@ -55,8 +54,6 @@ export default async function Documentation({ params, url }: PageProps<'/docs/:s
 
         <DocsToc toc={toc} markdownHref={doc.markdownHref} />
       </div>
-
-      <CodeCopyButtons slug={doc.slug} />
     </Layout>
   );
 }
