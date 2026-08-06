@@ -35,6 +35,58 @@ const contextStorage = new AsyncLocalStorage<Context>();
 const wrappers = new WeakMap<Context, RequestContext>();
 
 /**
+ * Requests whose page render has begun — the point past which nothing can change the response head.
+ *
+ * A `WeakSet` keyed on the Hono {@link Context} rather than a field on {@link RequestContext},
+ * so marking a request costs nothing for the pages that never read their context: the wrapper is
+ * built lazily by {@link getRequestContext} and this must not be what forces it into existence.
+ */
+const rendering = new WeakSet<Context>();
+
+/**
+ * Marks the request as having entered its page render, which is what makes
+ * {@link RequestContext.setHeader} and `ctx.cookies.set()` start throwing.
+ *
+ * Framework internal — `renderComponent` calls this immediately before handing the page to React.
+ * Everything that legitimately writes to the response (middleware, a `'use server'` action, an
+ * endpoint route) has already run by then, so none of them are affected.
+ *
+ * @internal
+ */
+export function beginPageRender(c: Context): void {
+  rendering.add(c);
+}
+
+/**
+ * The shared explanation for a response mutation that arrived too late, thrown by
+ * {@link RequestContext.setHeader} and the `cookies` writers.
+ *
+ * Worth being long: the failure it replaces was silent *and* inconsistent — a page setting a cookie
+ * got it on a full page load and lost it on a soft navigation, because the flight stream's response
+ * head is committed before the first line of the page component runs. There is no fixing that from
+ * inside the render (React starts flight work in a microtask, and neither Hono nor the Node adapter
+ * will re-read headers once the response exists), so the honest move is to refuse both ways round
+ * and say where the write does belong.
+ */
+function tooLateToWrite(call: string): never {
+  throw new Error(
+    `[rshono] ${call} was called while rendering a page, which is too late to affect the response. ` +
+      'A page streams, so its response head is already committed by the time the component runs — the ' +
+      'write would land on a full page load and be silently dropped on a soft navigation. Do it from a ' +
+      "'use server' action instead; or, in middleware and { type: 'endpoint' } routes — which are handed " +
+      "Hono's `c` directly and run outside the request context — with `c.header(…)` / `setCookie(c, …)`.",
+  );
+}
+
+/** The shared explanation for a Hono `Context` member that a page has no way to use. See the stubs on {@link RequestContext}. */
+function notOnContext(call: string, instead: string): never {
+  throw new Error(
+    `[rshono] ctx.${call} does not exist. A page returns JSX and the framework builds the response from it, ` +
+      `so Hono's response builders have nothing to return to. ${instead}`,
+  );
+}
+
+/**
  * `process.env`, snapshotted on first read.
  *
  * It is not a plain object — every enumeration crosses into the host environment, which made
@@ -80,7 +132,8 @@ export function runWithContext<T>(c: Context, fn: () => T): T {
  * one place.
  *
  * Framework internal — the request renderer calls this to build a page's `params`
- * prop. Read them from that prop (or `ctx.raw.req.param()` outside a page) instead.
+ * prop, and {@link RequestContext.params} caches it. Read them from that prop, or
+ * from `ctx.params` outside a page.
  *
  * @internal
  */
@@ -171,12 +224,13 @@ export type EnvVars<E extends Env> = E['Bindings'] & Record<string, string | und
  * ```
  *
  * @see {@link https://www.rshono.com/docs/api#rshonocoreserver | Docs — `@rshono/core/server`}
- * @see {@link https://hono.dev/docs/api/context | Hono — Context}, reachable in full via {@link RequestContext.raw}
+ * @see {@link https://hono.dev/docs/api/context | Hono — Context}, reachable in full via {@link RequestContext.hono}
  */
 export class RequestContext<E extends Env = Env> {
   #raw: Context<E>;
   #url?: URL;
   #env?: EnvVars<E>;
+  #params?: Record<string, string>;
 
   /**
    * Framework internal — one instance is created per request and handed to you by
@@ -189,19 +243,18 @@ export class RequestContext<E extends Env = Env> {
   }
 
   /**
-   * The underlying Hono {@link Context} — the escape hatch for everything this wrapper does not
-   * expose, which is deliberately most things. Request data, the method, raw params and a response
-   * `header()` setter all live here (`ctx.raw.req`, `ctx.raw.req.method`, `ctx.raw.req.param()`,
-   * `ctx.raw.header(…)`) rather than being duplicated as pass-throughs. What this class adds on top
-   * is only what it improves on: a proxy-aware cached {@link RequestContext.url}, an
-   * {@link RequestContext.env} that merges runtime bindings over process env, and
-   * {@link RequestContext.cookies} without a second import.
+   * The underlying Hono {@link Context} — the escape hatch for the long tail this wrapper does not
+   * expose. Everything a page or action actually reaches for has a home of its own now
+   * ({@link RequestContext.req}, {@link RequestContext.params}, {@link RequestContext.setHeader}), so
+   * this is for what is left: `executionCtx.waitUntil()` on Workers, and whatever Hono adds next.
+   *
+   * Be aware that the response builders on it (`redirect`, `notFound`, `json`, `body`, `status`, …)
+   * still do nothing from inside a page, for the reason the stubs on this class explain — reaching
+   * them through here bypasses the error, it does not make them work.
    *
    * @example
    * ```ts
-   * const ctx = getRequestContext();
-   * const auth = ctx.raw.req.header('authorization');
-   * ctx.raw.header('cache-control', 'no-store'); // set a response header
+   * getRequestContext().hono.executionCtx.waitUntil(logAsync()); // Workers
    * ```
    *
    * @see {@link https://hono.dev/docs/api/context | Hono — Context}
@@ -213,9 +266,45 @@ export class RequestContext<E extends Env = Env> {
   // through `req.raw` and `env`. While this was a plain property, passing a `RequestContext` to a
   // `'use client'` component blew the stack *inside that message builder* — so React's actual,
   // accurate "you cannot pass this" error never got printed. Hidden from `Object.keys`, the walk
-  // stops here.
-  get raw(): Context<E> {
+  // stops here. Every member added since is a prototype getter or method for the same reason;
+  // `cookies` is the one own enumerable property, and it is a shallow object of four functions.
+  get hono(): Context<E> {
     return this.#raw;
+  }
+
+  /**
+   * The parsed request — method, headers, path params, query and the body readers. Hono's
+   * {@link Context.req}, unwrapped, so `ctx.req.header('authorization')` rather than
+   * `ctx.hono.req.header(…)`.
+   *
+   * Reads only. Setting a response header is {@link RequestContext.setHeader}, which is a different
+   * thing living in a different place on purpose — Hono's `c.header()` writing the *response* while
+   * `c.req.header()` reads the *request* is a well-worn source of confusion.
+   *
+   * @example
+   * ```ts
+   * const ctx = getRequestContext();
+   * ctx.req.method;                     // 'GET'
+   * ctx.req.header('authorization');    // string | undefined
+   * ctx.req.query('tab');               // string | undefined
+   * ```
+   *
+   * @see {@link https://hono.dev/docs/api/request | Hono — HonoRequest}
+   */
+  get req(): Context<E>['req'] {
+    return this.#raw.req;
+  }
+
+  /**
+   * Matched route params for this request, e.g. `{ id: '42' }` for `/profile/:id`.
+   *
+   * A **page** is handed these as its `params` prop, typed key-by-key from its route path, and that
+   * is the better read where it is available. This is the same record for everywhere else — a nested
+   * server component, or a `'use server'` action — which get no props from the framework. Empty when
+   * there is no active route match rather than throwing.
+   */
+  get params(): Record<string, string> {
+    return (this.#params ??= readParams(this.#raw as Context));
   }
 
   /**
@@ -279,22 +368,139 @@ export class RequestContext<E extends Env = Env> {
    * @see {@link https://hono.dev/docs/helpers/cookie | Hono — cookie helper}, which this wraps
    */
   cookies = {
-    /** Reads a single cookie by name, or `undefined` if absent. */
+    /** Reads a single cookie by name, or `undefined` if absent. Safe anywhere, a page included. */
     get: (name: string): string | undefined => getCookie(this.#raw, name),
-    /** Reads every cookie as a `{ name: value }` record. */
+    /** Reads every cookie as a `{ name: value }` record. Safe anywhere, a page included. */
     all: (): Record<string, string> => getCookie(this.#raw),
     /**
      * Sets a cookie on the response. See Hono's {@link CookieOptions} for `path`, `httpOnly`,
      * `maxAge`, etc.
      *
+     * **Throws inside a page render** — see {@link RequestContext.setHeader}, of which a `Set-Cookie`
+     * is a special case. Set cookies from a `'use server'` action, or with Hono's `setCookie(c, …)`
+     * in middleware and endpoint routes.
+     *
+     * @throws If called while a page is rendering, where it could not reach the browser reliably.
+     *
      * @see {@link https://hono.dev/docs/helpers/cookie#options | Hono — cookie options}
      */
-    set: (name: string, value: string, options?: CookieOptions): void => setCookie(this.#raw, name, value, options),
-    /** Clears a cookie. Pass the same `path`/`domain` it was set with so the browser matches it. */
+    set: (name: string, value: string, options?: CookieOptions): void => {
+      this.#assertWritable('ctx.cookies.set()');
+      setCookie(this.#raw, name, value, options);
+    },
+    /**
+     * Clears a cookie. Pass the same `path`/`domain` it was set with so the browser matches it.
+     * Throws inside a page render, exactly as `set` does.
+     *
+     * @throws If called while a page is rendering.
+     */
     delete: (name: string, options?: CookieOptions): void => {
+      this.#assertWritable('ctx.cookies.delete()');
       deleteCookie(this.#raw, name, options);
     },
   };
+
+  /** Guards every write that has to reach the response head. See {@link tooLateToWrite}. */
+  #assertWritable(call: string): void {
+    if (rendering.has(this.#raw as Context)) tooLateToWrite(call);
+  }
+
+  /**
+   * Sets a header on the response — from a `'use server'` action, which is the one place a request
+   * context exists *and* the response is still open.
+   *
+   * From inside a page it throws. By then the response head is committed: a page streams, and on a
+   * soft navigation the flight response is built before the component's first line runs. Hono's
+   * `c.header()` fails there silently and inconsistently — landing on a full page load, vanishing on
+   * a soft navigation — so this refuses rather than doing it half the time.
+   *
+   * Middleware and `{ type: 'endpoint' }` routes run outside the request context (no
+   * {@link getRequestContext} there) but are handed Hono's `c` directly, so they set headers with
+   * `c.header(…)`. That is also where a header belonging to the *page* rather than to one action
+   * goes — `Cache-Control`, `X-Robots-Tag` — since middleware runs before the render.
+   *
+   * @param name - Header name, case-insensitive.
+   * @param value - Header value.
+   * @param options - `{ append: true }` to add another value rather than replace.
+   * @throws If called while a page is rendering, where it could not reach the browser reliably.
+   *
+   * @example
+   * ```ts
+   * 'use server';
+   * export async function logout() {
+   *   const ctx = getRequestContext();
+   *   ctx.cookies.delete('session', { path: '/' });
+   *   ctx.setHeader('clear-site-data', '"cache", "storage"');
+   *   redirect('/');
+   * }
+   * ```
+   */
+  setHeader(name: string, value: string, options?: { append?: boolean }): void {
+    this.#assertWritable('ctx.setHeader()');
+    this.#raw.header(name, value, options);
+  }
+
+  // Hono's response builders, restated as errors that name the thing to use instead. A page returns
+  // JSX and `renderComponent` builds the response from it, so every one of these is a silent no-op
+  // through `ctx.hono` — which is exactly the confusion this class exists to remove. They are
+  // `@deprecated` so an editor strikes them through in autocomplete: visible, and visibly wrong.
+  //
+  // Each takes `...args: unknown[]` it never reads, so that `ctx.redirect('/dashboard')` reaches the
+  // message below instead of stopping at "Expected 0 arguments, but got 1" — an arity complaint that
+  // says nothing about what to do. The `@deprecated` strike-through is the compile-time signal; the
+  // thrown message is the one that explains.
+
+  /** @deprecated Not available on a page's context — use `redirect()` from `@rshono/core/server`. */
+  redirect(...args: unknown[]): never {
+    return notOnContext(
+      'redirect(location, status?)',
+      "Use `redirect()` from '@rshono/core/server', which throws a signal the framework turns into a real redirect.",
+    );
+  }
+
+  /** @deprecated Not available on a page's context — use `notFound()` from `@rshono/core/server`. */
+  notFound(...args: unknown[]): never {
+    return notOnContext('notFound()', "Use `notFound()` from '@rshono/core/server', which aborts the render and shows the app's not-found page.");
+  }
+
+  /** @deprecated A page renders JSX. For a JSON response, use an `{ type: 'endpoint' }` route. */
+  json(...args: unknown[]): never {
+    return notOnContext('json(object)', "For a JSON response use an { type: 'endpoint' } route; to read the request body use `ctx.req.json()`.");
+  }
+
+  /** @deprecated A page renders JSX. For a text response, use an `{ type: 'endpoint' }` route. */
+  text(...args: unknown[]): never {
+    return notOnContext('text(string)', "For a text response use an { type: 'endpoint' } route; to read the request body use `ctx.req.text()`.");
+  }
+
+  /** @deprecated A page renders JSX, which the framework turns into HTML for you. */
+  html(...args: unknown[]): never {
+    return notOnContext('html(string)', "A page's JSX is already its HTML; for a hand-built HTML response use an { type: 'endpoint' } route.");
+  }
+
+  /** @deprecated Not available on a page's context. To read the request body, use `ctx.req`. */
+  body(...args: unknown[]): never {
+    return notOnContext(
+      'body(data, …)',
+      "To read the *request* body use `ctx.req.json()` / `ctx.req.text()` / `ctx.req.formData()`; to build a response, use an { type: 'endpoint' } route.",
+    );
+  }
+
+  /** @deprecated A page's status is set by the framework — use `notFound()`, or an endpoint route. */
+  status(...args: unknown[]): never {
+    return notOnContext(
+      'status(code)',
+      "A page's status is the framework's: 200, 404 via `notFound()`, 500 when it throws. For any other code use an { type: 'endpoint' } route.",
+    );
+  }
+
+  /** @deprecated Renamed — use `ctx.setHeader(name, value)`, which is valid from a `'use server'` action. */
+  header(...args: unknown[]): never {
+    return notOnContext(
+      'header(name, value)',
+      "Use `ctx.setHeader(name, value)` from a 'use server' action, or `c.header(…)` in middleware — a page renders too late to set one.",
+    );
+  }
 }
 
 /**

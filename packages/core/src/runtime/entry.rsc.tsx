@@ -29,7 +29,7 @@ import { routes as userRoutes } from '@rshono/routes';
 import * as serverAppModule from '@rshono/server-app';
 import { isPageRoute, type ErrorPageInfo, type FallbackPage, type PageComponent, type PageProps, type Route, type RouteConfig } from '../router.js';
 import { appendVary, etagMatches } from '../server/headers.js';
-import { getRequestContext, publicUrl, readParams, reportServerError, runWithContext } from './context.js';
+import { beginPageRender, getRequestContext, publicUrl, readParams, reportServerError, runWithContext } from './context.js';
 import { isControlSignal, RedirectSignal, type ControlSignal } from './control.js';
 import { renderHTML } from './entry.ssr.js';
 // Type-only, so it is erased — the RSC layer does not take its own instance of the SSR layer's module.
@@ -225,7 +225,7 @@ interface ComponentRenderOptions {
  *   prerendering" error rather than a bare `undefined` — one explanation, in one place.
  * - **Non-enumerable**, so React's *development-only* serialization of a server component's props
  *   (the debug channel behind component stacks and the performance track) skips it. That walks own
- *   enumerable properties, and `ctx.raw` is the Hono {@link Context} — whose `env` holds the
+ *   enumerable properties, and `ctx.hono` is the Hono {@link Context} — whose `env` holds the
  *   runtime's bindings. An enumerable `ctx` ships every one of them, secrets included, to the
  *   browser in dev, and grows a small page's flight payload by well over 10 kB. Production never
  *   serializes a server component's props at all, so this is the dev half of the same guarantee.
@@ -278,6 +278,12 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
 
   // `notFound` only when it is true, so the flight payload of an ordinary page doesn't carry the key.
   const rscPayload: RscPayload = { root, formState: opts.formState, returnValue: opts.returnValue, ...(opts.notFound ? { notFound: true } : null) };
+
+  // Past this line the response head belongs to the framework, so `ctx.setHeader()` and
+  // `ctx.cookies.set()` start throwing rather than writing somewhere nothing will read. It has to be
+  // the last thing before the render: a server action ran earlier in `renderPage` and legitimately
+  // writes to the response, and so does any middleware that wrapped this handler.
+  beginPageRender(c);
 
   let controlSignal: ControlSignal | undefined;
   const rscStream = renderToReadableStream(rscPayload, {
