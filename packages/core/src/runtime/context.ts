@@ -444,9 +444,14 @@ export class RequestContext<E extends Env = Env> {
   // JSX and `renderComponent` builds the response from it, so every one of these is a silent no-op
   // through `ctx.hono` — which is exactly the confusion this class exists to remove. They are
   // `@deprecated` so an editor strikes them through in autocomplete: visible, and visibly wrong.
+  //
+  // Each takes `...args: unknown[]` it never reads, so that `ctx.redirect('/dashboard')` reaches the
+  // message below instead of stopping at "Expected 0 arguments, but got 1" — an arity complaint that
+  // says nothing about what to do. The `@deprecated` strike-through is the compile-time signal; the
+  // thrown message is the one that explains.
 
   /** @deprecated Not available on a page's context — use `redirect()` from `@rshono/core/server`. */
-  redirect(): never {
+  redirect(...args: unknown[]): never {
     return notOnContext(
       'redirect(location, status?)',
       "Use `redirect()` from '@rshono/core/server', which throws a signal the framework turns into a real redirect.",
@@ -454,27 +459,27 @@ export class RequestContext<E extends Env = Env> {
   }
 
   /** @deprecated Not available on a page's context — use `notFound()` from `@rshono/core/server`. */
-  notFound(): never {
+  notFound(...args: unknown[]): never {
     return notOnContext('notFound()', "Use `notFound()` from '@rshono/core/server', which aborts the render and shows the app's not-found page.");
   }
 
   /** @deprecated A page renders JSX. For a JSON response, use an `{ type: 'endpoint' }` route. */
-  json(): never {
+  json(...args: unknown[]): never {
     return notOnContext('json(object)', "For a JSON response use an { type: 'endpoint' } route; to read the request body use `ctx.req.json()`.");
   }
 
   /** @deprecated A page renders JSX. For a text response, use an `{ type: 'endpoint' }` route. */
-  text(): never {
+  text(...args: unknown[]): never {
     return notOnContext('text(string)', "For a text response use an { type: 'endpoint' } route; to read the request body use `ctx.req.text()`.");
   }
 
   /** @deprecated A page renders JSX, which the framework turns into HTML for you. */
-  html(): never {
+  html(...args: unknown[]): never {
     return notOnContext('html(string)', "A page's JSX is already its HTML; for a hand-built HTML response use an { type: 'endpoint' } route.");
   }
 
   /** @deprecated Not available on a page's context. To read the request body, use `ctx.req`. */
-  body(): never {
+  body(...args: unknown[]): never {
     return notOnContext(
       'body(data, …)',
       "To read the *request* body use `ctx.req.json()` / `ctx.req.text()` / `ctx.req.formData()`; to build a response, use an { type: 'endpoint' } route.",
@@ -482,7 +487,7 @@ export class RequestContext<E extends Env = Env> {
   }
 
   /** @deprecated A page's status is set by the framework — use `notFound()`, or an endpoint route. */
-  status(): never {
+  status(...args: unknown[]): never {
     return notOnContext(
       'status(code)',
       "A page's status is the framework's: 200, 404 via `notFound()`, 500 when it throws. For any other code use an { type: 'endpoint' } route.",
@@ -490,7 +495,7 @@ export class RequestContext<E extends Env = Env> {
   }
 
   /** @deprecated Renamed — use `ctx.setHeader(name, value)`, which is valid from a `'use server'` action. */
-  header(): never {
+  header(...args: unknown[]): never {
     return notOnContext(
       'header(name, value)',
       "Use `ctx.setHeader(name, value)` from a 'use server' action, or `c.header(…)` in middleware — a page renders too late to set one.",
