@@ -29,7 +29,7 @@ that carry weight are the ones a framework actually decides:
 | Cold + warm build                    | `build.mjs`     | Rspack vs Turbopack vs Vite/Rolldown, on identical input.                                                                        |
 | Dev server startup                   | `devstart.mjs`  | Paid many times a day.                                                                                                           |
 | Cold start + server bundle size      | `coldstart.mjs` | What a scale-from-zero request pays.                                                                                             |
-| Throughput, latency, RSS             | `load.mjs`      | Floor check, and `/api/health` isolates the HTTP layer with React off the path.                                                  |
+| Throughput, latency, memory          | `load.mjs`      | Floor check, and `/api/health` isolates the HTTP layer with React off the path.                                                  |
 | Production install + app source size | `footprint.mjs` | What the dependency costs before a request is served.                                                                            |
 
 ## The rules
@@ -45,6 +45,10 @@ decide whether the numbers are honest:
 - **Same client-component count.** Nobody wins a payload metric by shipping less behaviour.
 - **No app-level compression.** All three run with their compressor off; the harness applies gzip 9
   and brotli 11 itself, identically, so the table reflects bytes rather than three compressor configs.
+- **The same old-space budget.** `load.mjs` starts all three with `--max-old-space-size=256`
+  (`--heap=N`, or `--heap=0` to opt out). V8 grows the old generation against the allocation rate, so
+  left at the default the after-load RSS measures throughput rather than memory: the fastest server
+  churns the most garbage in the fixed eight seconds and so ends up looking the worst.
 - **`/` prerendered and `/ssr` genuinely dynamic in all three.** Both are easy to get wrong in a
   direction that flatters somebody — Next will happily prerender `/ssr` unless told not to, and
   TanStack's prerender crawler follows the nav links off `/` unless `crawlLinks: false` stops it.
@@ -65,6 +69,13 @@ the medians. A full `bench` also snapshots a dated file next to them; laptop sna
 because they aren't comparable to anything, including each other.
 
 Timings print with their relative spread (`±12%`). Treat anything inside the spread as a tie.
+
+**No memory row is a retained-memory figure.** RSS is a high-water mark including garbage V8 hasn't
+collected yet — on this app a forced GC gave back 362 MB of an uncapped 472 MB run, and retention per
+request measured under 20 B. That is why the budget above is capped, why the report prints churn per
+1,000 requests rather than raw growth (the load runs for a fixed time, so a server answering five times
+the requests allocates five times as much), and why there is a per-route sequence: flat means the server
+had levelled off, a climb means the single after-load figure is wherever the run happened to stop.
 
 ## Caveats that change how you should read this
 
@@ -87,9 +98,9 @@ These are limitations of the comparison, not of the frameworks. Read them before
    users would be bundled into the client graph and the payload number would measure a mistake. Its
    loader data is then serialized into the document for the client router to hydrate, which an RSC
    framework does not pay. That is an architectural difference, not a defect.
-5. **rshono pays a production-install cost the other two don't.** `@rspack/core` and `tsx` sit in
-   `@rshono/core`'s `dependencies`, not `devDependencies`, so they land in a production install.
-   `footprint.mjs` measures it.
+5. **rshono pays a production-install cost the other two don't.** `@rspack/core` sits in
+   `@rshono/core`'s `dependencies` rather than `devDependencies` — the bundler is what the CLI it ships
+   builds with — so it lands in a production install. `footprint.mjs` measures it.
 6. **rshono is built on experimental `rspack.experiments.rsc` and `react-server-dom-rspack@0.0.x`.**
    Those move under it, which is why this is CI infrastructure to re-run per release rather than a
    number to publish once.
@@ -104,19 +115,20 @@ These are limitations of the comparison, not of the frameworks. Read them before
 Each writes its own section into `results/latest.json` and can run alone. Pass target ids to narrow:
 `node harness/payload.mjs rshono next`.
 
-| Command                | Notes                                                                                   |
-| ---------------------- | --------------------------------------------------------------------------------------- |
-| `pnpm setup:apps`      | Builds `@rshono/core`, packs it to a tarball, installs all three apps.                  |
-| `pnpm bench`           | Every stage, then a snapshot and a report. `--footprint` adds the install measurement.  |
-| `pnpm bench:build`     | `--trials=N` (default 3).                                                               |
-| `pnpm bench:payload`   | `--strict` exits non-zero on a failed spec check.                                       |
-| `pnpm bench:load`      | `--connections=32 --duration=8 --warmup=2`, or `--quick`.                               |
-| `pnpm bench:coldstart` | `--trials=N` (default 5).                                                               |
-| `pnpm bench:devstart`  | Clobbers the production builds and rebuilds them afterwards; `--no-restore` skips that. |
-| `pnpm bench:footprint` | Three real `npm install --omit=dev` runs. Slow. `--source-only` skips them.             |
-| `pnpm report`          | Re-render `results/latest.md` from whatever sections exist.                             |
-| `pnpm site:publish`    | Copy the report into the website — see below.                                           |
-| `pnpm clean:apps`      | Build outputs; `--deep` also removes `node_modules` and lockfiles.                      |
+| Command                | Notes                                                                                    |
+| ---------------------- | ---------------------------------------------------------------------------------------- |
+| `pnpm setup:apps`      | Builds `@rshono/core`, packs it to a tarball, installs all three apps.                   |
+| `pnpm bench`           | Every stage, then a snapshot and a report. `--footprint` adds the install measurement.   |
+| `pnpm bench:build`     | `--trials=N` (default 3).                                                                |
+| `pnpm bench:payload`   | `--strict` exits non-zero on a failed spec check.                                        |
+| `pnpm bench:load`      | `--connections=32 --duration=8 --warmup=2 --heap=256`, or `--quick`.                     |
+| `pnpm bench:coldstart` | `--trials=N` (default 5).                                                                |
+| `pnpm bench:devstart`  | Clobbers the production builds and rebuilds them afterwards; `--no-restore` skips that.  |
+| `pnpm bench:footprint` | Three real `npm install --omit=dev` runs. Slow. `--source-only` skips them.              |
+| `pnpm report`          | Re-render `results/latest.md` from whatever sections exist.                              |
+| `pnpm site:publish`    | Copy the report into the website — see below.                                            |
+| `pnpm clean:apps`      | Build outputs; `--deep` also removes `node_modules` and lockfiles.                       |
+| `pnpm fixtures`        | Regenerates the committed `fixtures/data.json`, invalidating every result in `results/`. |
 
 ### Publishing to the website
 
@@ -136,7 +148,7 @@ showing the previous run, which is why the published file carries the date it wa
 
 ### Why the apps are not workspace members
 
-The root `pnpm-workspace.yaml` pins `react`, `react-dom` and `@rspack/core` with `overrides`. Forcing
+The root `pnpm-workspace.yaml` pins React, `react-server-dom-rspack` and `@rspack/core` with `overrides`. Forcing
 those onto Next and TanStack Start would benchmark a configuration nobody ships, so all three apps are
 installed with plain `npm` into isolated `node_modules` — which is also what makes the footprint
 numbers mean anything.
@@ -158,7 +170,7 @@ driver is the thing being measured.
 ## Adding a fourth framework
 
 1. Implement `spec/APP_SPEC.md` under `apps/<id>/`, including `src/touch-marker.ts` (`build.mjs`
-   edits it to force an incremental rebuild) and a `src/generated/data.json` that `setup` fills in.
+   edits it to force an incremental rebuild) and a `src/generated/data.json` that `setup:apps` fills in.
 2. Bind the server to `127.0.0.1` and honour `PORT` — the harness probes IPv4, and a server that
    binds `::1` only looks like a server that never started.
 3. Add an entry to `TARGETS` in `harness/lib/targets.mjs`.

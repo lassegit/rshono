@@ -1,13 +1,26 @@
-# rshono
+<p align="center">
+  <img src="https://raw.githubusercontent.com/rshono/rshono/main/logo.svg" alt="" width="72" height="72" />
+</p>
 
-Minimalist web framework — [Hono](https://hono.dev) + [Rspack](https://rspack.rs) + [React Server Components](https://react.dev/reference/rsc/server-components).
+<h1 align="center">@rshono/core</h1>
 
-> **Alpha.** The framework itself is covered by an end-to-end suite (see [Testing](#testing)), but it
-> is built on Rspack's experimental RSC support (`rspack.experiments.rsc`) and `react-server-dom-rspack`,
-> which is still `0.0.x`. Those two move underneath us, so `@rspack/core` and `react-server-dom-rspack`
-> are pinned to exact versions and a release of rshono is what moves them.
+<p align="center">
+  Minimalist web framework —
+  <a href="https://hono.dev">Hono</a> +
+  <a href="https://rspack.rs">Rspack</a> +
+  <a href="https://react.dev/reference/rsc/server-components">React Server Components</a>.
+</p>
 
-One required file (`src/routes.ts`), one optional file (`src/server.ts`), and you get a dev server with HMR, streaming SSR with RSC hydration, server actions with progressive enhancement, soft navigation, build-time prerendering, and hard env/secret safety.
+One required file (`src/routes.ts`), one optional file (`src/server.ts`), and you get a dev server with HMR,
+streaming SSR with RSC hydration, server actions with progressive enhancement, soft navigation, build-time
+prerendering, and hard env/secret safety.
+
+> **Alpha.** The framework has an end-to-end suite of its own (see [Testing](#testing)), but it is built on
+> Rspack's experimental RSC support (`rspack.experiments.rsc`) and `react-server-dom-rspack`, which is still
+> `0.0.x`. Those two move underneath us, so `@rspack/core` and `react-server-dom-rspack` are pinned to exact
+> versions and a release of rshono is what moves them.
+
+**Full documentation: [rshono.com/docs](https://www.rshono.com/docs).**
 
 ```bash
 npx @rshono/create@latest my-app   # scaffold one, with a deploy target and tooling of your choosing
@@ -15,22 +28,26 @@ npx @rshono/create@latest my-app   # scaffold one, with a deploy target and tool
 
 ```bash
 rshono dev     # dev server with HMR (default port 3000)
-rshono build   # production build: client + server bundles + SSG
+rshono build   # production build: client + server bundles + prerendered pages
 rshono start   # run the production build
 ```
+
+`--port` / `PORT` and `HOST` set where it listens; `--config <path>` points `build` at another config file.
 
 ## Project layout
 
 ```
-rshono.config.ts   optional — every field has a default (see Configuration)
+rshono.config.ts   optional — every field has a default
 public/            optional — served verbatim at the web root
 src/
   routes.ts        required — the route table
   server.ts        optional — a Hono sub-app mounted ahead of the page routes
-  …               everything else is yours to arrange
+  …                everything else is yours to arrange
 ```
 
-Only the two files under `src/` mean anything to the framework; there is no convention attached to any other name or directory. `@/…` resolves to `src/…` in both compilers, so add the matching `paths` to your `tsconfig.json` if you use it — relative, and with no `baseUrl`, which TypeScript 7 removed:
+Only those two files under `src/` mean anything to the framework; no other name or directory carries a
+convention. `@/…` resolves to `src/…` in both compilers, so add the matching `paths` to `tsconfig.json` if
+you use it — relative, and with no `baseUrl`, which TypeScript 7 removed:
 
 ```json
 { "compilerOptions": { "paths": { "@/*": ["./src/*"] } } }
@@ -58,13 +75,15 @@ export const routes = defineRoutes({
 });
 ```
 
-`routes.ts` only ever runs on the server — importing server-only modules from it (e.g. inside `staticPaths`) is safe. A plain array (no special pages) is accepted as shorthand.
+`routes.ts` only ever runs on the server, so importing server-only modules from it (inside `staticPaths`,
+say) is safe. A plain array, with no special pages, is accepted as shorthand.
+[Routing docs](https://www.rshono.com/docs/routing).
 
 ## Pages are server components
 
-Every page module **default-exports a server component** — nothing else. Under the hood each page carries Rspack's `'use server-entry'` directive (it attaches the page's client JS/CSS assets to the component — per-page code splitting with no asset manifest), but the framework **injects it automatically** for every component referenced with the inline `component: () => import('…')` thunk form in routes.ts. This also works for routes added while the dev server is running.
-
-If a component is wired up some other way (variable indirection, barrel re-exports, computed specifiers), write `'use server-entry'` as the first line of the page module yourself — a manually written directive is always respected. The framework throws a descriptive error when neither happened.
+Every page module default-exports a server component — nothing else. It renders the whole document
+(`<html>…</html>`), may be `async`, and awaits its data directly. Interactive parts are `'use client'`
+components the page imports; only those ship JavaScript.
 
 ```tsx
 import type { PageProps } from '@rshono/core';
@@ -77,14 +96,20 @@ export default async function Profile({ params, ctx }: PageProps<'/profile/:id'>
 }
 ```
 
-- Pages receive `{ url, params, ctx }` (`PageProps<'/profile/:id'>` types `params.id`). `url` is a real `URL` — read `url.pathname` and `url.searchParams` off it — and the pair matches what a `'use client'` component gets from `useNavigation()`, so a read moves across the line unchanged.
-- **`ctx` is the request context** — cookies, headers, env, middleware variables, the proxy-aware URL. It is the same object `getRequestContext()` returns from `@rshono/core/server`, handed over so a page needs no import; reach for `getRequestContext()` in the places that get no props (a nested server component, a `'use server'` action). Type `ctx.var` / `ctx.env` for your app by passing its Hono `Env`: `PageProps<'/profile/:id', MyEnv>`.
-- Reading `ctx` on a **`render: 'static'`** page throws — a page rendered once at build time has no request to read. Use `params` and `url`, which are available either way, or make the route `render: 'dynamic'`. One quiet caveat: a prerendered `url` is the build-time one (`siteUrl` + the path, no query), and that one file answers every request whatever its own query — so `url.searchParams` is always empty there. Read the query with `useNavigation().url` on the client instead.
-- Pages render the **entire document** (`<html>…</html>`), usually via a shared layout component.
-- Interactive parts are `'use client'` components imported by the page; only those ship JavaScript.
-- A fully interactive page is a thin server component wrapping a `'use client'` component.
-- Page props are **server-only and never serialized** — React puts a server component's output on the wire, not its props. `ctx` is additionally non-enumerable, which keeps it out of React's dev-only debug payload (an enumerable one would ship the whole Hono context, bindings included, to the browser in dev).
-- **`ctx` cannot cross into a `'use client'` component**; it wraps the live request and response, which don't exist in the browser. Passing it explicitly (`<Counter ctx={ctx} />`) fails the render with React's _"Only plain objects … can be passed to Client Components"_, naming the prop. Spreading page props instead (`<Counter {...props} />`) drops it silently, since a spread copies enumerables only — though that spread fails anyway on `url`, which is enumerable and just as unserializable. Either way: read what you need on the server and pass plain values down (`url.href`, not `url`).
+- Pages receive `{ url, params, ctx }` — `PageProps<'/profile/:id'>` types `params.id`, and `url` is a real
+  `URL`. The same pair reaches a `'use client'` component from `useNavigation()`, so a read moves across the
+  boundary unchanged.
+- **`ctx` is the request context** — cookies, headers, env, middleware variables, the proxy-aware URL. It is
+  the same object `getRequestContext()` returns from `@rshono/core/server`, handed over so a page needs no
+  import. Reading it on a `render: 'static'` page throws: a page rendered once at build time has no request.
+- Page props are server-only and never serialized, and `ctx` cannot cross into a client component. Read what
+  you need on the server and pass plain values down (`url.href`, not `url`).
+- The framework injects Rspack's `'use server-entry'` directive for every component referenced with the
+  inline `component: () => import('…')` thunk — that is what attaches the page's JS and CSS to it, so code
+  splitting needs no asset manifest. Wire a component up some other way and you write the directive
+  yourself; the framework throws a descriptive error when neither happened.
+
+[Pages docs](https://www.rshono.com/docs/pages).
 
 ## Server actions
 
@@ -95,79 +120,59 @@ export default async function Profile({ params, ctx }: PageProps<'/profile/:id'>
 export async function createUser(data: { name: string; email: string }) { … }
 ```
 
-Call them directly from client code (typed args and result), or wire them to `<form action>` / `useActionState` — forms keep working before hydration and with JavaScript disabled (progressive enhancement). Every action response carries a fresh page payload, so server-rendered UI updates automatically after mutations.
+Call them directly from client code (typed args and result), or wire them to `<form action>` /
+`useActionState` — forms keep working before hydration and with JavaScript disabled. Every action response
+carries a fresh page payload, so server-rendered UI updates after a mutation.
+**Every `'use server'` export is a public HTTP endpoint**, so authenticate, authorize and validate inside the
+action. [Server actions docs](https://www.rshono.com/docs/server-actions).
 
 ## Full Hono underneath
 
-- `{ type: 'endpoint' }` routes export a Hono `handler` from a server module (it only ever runs on the server).
-- `src/server.ts` may default-export a whole Hono sub-app: any method, streaming, cookies, middleware. `export type AppType = typeof server` gives end-to-end type safety with `hono/client`.
-- The sub-app is mounted at `/` **ahead of the page routes**, so its middleware (auth, logging, trailing-slash) wraps page requests too. The flip side: a _terminal_ handler in `src/server.ts` at the same path as a page route shadows the page.
+- `{ type: 'endpoint' }` routes export a Hono `handler` from a server module.
+- `src/server.ts` may default-export a whole Hono sub-app: any method, streaming, cookies, middleware.
+  `export type AppType = typeof server` gives end-to-end type safety with `hono/client`.
+- It is mounted at `/` **ahead of the page routes**, so its middleware (auth, logging, trailing-slash) wraps
+  page requests too. The flip side: a _terminal_ handler at the same path as a page route shadows the page.
+
+[Hono docs](https://www.rshono.com/docs/hono).
 
 ## Styling
 
-- `import './styles.css'` from any component. Rspack's native CSS pipeline compiles it, and the import attaches the stylesheet to the importing page's assets — so CSS is code-split per route and arrives with the page that needs it, `<link>`ed in the streamed HTML rather than fetched after hydration. `*.module.css` gets a class map.
-- **There is no PostCSS in the framework**, and no dependency on any of it — native CSS is fast, and it is everything a plain stylesheet needs. What it cannot do is read CSS that isn't finished yet: `@import 'tailwindcss'`, `@theme` and `@apply` are all parse-time nonsense to it. A stylesheet that needs a plugin puts the plugin in front of that parser itself, through the [`rspack` hook](#configuration-rshonoconfigts), and installs the two packages a PostCSS pass takes.
-- **Tailwind** is exactly that, and nothing else:
+`import './styles.css'` from any component. Rspack's native CSS pipeline compiles it, and the import
+attaches the stylesheet to the importing page — so CSS is code-split per route and `<link>`ed in the streamed
+HTML rather than fetched after hydration. `*.module.css` gets a class map.
 
-  ```bash
-  npm i -D tailwindcss @tailwindcss/postcss postcss postcss-loader
-  ```
-
-  ```ts
-  // rshono.config.ts — the hook is called once per compiler, so this reaches both graphs
-  export default defineConfig({
-    rspack(config) {
-      config.module!.rules!.push({ test: /\.css$/i, use: ['postcss-loader'], type: 'css/auto' });
-    },
-  });
-  ```
-
-  ```js
-  // postcss.config.mjs — the plugin list, which postcss-loader finds on its own
-  export default { plugins: { '@tailwindcss/postcss': {} } };
-  ```
-
-  ```css
-  /* src/styles.css */
-  @import 'tailwindcss';
-  ```
-
-  Keep `type: 'css/auto'` rather than `'css'`, or `*.module.css` stops being a CSS module. `npx @rshono/create@latest --tailwind` writes all four of these for you.
-
-## Static files
-
-- Drop anything you want served verbatim into `public/` — it's mounted at the **web root**, so `public/favicon.ico` → `/favicon.ico`, `public/robots.txt` → `/robots.txt`, `public/.well-known/…` resolves too. This is the home for the conventional files browsers and crawlers request by path.
-- It's a **fallback**: your routes always win, and unmatched paths still fall through to the `notFound` page — so a `public/` file never shadows a real route. `build` copies `public/` into `dist/` so a deployed build is self-contained.
-- Hashed bundle output is served separately under `/_static/` with long-lived immutable caching; `public/` files get a short `max-age` (and `no-cache` in dev).
-
-## Prerendering (`render: 'static'`)
-
-A static route is built once and served from disk in **both** representations — `index.html` for a hard load, `index.rsc` for the flight payload a soft navigation asks for. Serving only the document would mean every in-app click re-rendered a page the build had already produced, so the prerender would pay off for crawlers and nobody else. Both carry a weak `ETag`, so a revalidation costs a 304.
-
-Set **`siteUrl`** if your static pages build absolute URLs — a canonical tag, an `og:url`, an absolute link. A prerendered file is one set of bytes handed to everyone, so there is no request to read a `Host` from and the origin has to be decided at build time; without `siteUrl` it is `http://localhost`, and the build warns. Dynamic routes are unaffected — they resolve the URL per request, `siteUrl` or not.
-
-If a page can't be prerendered (its `staticPaths` is missing, or it didn't render cleanly at build time) the build says so and that route falls back to rendering per request.
+**There is no PostCSS in the framework**, so a stylesheet that needs a plugin brings one, through the
+[`rspack` hook](#configuration-rshonoconfigts). Tailwind is exactly that and nothing else — four packages, a
+`postcss.config.mjs` and one rule; `npx @rshono/create@latest --tailwind` writes all of it.
+[Styling docs](https://www.rshono.com/docs/styling).
 
 ## Env & secret safety
 
-The client/server boundary is the RSC directives — `'use client'` and `'use server'` — not filenames, and `process.env` access follows it. There is no `*.server` naming convention.
+The boundary is the RSC directives — `'use client'` and `'use server'` — not filenames, and `process.env`
+follows it.
 
-- **Client bundle**: `process.env` is _replaced at build time_ with a literal containing only `NODE_ENV` and `PUBLIC_`-prefixed variables. A stray `process.env.DATABASE_URL` in client code compiles to `undefined` — the value cannot ship. This is a hard guarantee, not tree-shaking, and it covers your `node_modules` too.
-- **`'use client'` modules are also SSR'd on the server**, and there they see the same `PUBLIC_`-only view. A `process.env.SECRET` in a client component renders empty instead of leaking into the HTML stream, and SSR output always agrees with hydration. This SSR-side shadowing is scoped to your own `src/` — a _third-party_ client component that reads `process.env` during SSR sees the real environment, so treat a dependency that does that as you would any other dependency handling secrets.
-- **Server components and `'use server'` actions read the real `process.env`.** They run only on the server — server components stay in the server graph, actions compile to server references — so a secret read there never reaches the browser. Read secrets in server code and pass derived data down.
-- `.env.local` and `.env` are loaded automatically (real environment wins).
-- Anything a server component _renders_ is public by definition — whatever you put in the tree ships in the flight payload.
-- Keeping a server-only module out of the client bundle is the module graph's job: import it only from server code. For a hard failure if that ever slips, add React's `server-only` package — the RSC layer resolves its `react-server` condition, so importing it from client code throws.
+- In the **client bundle** `process.env` is _replaced at build time_ with a literal holding only `NODE_ENV`
+  and `PUBLIC_`-prefixed variables. A stray `process.env.DATABASE_URL` in client code compiles to
+  `undefined`; the value cannot ship. That is a build-time substitution, not tree-shaking, and it covers
+  `node_modules` too.
+- Your `'use client'` modules see the same `PUBLIC_`-only view **while being SSR'd**, so a secret read there
+  renders empty instead of leaking into the HTML stream, and SSR output still agrees with hydration.
+- Server components and `'use server'` actions read the real `process.env`. Anything a server component
+  _renders_ is public by definition.
+- `.env.local` and `.env` are loaded automatically; the real environment wins.
+
+[Environment and secrets](https://www.rshono.com/docs/configuration#environment-and-secrets).
 
 ## Configuration: rshono.config.ts
 
-An optional `rshono.config.ts` (`.js` / `.mjs` also work) at the project root tunes the framework. Every field is optional; delete the file to accept all defaults.
+Optional (`.js` / `.mjs` also work). Every field is optional; delete the file to accept all defaults.
 
 ```ts
 import { defineConfig } from '@rshono/core';
 
 export default defineConfig({
-  deploy: 'node', // hosting platform to build for — see Deployment (--deploy or RSHONO_DEPLOY override)
+  deploy: 'node', // hosting platform to build for (--deploy or RSHONO_DEPLOY override)
   siteUrl: 'https://example.com', // public origin, baked into prerendered pages' absolute URLs
   trustProxy: false, // honour X-Forwarded-Host/-Proto — only behind a proxy you control
   checkOrigin: true, // CSRF origin check on server-action POSTs
@@ -181,81 +186,32 @@ export default defineConfig({
 });
 ```
 
-`defineConfig` is an identity helper for editor autocomplete; `export default { … } satisfies RshonoConfig` works too. `deploy` and `rspack` are consumed by the CLI; the framework settings (`trustProxy`, `checkOrigin`, `allowedOrigins`, `csp`, `cspDirectives`, `bodySizeLimit`) are resolved from this file at build time and **compiled into the server bundle** — there is no parallel env-var interface for them (environment variables are for secrets). Changing one of these settings means a rebuild. Point `rshono build` at a different config with `--config <path>`.
+`deploy` and `rspack` are consumed by the CLI; the rest are **compiled into the server bundle** at build
+time, so changing one means a rebuild and there is no parallel env-var interface for them (environment
+variables are for secrets). The port and bind address are deliberately not config fields — on every host
+that runs this, the environment is what sets them. [Configuration docs](https://www.rshono.com/docs/configuration).
 
-**The port and bind address are not config fields.** They are `--port` / `PORT` and `HOST`, in that precedence order, falling back to `3000` and `0.0.0.0` — because on every host that runs this (a container, a process manager, a PaaS) the environment is what sets them, so a config field would only have been a level that always loses.
+The defaults those fields describe, in short: CSRF-checked action POSTs, untrusted proxy headers, a 1 MiB
+body cap on **every** route, `nosniff` / `Referrer-Policy` / `X-Frame-Options` on every response,
+`private, no-cache` plus `Vary: Accept` on dynamic pages, `public, max-age=300` and a weak `ETag` on
+prerendered ones, and errors redacted in production — with one `onServerError()` funnel for reporting them
+and three fallbacks (a fatal client overlay, a visible 500 document, a reported bootstrap failure) so a
+failure is never a blank screen.
 
-A `.ts` config is loaded by Node's own type stripping, with no TypeScript loader in the dependency tree. The one thing that costs: Node will not resolve a `.js` specifier to the `.ts` file beside it, so a config that imports a sibling module has to name it with its real extension (or be an `.mjs` file).
+## Prerendering (`render: 'static'`)
 
-## Security & hardening
-
-- **Every `'use server'` export is a public HTTP endpoint.** That's the RSC model, not an rshono choice: the client is handed an id for each action and can call it with whatever arguments it likes. The CSRF check below proves a request came from your own site — it says nothing about _who_ sent it. Authenticate and authorize inside the action (and validate its arguments) exactly as you would in a route handler.
-- **CSRF**: server-action POSTs are origin-checked automatically — a cross-origin `Origin` (compared against your own host) is rejected with 403, as is anything the browser labels `Sec-Fetch-Site: cross-site`/`same-site`. A browser-asserted `Sec-Fetch-Site: same-origin` is accepted directly, which is what keeps the check from misfiring behind a proxy that rewrites `Host`. Applies to both client-initiated calls and no-JS form posts. Turn it off with `checkOrigin: false` behind a gateway that already enforces it, or list trusted cross-origins in `allowedOrigins` (full origins or bare hosts; a malformed entry fails the build).
-- **Proxy headers are not trusted by default.** `X-Forwarded-Host` / `-Proto` are client-supplied, so honouring them blindly lets anyone who can reach the server dictate the origin of every absolute URL the app builds (`getRequestContext().url`, a page's `url` prop) — poisoning canonical tags, emails and redirects, and any shared cache in front. Set `trustProxy: true` only when a proxy you control sets those headers; `rshono dev` forces it on for its own localhost-bound proxy.
-- **Client disconnect**: a render is aborted when the client goes away, so a browser that navigated on stops the work it asked for. There is **no request deadline in the framework** — a `renderTimeout` setting used to wrap every request in a timer, but every host this deploys to enforces one already (Workers, Vercel and Lambda all do), leaving a bare Node process as the only shape that needed it. Put it in your proxy, or in your own middleware if you want it in-process:
-
-  ```ts
-  // src/server.ts — a deadline for a Node deploy that fronts nothing
-  const TIMEOUT_MS = 10_000;
-  server.use(async (c, next) => {
-    const timedOut = Symbol('timeout');
-    const timer = new Promise((resolve) => setTimeout(() => resolve(timedOut), TIMEOUT_MS).unref?.());
-    if ((await Promise.race([next(), timer])) === timedOut) return c.text('Gateway Timeout', 504);
-  });
-  ```
-
-  Note what that cannot do, and what the framework's own version could not either: the abandoned render keeps running to completion. All either one buys you is not holding the socket open for it.
-
-- **Request-body limit**: request bodies are capped (`bodySizeLimit`, default 1048576 = 1 MiB) before they're buffered into memory — oversized bodies are rejected with `413 Payload Too Large`. This covers **every** route, not just server actions: `{ type: 'endpoint' }` routes and the `src/server.ts` sub-app are equally exposed the moment they call `.json()` or `.formData()`. An over-cap `Content-Length` is refused up front; bodies that omit it (chunked) are cut off mid-stream. Set to `false`/`0` to disable (e.g. behind a proxy that already enforces a limit, or to stream a large upload yourself). Raise it for large multipart uploads.
-- **Baseline response headers**: `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin` and `X-Frame-Options: SAMEORIGIN` on every response, unconditionally. The framing header is the floor for everyone who hasn't opted into `csp` — that policy's `frame-ancestors 'none'` is stricter and takes precedence where both apply. Set any of them in your own middleware to override.
-- **Caching defaults**: a dynamic page is answered with `Cache-Control: private, no-cache` — a page is request-specific by default (cookies, session, headers), and with no directives at all a shared cache is free to store one user's page and serve it to the next. `private` forbids exactly that, and `no-cache` makes the browser revalidate rather than re-show a stale personalised page; neither disables bfcache the way `no-store` would. Set your own value (from middleware, or `getRequestContext().raw.header(…)`) and it is left alone. Prerendered pages keep `public, max-age=300` and carry a weak `ETag`, so a revalidation costs a 304 instead of the page.
-- **`Vary: Accept` on page responses.** One URL answers with an HTML document or a flight payload depending on `Accept`. Without `Vary` a cache keyed on the URL alone will eventually hand a document to a soft navigation that asked for flight — a hard reload at best. Compression appends `Accept-Encoding` to the same header rather than replacing it.
-- **CSP (opt-in)**: set `csp: true` to send a strict per-request-nonce `Content-Security-Policy` with every HTML document (nonce stamped on bootstrap scripts, inlined flight payload, and dynamically loaded chunks). Beyond `default-src 'self'` it also closes the gaps `default-src` doesn't cover — `base-uri`, `object-src`, `frame-ancestors`, `form-action` — so it blocks framing and third-party assets until you widen it with `cspDirectives` (the nonce is always re-appended to `script-src`, and `''` drops a directive). While enabled, the **document** for a `render: 'static'` route is rendered per request — a prerendered file can't carry a per-request nonce. Its flight payload never carries one, so soft navigations are still served from the prerender.
-- **Error reporting**: every error the framework catches — a thrown action, a failed render, SSR falling over, anything reaching the top-level handler — goes through one funnel. Register a handler at the top level of `src/server.ts` to send them somewhere real; they keep going to `stderr` either way, and a handler that throws is caught rather than failing the request.
-
-  ```ts
-  // src/server.ts
-  import { onServerError } from '@rshono/core/server';
-
-  onServerError((error, { source, request }) => {
-    Sentry.captureException(error, { tags: { source }, extra: { url: request.url } });
-  });
-  ```
-
-- **Error responses**: thrown server-action errors are logged server-side and redacted in the production payload (React sends no message or digest for them) — so return values, not throws, for anything the user should see. Custom 404/500 pages are real server components declared in routes.ts (`notFound` / `error`); the error page's `error` prop is message-only in production, message + stack in dev.
-- **No blank screens.** Three fallbacks behind the `error` page, so a failure is always something you can read:
-  - An **uncaught client-side render error** makes React tear down its root — which here is the whole `document`, so the page would go genuinely white with the reason only in the console. The runtime paints a fatal overlay over it instead: full stack and component stack in dev, a generic notice plus a reload button in production (the dev detail is compiled out of the production bundle).
-  - If **SSR fails before the shell is sent**, the `error` page can't be reached either, so the framework answers with its own visible 500 document — the real message and stack in dev, generic in production. It deliberately attaches no client runtime: the flight payload came from the same failed render, so hydrating it would tear the document down and blank the message.
-  - A **client bootstrap failure** (a truncated or malformed initial payload) is reported and surfaced rather than becoming a silent unhandled rejection.
-
-## Testing
-
-`pnpm --filter @rshono/core test` builds the package and runs everything that doesn't need a browser:
-
-- **unit** — the parsers and path maths (`bodySizeLimit`, `allowedOrigins`, SSG paths and traversal, control-signal digests, page-file scanning, `Vary`/`ETag` helpers). Imports the built `dist/`, so it also proves the published output loads in plain Node.
-- **production e2e** — builds `apps/testbed`, boots the real production server, and asserts pages, flight protocol, actions (client + progressive enhancement), CSRF rejection, secret stripping in bundles _and_ rendered HTML, SSG output with `ETag`/304, cache and security headers, and error reporting. Settings baked into the bundle (CSP, CSRF allowlist/origin-check, body-size cap) each get their own build from a fixture config (`test/fixtures/`, via `rshono build --config`).
-- **minimal app** — a fixture with `src/routes.ts` and nothing else: no `server.ts`, no `public/`, no config, no `notFound`/`error` pages. Everything the docs call optional, actually left out.
-- **postcss** — a Tailwind fixture wiring the loader up through the `rspack` hook, from an `@import "tailwindcss"` nothing could resolve through to compiled utilities in the stylesheet the served page links. The documented four lines, actually run.
-- **dev** — a smoke test through the dev server's worker + proxy.
-
-`pnpm --filter @rshono/core test:browser` runs the Playwright suite against a production build: hydration, soft navigation, `useNavigation`, client-initiated actions, boundary fallbacks and the fatal overlay — the client runtime, which no amount of asserting on HTML can reach.
-
-## How it works
-
-Two coordinated Rspack compilers (native RSC support, `rspack.experiments.rsc`):
-
-- **client** (`target: web`) → `dist/static`: hydration runtime, `'use client'` chunks, CSS.
-- **server** (`target: node`) → `dist/server/main.mjs`: the app server itself — a Hono app assembled from your routes, rendered through two layers (RSC layer with the `react-server` condition → flight payload; SSR layer → HTML stream with the payload inlined for hydration).
-
-In dev, the CLI watches both bundles, runs the server bundle in a worker thread (restarted per rebuild; requests gate on readiness — no dropped connections), and fronts everything on one port with static serving and an SSE channel: client edits hot-apply via react-refresh, server component edits re-fetch the payload in place — browser state survives both.
-
-In production, `dist/server/main.mjs` is self-contained (React, Hono and the framework are bundled in; your other npm dependencies resolve from `node_modules`): `rshono start` or any process manager running `node dist/server/main.mjs`.
-
-Everything in that bundle that depends on _where_ it runs — binding a port, serving `/_static` and `public/`, reading a prerendered page, loading `.env` — sits behind a single interface (`DeployRuntime`) that the build resolves per `deploy` target, so the request-handling code has no platform in it. The entry's default export is whatever the platform expects: nothing where rshono owns the process, a `fetch` handler where the host does.
+A static route is built once and served from disk in **both** representations — `index.html` for a hard load,
+`index.rsc` for the flight payload a soft navigation asks for — each with a weak `ETag`. Set **`siteUrl`** if
+those pages build absolute URLs: one set of bytes is handed to everyone, so the origin has to be decided at
+build time (without it the build warns and uses `http://localhost`). A page that can't be prerendered — no
+`staticPaths`, or it didn't render cleanly — is reported by the build and falls back to rendering per
+request. [Static rendering docs](https://www.rshono.com/docs/routing#static-rendering).
 
 ## Deployment
 
-`rshono build` targets one platform. Pick it with `deploy` in the config, `--deploy <name>`, or `RSHONO_DEPLOY` (in that precedence order); the default is `node`. `rshono dev` always runs the Node dev server whatever you choose — the target is a property of the build, not of developing.
+`rshono build` targets one platform. Pick it with `deploy` in the config, `--deploy <name>` or
+`RSHONO_DEPLOY`, in that precedence order; the default is `node`. `rshono dev` always runs the Node dev
+server whatever you choose — the target is a property of the build, not of developing.
 
 | `deploy`     | Handoff                          | Assets & prerendered pages                                      | After `build`                               |
 | ------------ | -------------------------------- | --------------------------------------------------------------- | ------------------------------------------- |
@@ -264,26 +220,69 @@ Everything in that bundle that depends on _where_ it runs — binding a port, se
 | `vercel`     | web handler in a Node function   | CDN for assets; prerendered pages inside the function           | `vercel deploy --prebuilt`                  |
 | `aws-lambda` | streaming handler (Function URL) | from the deployment package                                     | zip `dist/`, handler `dist/server/main.mjs` |
 
-One target per _handoff_ — the thing an app cannot arrange for itself. Everything else about a platform sits behind `DeployRuntime`, and `node`, `vercel` and `aws-lambda` share one filesystem implementation.
+One target per _handoff_ — the thing an app cannot arrange for itself. Everything else about a platform sits
+behind one `DeployRuntime` interface, and `node`, `vercel` and `aws-lambda` share a filesystem implementation.
+Every target streams, which is the bar a new one has to clear.
 
-Every target streams: a page's HTML reaches the browser as it renders, which is the whole reason the SSR shell is worth having. That is the bar a new target has to clear.
+- **`node` is not only Node.** Anything that runs a Node process runs this build — a VPS, a container, a PaaS.
+  Bun (`bun dist/server/main.mjs`) and Deno (`deno run -A dist/server/main.mjs`) are expected to as well,
+  since the listener is `@hono/node-server`; they had a target each, which held nothing beyond a default
+  export. The suite runs on Node, so treat those two as an expectation rather than a guarantee.
+- **Don't build a handler out of the `app` export.** The entry calls `runtime.serveApp(app)` at module scope,
+  so importing a `node` build binds a port as a side effect. Build for the target you deploy to, and
+  `rshono start` will refuse a build made for another platform.
+- **Streaming is the fragile part of a serverless target, and it fails silently** — `supportsResponseStreaming`
+  on Vercel, `streamifyResponse` plus a `RESPONSE_STREAM` Function URL on Lambda. Getting those right is what
+  the presets are for.
+- **Prerendered pages are never CDN-served**: one URL answers with a document or a flight payload depending on
+  `Accept`, and a path-keyed CDN cannot choose. `/_static` and `public/` do go straight to the CDN.
 
-Notes worth knowing before choosing one:
-
-- **`node` is not only Node.** Anything that runs a Node process runs this build — a VPS, a container, a PaaS. **Bun** (`bun dist/server/main.mjs`) and **Deno** (`deno run -A dist/server/main.mjs`) are expected to as well, since the listener is `@hono/node-server` and both implement the `node:` APIs it needs. They had a target each; neither held anything beyond a default export, so running the `node` build replaces it. The suite runs on Node, so treat those two as an expectation rather than a guarantee.
-- **Netlify is not a target.** It was, and it was removed. Its handoff is `hono/netlify`'s `handle(app)` plus a `functions-internal` entry declaring `path: '/*'` and `preferStatic: true` — reconstructible, but you maintain it. If you want the preset back, ask.
-- **Do not reach for the `app` export to make your own handler.** The entry evaluates `runtime.serveApp(app)` at module scope, so importing a `node` build binds a port as a side effect. Build for the target you're deploying to.
-- **Streaming is the fragile part of a serverless target**, and it fails silently. Vercel needs `supportsResponseStreaming: true` in `.vc-config.json` or it buffers the whole response; Lambda needs `awslambda.streamifyResponse` and a Function URL in `RESPONSE_STREAM` mode. Both are what their preset exists to get right — the deployment works either way, it just stops streaming.
-- **AWS** means a Lambda Function URL with the invoke mode set to `RESPONSE_STREAM`, usually with CloudFront in front for `/_static` and `public/`. **Lambda@Edge is deliberately not a target**: CloudFront returns the response as a value rather than a stream, caps a generated origin-request response near 1 MB, and supports no environment variables at all — so `getRequestContext().env` would be empty there, which is a documented feature quietly doing nothing.
-- **Cloudflare** bundles all your dependencies (a Worker resolves no `node_modules` at runtime), so a dependency that needs a real `node:` API beyond `nodejs_compat` will not work. The build scaffolds a `wrangler.jsonc` if the project has none — including `nodejs_compat`, which the request context needs for `AsyncLocalStorage` — and never touches it again. Bindings (D1, KV, R2) arrive as `getRequestContext().env`; they are not available under `rshono dev`, which is plain Node.
-- **Prerendered pages are never CDN-served.** One URL answers with an HTML document or a flight payload depending on `Accept`, and a path-keyed CDN cannot choose, so the app always handles page URLs. Assets under `/_static` and `public/` do go straight to the CDN where there is one.
-- **Compression is not the framework's job.** `cloudflare` and `vercel` compress at the edge regardless, and a `node` or `aws-lambda` deploy is almost always behind something that does — a reverse proxy, a load balancer, CloudFront. rshono shipped a streaming-safe gzip for the two targets that might not be; it is gone, because it was one target's feature by the end and a proxy does it better. If you serve a bare Node process straight to the internet and want it, `hono/compress` is one `app.use` in `src/server.ts` — read its docs on streaming first, since a buffering compressor undoes streamed SSR.
-- `rshono start` refuses a build made for another platform rather than starting a bundle with no listener in it.
+[Deployment docs](https://www.rshono.com/docs/deployment), including Cloudflare bindings and the AWS setup.
 
 ## Requirements & limitations
 
-- Node ≥ 22.18 (worker threads, `process.loadEnvFile`, `Promise.withResolvers`, `URL.parse`, and native TypeScript stripping so a `.ts` config needs no loader), React ≥ 19.1 (the floor `react-server-dom-rspack` itself requires).
-- Responses are not compressed. A proxy, a load balancer or a CDN is where that belongs, and every hosted target already does it.
-- Scroll restoration is the browser's (`history.scrollRestoration = 'auto'`). A soft navigation to a new page starts at the top — or at the `#hash` the link named, once that page's payload is on screen — and a traversal is restored by the browser. Same-page anchors are untouched and jump natively.
-- Dev-mode proxy doesn't forward WebSocket upgrades to a custom sub-app (prod is unaffected — the bundle owns the socket there).
-- Dev source maps embed the original source of `'use server'` action modules (dev binds to 127.0.0.1 only; production ships no client source maps).
+- **Node ≥ 22.18** (worker threads, `process.loadEnvFile`, `Promise.withResolvers`, `URL.parse`, and native
+  TypeScript stripping, so a `.ts` config needs no loader) and **React ≥ 19.1** (the floor
+  `react-server-dom-rspack` requires).
+- No response compression, no prefetching, no base path (`siteUrl` is a bare origin), and wildcard, optional
+  and regex params cannot be prerendered.
+- Scroll restoration is the browser's (`history.scrollRestoration = 'auto'`).
+- The dev proxy doesn't forward WebSocket upgrades to a custom sub-app; production is unaffected.
+- Dev source maps embed the original source of `'use server'` modules (dev binds 127.0.0.1 only, and
+  production ships no client source maps).
+
+## Testing
+
+`pnpm --filter @rshono/core test` builds the package and runs everything that needs no browser:
+
+- **unit** — the parsers and path maths, against the built `dist/`, which also proves the published output
+  loads in plain Node.
+- **production e2e** — builds `apps/testbed`, boots the real production server, and asserts pages, the flight
+  protocol, actions (client and no-JS), CSRF rejection, secret stripping in bundles _and_ rendered HTML, SSG
+  output with `ETag`/304, cache and security headers, and error reporting. Settings baked into the bundle
+  (CSP, CSRF, body cap) each get their own build from a fixture config.
+- **the other deploy targets** — the `cloudflare` bundle driven as `fetch(request, env, ctx)` against a
+  stand-in `ASSETS` binding, a real build per serverless target checked against the handoff its platform
+  expects, and `rshono start`'s refusal to run a build made for another one.
+- **minimal app**, a fixture with `src/routes.ts` and nothing else (everything the docs call optional, left
+  out); **postcss**, the documented Tailwind wiring actually run; **dev**, a smoke test through the dev
+  server's worker and proxy.
+
+`pnpm --filter @rshono/core test:browser` runs the Playwright suite against a production build: hydration,
+soft navigation, `useNavigation`, client-initiated actions, boundary fallbacks and the fatal overlay — the
+client runtime, which no amount of asserting on HTML can reach.
+
+## How it works
+
+Two coordinated Rspack compilers, using native RSC support (`rspack.experiments.rsc`):
+
+- **client** (`target: web`) → `dist/static`: hydration runtime, `'use client'` chunks, CSS.
+- **server** (`target: node`) → `dist/server/main.mjs`: a Hono app assembled from your routes, rendered
+  through two layers — the RSC layer, with the `react-server` condition, produces the flight payload; the SSR
+  layer turns it into an HTML stream with the payload inlined for hydration.
+
+In dev the CLI watches both bundles, runs the server bundle in a worker thread (restarted per rebuild,
+requests gated on readiness so nothing drops), and fronts everything on one port with static serving and an
+SSE channel: client edits hot-apply via react-refresh, server component edits re-fetch the payload in place,
+and browser state survives both. In production `dist/server/main.mjs` is self-contained — React, Hono and the
+framework are bundled in; your other dependencies resolve from `node_modules`.
