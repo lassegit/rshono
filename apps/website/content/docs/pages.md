@@ -32,7 +32,7 @@ server component's _output_ on the wire, not its props.
 | -------- | ----------------------------------------------------------------------------------------------------- |
 | `url`    | The absolute browser-facing `URL`, proxy-header aware. A fresh instance per request.                  |
 | `params` | The matched route params. `PageProps<'/profile/:id'>` types `params.id` as `string`.                  |
-| `ctx`    | The request context — cookies, headers, env, middleware variables. Same object `getRequestContext()` returns. |
+| `ctx`    | The request context — `req`, cookies, env, middleware variables. Same object `getRequestContext()` returns. Reads only in a page: [writes throw](/docs/api#writes-happen-before-the-render). |
 
 Type `ctx.var` and `ctx.env` for your app by passing its Hono `Env`:
 

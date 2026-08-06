@@ -17,7 +17,7 @@ import { prerenderedRelPath, ssgFilePath } from '../dist/server/prerendered.js';
 import { prerenderStaticRoutes, readPrerendered, resolveSiteOrigin } from '../dist/server/ssg.js';
 import { injectFlightPayload } from '../dist/runtime/flight-inject.js';
 import { isControlDigest, parseRedirectDigest, RedirectSignal } from '../dist/runtime/control.js';
-import { RequestContext } from '../dist/runtime/context.js';
+import { beginPageRender, RequestContext } from '../dist/runtime/context.js';
 import { MINIMAL_APP_DIR } from './helpers.mjs';
 
 const tempDirs = [];
@@ -534,17 +534,56 @@ describe('RequestContext enumerability', () => {
 
   test('the Hono context is reachable but not enumerable, so a serializer cannot walk into it', () => {
     const ctx = new RequestContext(fakeHonoContext);
-    assert.equal(ctx.raw, fakeHonoContext, 'ctx.raw is documented public API and must keep working');
-    assert.ok(!Object.keys(ctx).includes('raw'), 'ctx.raw must not be an own enumerable property');
+    assert.equal(ctx.hono, fakeHonoContext, 'ctx.hono is documented public API and must keep working');
+    assert.ok(!Object.keys(ctx).includes('hono'), 'ctx.hono must not be an own enumerable property');
+    // `req` is the same hazard by a shorter path — it *is* the object holding the cycle.
+    assert.ok(!Object.keys(ctx).includes('req'), 'ctx.req must not be an own enumerable property either');
     assert.doesNotThrow(() => JSON.stringify(ctx), 'walking a RequestContext must not reach the cyclic Hono context');
   });
 
   test('the wrapper still resolves request data through the hidden context', () => {
     const ctx = new RequestContext(fakeHonoContext);
     assert.equal(ctx.url.pathname, '/');
-    // The pass-through getters (`req`, `method`, `params`) and the `header()` setter are gone; what they
-    // named is reached through `raw`, which is the only way in now.
-    assert.equal(ctx.raw.req.url, 'http://example.test/');
+    assert.equal(ctx.req.url, 'http://example.test/', 'ctx.req is the promoted Hono request');
+    assert.deepEqual(ctx.params, {}, 'ctx.params falls back to an empty record with no route match');
+    assert.equal(ctx.hono.req.url, 'http://example.test/', 'the escape hatch still reaches the same request');
+  });
+
+  // Hono's response builders are silent no-ops from inside a page, which is the confusion the stubs
+  // exist to end. Each must throw and name the API that does work.
+  test("Hono's response builders throw instead of doing nothing", () => {
+    const ctx = new RequestContext(fakeHonoContext);
+    assert.throws(() => ctx.redirect(), /Use `redirect\(\)` from '@rshono\/core\/server'/);
+    assert.throws(() => ctx.notFound(), /Use `notFound\(\)` from '@rshono\/core\/server'/);
+    assert.throws(() => ctx.header(), /Use `ctx\.setHeader\(name, value\)`/);
+    for (const call of ['json', 'text', 'html', 'body', 'status']) {
+      assert.throws(() => ctx[call](), /\[rshono\]/, `ctx.${call}() must throw rather than silently do nothing`);
+    }
+  });
+
+  test('response writes are allowed before the render and throw once it has begun', () => {
+    const headers = [];
+    const c = { ...fakeHonoContext, header: (name, value) => headers.push([name, value]) };
+    const ctx = new RequestContext(c);
+
+    // An action's context: the render has not started, so the write reaches the response.
+    ctx.setHeader('x-before', '1');
+    assert.deepEqual(headers, [['x-before', '1']]);
+
+    beginPageRender(c);
+    assert.throws(() => ctx.setHeader('x-after', '1'), /too late to affect the response/);
+    assert.throws(() => ctx.cookies.set('a', 'b'), /too late to affect the response/);
+    assert.throws(() => ctx.cookies.delete('a'), /too late to affect the response/);
+    assert.deepEqual(headers, [['x-before', '1']], 'nothing may be written after the render begins');
+  });
+
+  test('reads stay available throughout the render', () => {
+    const c = { ...fakeHonoContext, req: { ...fakeHonoContext.req, header: () => 'v' } };
+    const ctx = new RequestContext(c);
+    beginPageRender(c);
+    assert.equal(ctx.url.pathname, '/', 'ctx.url must survive the render marker');
+    assert.equal(ctx.req.header('x'), 'v', 'ctx.req must survive the render marker');
+    assert.deepEqual(ctx.params, {});
   });
 });
 

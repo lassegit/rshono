@@ -14,7 +14,7 @@ export default function Home({ url, ctx }: PageProps) {
           No server.ts, no public/, no config, no special pages.
         </p>
         {/* The `ctx` prop needs no config and no import — it works in the smallest app there is. */}
-        <p data-ctx-cookie={ctx.cookies.get('probe') ?? '(none)'} data-ctx-method={ctx.raw.req.method} />
+        <p data-ctx-cookie={ctx.cookies.get('probe') ?? '(none)'} data-ctx-method={ctx.req.method} />
       </body>
     </html>
   );

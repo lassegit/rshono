@@ -81,21 +81,48 @@ export default async function Dashboard() {
 What `getRequestContext()` returns, and the very same object a page gets as its `ctx` prop. Exported as a type
 only — one instance exists per request and application code never constructs it.
 
+Reads are safe anywhere. Writes are not — see [Writes happen before the render](#writes-happen-before-the-render).
+
 | Member                               | What it is                                                                                     |
 | ------------------------------------ | ---------------------------------------------------------------------------------------------- |
 | `url`                                | The browser-facing `URL`, proxy-header aware. Parsed once and cached.                          |
+| `req`                                | Hono's `HonoRequest` — method, headers, query, body readers.                                   |
+| `params`                             | Matched route params. A page gets these typed as its `params` prop; this is for everywhere else. |
 | `env`                                | Process env merged with runtime bindings (bindings win). See [Environment](/docs/configuration#environment-and-secrets). |
 | `var`                                | Typed variables a middleware set with `c.set(…)`.                                                    |
-| `raw`                                | The underlying Hono `Context` — the escape hatch for everything not above.                     |
 | `cookies.get(name)`                  | One cookie, or `undefined`.                                                                    |
 | `cookies.all()`                      | Every cookie as `{ name: value }`.                                                             |
-| `cookies.set(name, value, options?)` | Sets a cookie on the response.                                                                 |
-| `cookies.delete(name, options?)`     | Clears one. Pass the `path`/`domain` it was set with.                                          |
+| `cookies.set(name, value, options?)` | Sets a cookie on the response. **Throws in a page.**                                           |
+| `cookies.delete(name, options?)`     | Clears one. Pass the `path`/`domain` it was set with. **Throws in a page.**                    |
+| `setHeader(name, value, options?)`   | Sets a response header. **Throws in a page.**                                                  |
+| `hono`                               | The underlying Hono `Context` — the escape hatch for everything not above.                     |
 
-That is the whole wrapper. What it adds over Hono's own `Context` is a proxy-aware cached URL, an env
-that merges runtime bindings over process env, and cookies without a second import. Anything else is
-`ctx.raw` — `ctx.raw.req` for the parsed request, `ctx.raw.header(name, value)` to set a response header.
-Route params come to a page as its `params` prop.
+What this adds over Hono's own `Context` is a proxy-aware cached URL, an env that merges runtime
+bindings over process env, cookies without a second import, and writes that tell you when they cannot
+work. The long tail — `executionCtx.waitUntil()` and whatever Hono adds next — is `ctx.hono`.
+
+Hono's response builders (`redirect`, `notFound`, `json`, `text`, `html`, `body`, `status`, `header`)
+are present as stubs that throw and name the right API, because a page returns JSX and the framework
+builds the response from it — reaching them through `ctx.hono` bypasses the error without making them
+work.
+
+#### Writes happen before the render
+
+A page streams. By the time its component runs, the response head is committed — on a soft navigation
+the flight response is built before the page's first line executes. So `cookies.set`, `cookies.delete`
+and `setHeader` throw inside a page render rather than landing on a full page load and vanishing on a
+soft navigation.
+
+Where they do work:
+
+| Where                          | How                                                          |
+| ------------------------------ | -------------------------------------------------------------- |
+| `'use server'` actions         | `getRequestContext().cookies.set(…)` / `.setHeader(…)`       |
+| Middleware in `src/server.ts`  | `c.header(…)` / `setCookie(c, …)` — Hono's `c` directly      |
+| `{ type: 'endpoint' }` routes  | same, on the `c` the handler is passed                       |
+
+Middleware and endpoint routes run outside the request context, so `getRequestContext()` is not
+available in them — they are handed `c` instead, which is all they need.
 
 `ctx` cannot be handed to a `'use client'` component — it wraps the live request. Reading it on a
 [`render: 'static'`](/docs/routing#static-rendering) page throws, because there is no request at build
