@@ -102,7 +102,7 @@ export default async function Profile({ params, ctx }: PageProps<'/profile/:id'>
 - **`ctx` is the request context** — `ctx.req`, cookies, env, middleware variables, the proxy-aware URL. It is
   the same object `getRequestContext()` returns from `@rshono/core/server`, handed over so a page needs no
   import. Reading it on a `render: 'static'` page throws: a page rendered once at build time has no request.
-  A page can only *read* it — `cookies.set` and `setHeader` throw there, because a page streams and its
+  A page can only _read_ it — `cookies.set` and `setHeader` throw there, because a page streams and its
   response head is already committed; set them from a `'use server'` action or from middleware instead.
 - Page props are server-only and never serialized, and `ctx` cannot cross into a client component. Read what
   you need on the server and pass plain values down (`url.href`, not `url`).

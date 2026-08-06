@@ -47,6 +47,36 @@ export default function Home({ ctx }: PageProps<'/', AppEnv>) {
 }
 ```
 
+## Response headers and cookies
+
+Middleware is where a page's response headers belong. A page renders too late to set one — its response
+head is committed before the component runs, so [`ctx.setHeader()` throws
+there](/docs/api#writes-happen-before-the-render). Middleware runs first, and gets Hono's `c` directly:
+
+```ts
+import { setCookie } from 'hono/cookie';
+
+server.use('/blog/*', async (c, next) => {
+  await next();
+  c.header('cache-control', 'public, max-age=600, s-maxage=3600');
+});
+
+server.use('*', async (c, next) => {
+  if (!c.req.header('cookie')?.includes('visitor=')) setCookie(c, 'visitor', crypto.randomUUID(), { path: '/' });
+  await next();
+});
+```
+
+Matching on a path pattern is deliberate: one middleware covers a group of routes, so caching policy
+lives in one place rather than being repeated on every route that shares it.
+
+`getRequestContext()` is **not** available in middleware or in `{ type: 'endpoint' }` routes — the
+request context is bound around the render and the actions it runs, not around the whole Hono stack.
+Neither needs it: both are handed `c`, which is a superset.
+
+For a header that depends on a mutation rather than on the route — a session cookie after login — use a
+[server action](/docs/server-actions#cookies-and-headers) instead.
+
 ## End-to-end types for a client
 
 `export type AppType = typeof server` gives typed paths, params and responses with `hono/client`,

@@ -28,10 +28,10 @@ are `<form action>`. Same-origin anchors are soft-navigated automatically; `data
 Every page receives `{ url, params, ctx }`. They are server-only and never serialized — React puts a
 server component's _output_ on the wire, not its props.
 
-| Prop     | What it is                                                                                            |
-| -------- | ----------------------------------------------------------------------------------------------------- |
-| `url`    | The absolute browser-facing `URL`, proxy-header aware. A fresh instance per request.                  |
-| `params` | The matched route params. `PageProps<'/profile/:id'>` types `params.id` as `string`.                  |
+| Prop     | What it is                                                                                                                                                                                   |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `url`    | The absolute browser-facing `URL`, proxy-header aware. A fresh instance per request.                                                                                                         |
+| `params` | The matched route params. `PageProps<'/profile/:id'>` types `params.id` as `string`.                                                                                                         |
 | `ctx`    | The request context — `req`, cookies, env, middleware variables. Same object `getRequestContext()` returns. Reads only in a page: [writes throw](/docs/api#writes-happen-before-the-render). |
 
 Type `ctx.var` and `ctx.env` for your app by passing its Hono `Env`:
@@ -45,7 +45,35 @@ export default function Dashboard({ ctx }: PageProps<'/dashboard', AppEnv>) {
 ```
 
 Nested server components and `'use server'` actions get no props — they call `getRequestContext()` from
-`@rshono/core/server` for the same object.
+`@rshono/core/server` for the same object. There, `ctx.params` stands in for the `params` prop and
+`ctx.req` for the parsed request:
+
+```tsx
+import { getRequestContext } from '@rshono/core/server';
+
+async function Breadcrumb() {
+  const ctx = getRequestContext(); // no props down here
+  return (
+    <nav>
+      {ctx.params.id} · {ctx.req.method}
+    </nav>
+  );
+}
+```
+
+### A page can read `ctx`, not write to it
+
+`ctx.cookies.set()`, `ctx.cookies.delete()` and `ctx.setHeader()` **throw inside a page**. A page
+streams, so its response head is committed before the component runs — a cookie set here would arrive
+on a full page load and silently vanish on a soft navigation. Write it from a
+[server action](/docs/server-actions#cookies-and-headers) or from
+[middleware](/docs/hono#response-headers-and-cookies), both of which run first.
+
+Hono's response builders are the same story, and say so: `ctx.redirect()`, `ctx.notFound()`, `ctx.json()`
+and friends throw with a pointer to the API that works — `redirect()` and `notFound()` from
+`@rshono/core/server`, or an [endpoint route](/docs/routing#endpoint-routes) for a non-HTML response.
+`ctx.hono` is the full Hono `Context` for the long tail, and going through it bypasses the error rather
+than fixing it.
 
 ### `ctx` cannot cross into the client
 
