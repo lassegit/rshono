@@ -7,7 +7,7 @@
  * out of the path entirely and leaves only the router and response construction.
  */
 import { resolveTargets, ROUTES, flagValue, hasFlag } from './lib/targets.mjs';
-import { startServer, portFree } from './lib/proc.mjs';
+import { indent, startServer, portFree } from './lib/proc.mjs';
 import { drive, driverBoundWarning } from './lib/loadgen.mjs';
 import { treeRss } from './lib/rss.mjs';
 import { ms, num, bytes } from './lib/stats.mjs';
@@ -66,7 +66,9 @@ for (const target of targets) {
     server = await startServer(target, { env: serverEnv });
   } catch (error) {
     out.targets[target.id] = { label: target.label, error: error.message };
-    console.log(`  ✗ ${error.message.split('\n')[0]}`);
+    // Whole message — see the same call in payload.mjs. The reason a server did not start is in the
+    // output `startServer` appends, not in the headline.
+    console.log(indent(error.message));
     continue;
   }
 
@@ -108,7 +110,9 @@ for (const target of targets) {
 }
 
 for (const route of ROUTES) {
-  const byTarget = Object.fromEntries(Object.entries(out.targets).map(([id, t]) => [id, t.routes?.[route.id]?.rps]));
+  // Only routes that actually served 2xx. A failed one carries an rps that measures the error path,
+  // which would both skew the spread and invite a comparison against numbers that mean something else.
+  const byTarget = Object.fromEntries(Object.entries(out.targets).map(([id, t]) => [id, t.routes?.[route.id]?.ok ? t.routes[route.id].rps : null]));
   const warning = driverBoundWarning(byTarget);
   if (warning) {
     out.targets._warnings ??= {};
@@ -119,3 +123,23 @@ for (const route of ROUTES) {
 
 await merge('load', out);
 console.log('\nwrote results/latest.json → sections.load');
+
+/*
+ * The per-route ⚠ above scrolls past in a full run, and the number beside it looks like a result.
+ * Restate it at the end as the one thing that matters: these rows are not measurements. An error
+ * response skips the render, so a broken route reports *higher* rps than a working one — which is
+ * how a `/ssr` answering 500 to every request was once published as a 10× throughput win.
+ */
+const unmeasured = [];
+for (const route of ROUTES) {
+  for (const [id, target] of Object.entries(out.targets)) {
+    if (id === '_warnings') continue;
+    const result = target.routes?.[route.id];
+    if (result && result.ok === false) unmeasured.push(`${target.label} ${route.path} — ${result.problem}`);
+  }
+}
+if (unmeasured.length) {
+  console.log(`\n⚠ ${unmeasured.length} route(s) served errors and were NOT measured:`);
+  for (const line of unmeasured) console.log(`    ${line}`);
+  console.log('  The report shows these as “—”. Fix the route and re-run before quoting the throughput section.');
+}
