@@ -70,11 +70,15 @@ test('the security and caching defaults apply with no config file at all', async
   assert.match(res.headers.get('vary'), /Accept/);
 });
 
-test('a cross-origin action POST is rejected even with no config file', async () => {
+test('with no server.ts there is no CSRF check — that is `csrf()` from hono, and this app has none', async () => {
+  // The framework used to run an origin check of its own, configured by `checkOrigin` in
+  // rshono.config.ts. It is Hono's `csrf()` now, registered in src/server.ts, which this app does not
+  // have — so a cross-origin POST reaches the route rather than being refused. `create-rshono`
+  // scaffolds that middleware into every new app; an app hand-written down to routes.ts opts in.
   const res = await fetch(`${base}/`, {
     method: 'POST',
     headers: { origin: 'https://evil.test', 'content-type': 'application/x-www-form-urlencoded' },
     body: 'x=1',
   });
-  assert.equal(res.status, 403);
+  assert.notEqual(res.status, 403, 'nothing in the framework rejects this any more');
 });

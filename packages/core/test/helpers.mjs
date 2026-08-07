@@ -35,7 +35,9 @@ export const APP_ENV = {
 /**
  * Build any app directory with the real CLI, the way a user would. `config` is an absolute path to a
  * fixture config: config bakes into the bundle at build time, so exercising a non-default setting
- * (CSP, body limit, CSRF allowlist) means building with one rather than setting an env var.
+ * (`trustProxy`) means building with one. The security middleware in the testbed's src/server.ts —
+ * `csrf()`, `bodyLimit()`, `secureHeaders()` — is read from the environment at start instead, and
+ * needs no build of its own.
  */
 export function buildApp(dir, { config, args = [] } = {}) {
   const result = spawnSync(process.execPath, [CLI, 'build', ...(config ? ['--config', config] : []), ...args], {

@@ -9,7 +9,7 @@ what there is to know about the surface.
 | Import                | Runs                                 | Holds                                                                 |
 | --------------------- | ------------------------------------ | --------------------------------------------------------------------- |
 | `@rshono/core`        | build time, server                   | route and config declaration, and the types pages are written against |
-| `@rshono/core/server` | per request, server only             | the request context, `redirect` / `notFound`, error reporting         |
+| `@rshono/core/server` | per request, server only             | the request context, `redirect` / `notFound`, error reporting, `publicUrl` |
 | `@rshono/core/client` | browser, from `'use client'` modules | the navigation hook and the boundaries                                |
 
 `@rshono/core` pulls in no runtime machinery — importing it from server code is free. `@rshono/core/server`
@@ -62,6 +62,12 @@ Server-only, and request-scoped. See [Pages](/docs/pages) and [Server actions](/
 | `redirect(location, status?): never`        | Throws a control signal the framework turns into a redirect. `status` defaults to `303`.                                       |
 | `notFound(): never`                         | Aborts the render with a 404 and the app's not-found page.                                                                     |
 | `onServerError(handler): void`              | Registers one handler for every error the framework catches. Call it once, at the top level of `src/server.ts`.                |
+| `publicUrl(c): URL`                         | The browser-facing URL for a Hono `Context` — proxy-corrected under `trustProxy`. For middleware, which has no request context. |
+
+`publicUrl` is the one export here meant for `src/server.ts` rather than a component: middleware is
+handed Hono's `c` and reads `c.req.url`, the address the server was reached on. Give Hono's own
+middleware the browser's origin instead — `csrf({ origin: (origin, c) => origin === publicUrl(c).origin })`.
+In a server component or an action, `getRequestContext().url` is the same value, cached per request.
 
 `redirect` and `notFound` never return, so TypeScript narrows away the code after them and you don't
 need to `return` the call. Don't wrap either in a `try/catch` that swallows the signal.

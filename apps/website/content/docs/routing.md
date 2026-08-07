@@ -81,9 +81,9 @@ Rules worth knowing:
 - **Wildcard, optional and regex params cannot be prerendered.** A parameterised static route without
   `staticPaths` falls back to per-request rendering, and the build warns. So does a page that did not
   render cleanly.
-- **With [`csp: true`](/docs/configuration#csp-opt-in)** the document is rendered per request — a
+- **Under a [nonce-based CSP](/docs/configuration#csp)** the document is rendered per request — a
   prerendered file cannot carry a per-request nonce. The flight payload is still served from the
-  prerender.
+  prerender, and a policy with no nonce in it keeps its prerendered documents too.
 
 ## Endpoint routes
 

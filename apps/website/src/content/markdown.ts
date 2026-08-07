@@ -101,7 +101,7 @@ const COPY_RESET_DELAY = 2000;
  * what is rendered, and would hand back nothing for three blocks out of four.
  *
  * **This costs a CSP directive.** An event-handler attribute is inline script, and a nonce cannot cover
- * one, so `csp: true` would need `cspDirectives` to widen `script-src` with `'unsafe-hashes'` plus this
+ * one, so a `secureHeaders()` policy would need `scriptSrc` widened with `'unsafe-hashes'` plus this
  * handler's sha256. It is one constant string, so one hash covers every button on the site — but the
  * hash changes with the string, so it has to be regenerated whenever this is edited.
  */

@@ -1,5 +1,7 @@
-import { onServerError } from '@rshono/core/server';
+import { onServerError, publicUrl } from '@rshono/core/server';
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
+import { csrf } from 'hono/csrf';
 import { trimTrailingSlash } from 'hono/trailing-slash';
 
 /**
@@ -13,6 +15,24 @@ onServerError((error, { source, request }) => {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`[error] ${source} ${new URL(request.url).pathname}: ${message}`);
 });
+
+/**
+ * A memory-exhaustion guard. Everything downstream is covered — pages, server actions and the routes
+ * below — because anything that buffers a body (`.json()`, `.formData()`) is exposed, not just
+ * actions. Raise it where you accept uploads.
+ */
+server.use(bodyLimit({ maxSize: 1024 * 1024 }));
+
+/**
+ * Rejects a cross-origin POST with 403 before it can reach a server action.
+ *
+ * `publicUrl(c)` is the origin the browser used; Hono's own default would compare against
+ * `c.req.url`, the address this server was reached on, which is the internal one behind any proxy —
+ * `rshono dev` included. Allow more origins by adding them to the list.
+ */
+const ALLOWED_ORIGINS: string[] = [];
+
+server.use(csrf({ origin: (origin, c) => origin === publicUrl(c).origin || ALLOWED_ORIGINS.includes(origin) }));
 
 /** `/about/` and `/about` should not be two pages. */
 server.use(trimTrailingSlash({ alwaysRedirect: true }));

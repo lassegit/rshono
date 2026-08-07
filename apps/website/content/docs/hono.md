@@ -33,6 +33,40 @@ trailing-slash — wraps page requests too.
 The flip side: a _terminal_ handler at the same path as a page route **shadows the page**. Middleware
 that calls `next()` is fine; a handler that returns a response is not.
 
+## Security middleware
+
+Because the sub-app wraps page requests, this is also where the app's security controls go. The
+framework ships none of its own — Hono's are better tested than anything rshono would write, and a
+config field would only be a worse way to spell the same call:
+
+```ts
+import { publicUrl } from '@rshono/core/server';
+import { bodyLimit } from 'hono/body-limit';
+import { csrf } from 'hono/csrf';
+import { NONCE, secureHeaders } from 'hono/secure-headers';
+
+server.use(bodyLimit({ maxSize: 1024 * 1024 }));
+server.use(csrf({ origin: (origin, c) => origin === publicUrl(c).origin }));
+server.use(secureHeaders({ contentSecurityPolicy: { scriptSrc: ["'self'", NONCE] } }));
+```
+
+`create-rshono` scaffolds `bodyLimit` and `csrf` into every new app. Three things worth knowing:
+
+- **`publicUrl(c)`, not `c.req.url`.** Every Hono middleware resolves the origin from `c.req.url`, which
+  is the address this server was _reached_ on — the internal one behind any proxy, `rshono dev`
+  included. `publicUrl` honours [`trustProxy`](/docs/configuration#proxy-headers).
+- **`NONCE` makes a CSP per-request.** Hono mints the nonce; rshono stamps it onto the bootstrap
+  scripts and the inlined flight payload, and widens `script-src` with `'unsafe-eval'` under
+  `rshono dev` only. See [CSP](/docs/configuration#csp).
+- **An `HTTPException` keeps its status.** Middleware that rejects by throwing one — `csrf()` with a
+  403, `bodyLimit()` with a 413, your own `throw new HTTPException(401)` — is handed straight back
+  rather than rendered as the 500 page.
+
+One gap: `/_static` assets are served before the sub-app is reached, so middleware never sees them. The
+framework sets `nosniff`, `Referrer-Policy` and `X-Frame-Options` on
+[every response](/docs/configuration#response-headers-and-caching) to cover them, and stands aside
+wherever your own `secureHeaders()` set the same header.
+
 ## Typing the context
 
 The `Env` given to the Hono app is the same one that types `ctx` on a page. Pass it to `PageProps` and

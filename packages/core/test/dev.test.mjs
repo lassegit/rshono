@@ -5,7 +5,9 @@ import assert from 'node:assert/strict';
 import { after, test } from 'node:test';
 import { startTestbed, stopServer } from './helpers.mjs';
 
-const { base, child, port } = await startTestbed('dev', { timeoutMs: 90_000 });
+// Served under the testbed's hardened profile, so the dev-only half of the CSP contract is covered
+// here: the app writes one policy for both environments and the framework widens it for React Refresh.
+const { base, child, port } = await startTestbed('dev', { timeoutMs: 90_000, env: { TESTBED_CSP: '1' } });
 after(() => stopServer(child));
 
 test('dev serves both representations of a page through the worker proxy', async () => {
@@ -42,13 +44,34 @@ test('dev does not serialize the ctx page prop into the flight payload', async (
   assert.match(flight, /data-ctx/, 'the page should still have rendered its ctx-derived markup');
 });
 
-test('a cross-origin action is still rejected in dev (trustProxy does not weaken the CSRF check)', async () => {
-  const res = await fetch(`${base}/signup`, {
-    method: 'POST',
-    headers: { Origin: 'https://evil.example', 'sec-fetch-site': 'cross-site' },
-    body: new FormData(),
-  });
-  assert.equal(res.status, 403);
+test("dev widens the app's own script-src with 'unsafe-eval', which React Refresh needs", async () => {
+  // The app's `secureHeaders()` policy says nothing about eval — see the same policy asserted
+  // *without* it in prod-config.test.mjs. React Refresh compiles updates with eval, so a policy that
+  // worked in production would break HMR; the framework adds it here rather than making every app
+  // remember to branch on the environment.
+  const res = await fetch(`${base}/`);
+  const csp = res.headers.get('content-security-policy');
+  assert.ok(csp, 'the app registered a CSP, so dev should carry it too');
+  assert.match(csp, /script-src 'unsafe-eval'/, 'dev must widen script-src for React Refresh');
+  assert.match(csp, /'nonce-[^']+'/, 'and the nonce Hono minted must survive the widening');
+
+  const nonce = csp.match(/'nonce-([^']+)'/)[1];
+  assert.ok((await res.text()).includes(`nonce="${nonce}"`), 'the nonce should reach the rendered scripts in dev too');
+});
+
+test("csrf() works through the dev server's own proxy, in both directions", async () => {
+  // The dev server fronts the app on one port and proxies to a worker on another, and `csrf()`
+  // compares `Origin` against `c.req.url` — the address the *worker* was reached on. That only lines
+  // up because the proxy forwards the browser's `Host` header along, so both halves are asserted
+  // here: a forged origin is refused, and a genuine same-origin post is not.
+  const post = (headers) => fetch(`${base}/signup`, { method: 'POST', headers, body: new FormData() });
+
+  const forged = await post({ Origin: 'https://evil.example', 'sec-fetch-site': 'cross-site' });
+  assert.equal(forged.status, 403, 'a cross-origin action must be rejected in dev too');
+
+  const genuine = await post({ Origin: base, 'sec-fetch-site': 'cross-site' });
+  await genuine.text();
+  assert.notEqual(genuine.status, 403, "the app's own origin must survive the dev proxy's extra hop");
 });
 
 test('a render failure shows the real error and stack in dev', async () => {

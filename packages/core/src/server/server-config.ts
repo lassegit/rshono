@@ -1,12 +1,16 @@
 import type { RshonoConfig } from '../config.js';
 
 /**
- * The framework settings the server bundle needs at request time, fully resolved
- * (defaults applied, `bodySizeLimit` parsed to bytes, origins normalized to hosts).
+ * The framework settings the server bundle needs at request time, fully resolved.
  *
  * The value is produced once by {@link resolveServerConfig} from `rshono.config.ts`
  * and compiled into the server bundle as the `__RSHONO_CONFIG__` literal (see
  * `builder/rspack-config.ts`) — there is no runtime env-var interface for these.
+ *
+ * Only two fields, because only two things here are decided by the *build*. The per-request
+ * security controls that used to live alongside them — the CSRF check, the CSP, the body cap — are
+ * Hono middleware an app registers in `src/server.ts`, where they can be configured per route and
+ * per environment instead of once per bundle.
  */
 export interface ServerConfig {
   /**
@@ -18,90 +22,19 @@ export interface ServerConfig {
   isDev: boolean;
   /** Honour `X-Forwarded-Host` / `-Proto` when resolving the browser-facing URL. Forced on in dev. */
   trustProxy: boolean;
-  /** Send a strict per-request-nonce Content-Security-Policy with every HTML document. */
-  cspEnabled: boolean;
-  /** The resolved CSP directives (built-in defaults with the user's merged over them), minus the nonce. */
-  cspDirectives: Record<string, string>;
-  /** CSRF origin check on server-action POSTs. */
-  checkOrigin: boolean;
-  /** Extra origins allowed to post server actions, normalized to lowercase `URL.host` values. */
-  allowedOrigins: string[];
-  /** Max request body in bytes before a 413; `0` disables the cap. */
-  maxBodyBytes: number;
 }
 
 /**
  * The framework's built-in defaults.
  *
- * `maxBodyBytes` is resolved from here into the bundle. `port` and `host` are not config fields at
- * all — they come from `PORT` / `HOST` (or `--port`) wherever the address is resolved,
- * `deploy/node/runtime.ts` for a server bundle and `cli/dev.ts` for the dev server, and this is what
- * both fall back to.
+ * `port` and `host` are not config fields at all — they come from `PORT` / `HOST` (or `--port`)
+ * wherever the address is resolved, `deploy/node/runtime.ts` for a server bundle and `cli/dev.ts`
+ * for the dev server, and this is what both fall back to.
  */
 export const SERVER_DEFAULTS = {
-  maxBodyBytes: 1024 * 1024, // 1 MiB, matching Next.js's server-action body-size limit.
   port: 3000,
   host: '0.0.0.0',
 } as const;
-
-/**
- * The built-in {@link RshonoConfig.csp} policy, keyed by directive so
- * {@link RshonoConfig.cspDirectives} can override entries individually.
- *
- * `script-src` carries the per-request nonce, appended at request time (see `entry.rsc.tsx`).
- * `style-src` needs `'unsafe-inline'` because React writes inline styles.
- */
-export const CSP_DEFAULTS: Record<string, string> = {
-  'default-src': "'self'",
-  'script-src': "'self'",
-  'style-src': "'self' 'unsafe-inline'",
-  'img-src': "'self' data:",
-  'connect-src': "'self'",
-  // Not covered by default-src, and each closes an injection route of its own: a stray <base>
-  // retargeting every relative URL, plugin content, framing (clickjacking), off-site form posts.
-  'base-uri': "'self'",
-  'object-src': "'none'",
-  'frame-ancestors': "'none'",
-  'form-action': "'self'",
-};
-
-const UNITS: Record<string, number> = { b: 1, kb: 1024, mb: 1024 ** 2, gb: 1024 ** 3 };
-
-/** Parse a {@link RshonoConfig.bodySizeLimit} value into a byte count (`false`/`0` → `0`, disabling the cap). */
-export function parseByteSize(value: string | number | false | undefined): number | undefined {
-  if (value === undefined) return undefined;
-  if (value === false) return 0;
-  if (typeof value === 'number') return value;
-  const match = /^\s*(\d+(?:\.\d+)?)\s*(b|kb|mb|gb)?\s*$/i.exec(value);
-  if (!match) {
-    throw new Error(`[rshono] invalid bodySizeLimit ${JSON.stringify(value)} — use e.g. '1mb', 1048576, or false.`);
-  }
-  return Math.floor(Number(match[1]) * UNITS[(match[2] ?? 'b').toLowerCase()]);
-}
-
-/**
- * Normalize a config `allowedOrigins` entry (full origin or bare host) to a lowercase `URL.host`,
- * ready for a direct comparison against a parsed `Origin` header's host.
- *
- * A bare `host:port` has to be retried against a base: on its own `'localhost:4000'` parses as the
- * *scheme* `localhost:` with path `4000`, leaving an empty host that would never match anything.
- * Throws rather than passing a junk entry through, so a typo fails the build instead of quietly
- * disabling the allowlist entry it was meant to add.
- */
-function normalizeOrigin(entry: string): string {
-  const host = URL.parse(entry)?.host || URL.parse(`http://${entry}`)?.host;
-  if (!host) {
-    throw new Error(
-      `[rshono] invalid allowedOrigins entry ${JSON.stringify(entry)} — use a full origin ('https://admin.example.com') or a bare host ('localhost:4000').`,
-    );
-  }
-  return host.toLowerCase();
-}
-
-/** Drop directives the user blanked out, so `cspDirectives: { 'frame-ancestors': '' }` removes one. */
-function resolveCspDirectives(overrides: Record<string, string> | undefined): Record<string, string> {
-  return Object.fromEntries(Object.entries({ ...CSP_DEFAULTS, ...overrides }).filter(([, value]) => value.trim() !== ''));
-}
 
 /**
  * Resolve the user's {@link RshonoConfig} into the {@link ServerConfig} baked into the bundle.
@@ -114,13 +47,5 @@ export function resolveServerConfig(config: RshonoConfig, { isDev }: { isDev: bo
   return {
     isDev,
     trustProxy: isDev || (config.trustProxy ?? false),
-    cspEnabled: config.csp ?? false,
-    cspDirectives: resolveCspDirectives(config.cspDirectives),
-    checkOrigin: config.checkOrigin ?? true,
-    allowedOrigins: (config.allowedOrigins ?? [])
-      .map((entry) => entry.trim())
-      .filter(Boolean)
-      .map(normalizeOrigin),
-    maxBodyBytes: parseByteSize(config.bodySizeLimit) ?? SERVER_DEFAULTS.maxBodyBytes,
   };
 }
