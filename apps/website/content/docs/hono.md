@@ -37,35 +37,137 @@ that calls `next()` is fine; a handler that returns a response is not.
 
 Because the sub-app wraps page requests, this is also where the app's security controls go. The
 framework ships none of its own — Hono's are better tested than anything rshono would write, and a
-config field would only be a worse way to spell the same call:
+config field would only be a worse way to spell the same call. `create-rshono` puts the first two in
+every new app.
+
+### Request-body limit
+
+Caps a body _before_ it is buffered into memory and answers `413`. Registered here it covers
+everything downstream — pages, server actions and your own handlers — since any of them is exposed the
+moment it calls `.json()` or `.formData()`:
+
+```ts
+import { bodyLimit } from 'hono/body-limit';
+
+server.use(bodyLimit({ maxSize: 1024 * 1024 })); // 1 MiB
+```
+
+An over-cap `Content-Length` is refused up front; a chunked body is cut off mid-stream. Raise it on
+one path rather than globally where you accept uploads:
+
+```ts
+server.use('/api/upload', bodyLimit({ maxSize: 50 * 1024 * 1024 }));
+```
+
+[Hono — Body Limit](https://hono.dev/docs/middleware/builtin/body-limit)
+
+### CSRF
+
+Rejects a cross-origin POST with 403 before it can reach a server action:
 
 ```ts
 import { publicUrl } from '@rshono/core/server';
-import { bodyLimit } from 'hono/body-limit';
 import { csrf } from 'hono/csrf';
-import { NONCE, secureHeaders } from 'hono/secure-headers';
 
-server.use(bodyLimit({ maxSize: 1024 * 1024 }));
 server.use(csrf({ origin: (origin, c) => origin === publicUrl(c).origin }));
-server.use(secureHeaders({ contentSecurityPolicy: { scriptSrc: ["'self'", NONCE] } }));
 ```
 
-`create-rshono` scaffolds `bodyLimit` and `csrf` into every new app. Three things worth knowing:
+Use `publicUrl(c)` rather than Hono's default same-origin comparison, which reads `c.req.url` — the
+address this server was _reached_ on, which is the internal one behind any proxy, `rshono dev`
+included. It honours [`trustProxy`](/docs/configuration#proxy-headers), so it stays `c.req.url` where
+no proxy is declared. To allow more origins:
 
-- **`publicUrl(c)`, not `c.req.url`.** Every Hono middleware resolves the origin from `c.req.url`, which
-  is the address this server was _reached_ on — the internal one behind any proxy, `rshono dev`
-  included. `publicUrl` honours [`trustProxy`](/docs/configuration#proxy-headers).
-- **`NONCE` makes a CSP per-request.** Hono mints the nonce; rshono stamps it onto the bootstrap
-  scripts and the inlined flight payload, and widens `script-src` with `'unsafe-eval'` under
-  `rshono dev` only. See [CSP](/docs/configuration#csp).
-- **An `HTTPException` keeps its status.** Middleware that rejects by throwing one — `csrf()` with a
-  403, `bodyLimit()` with a 413, your own `throw new HTTPException(401)` — is handed straight back
-  rather than rendered as the 500 page.
+```ts
+server.use(
+  csrf({
+    origin: (origin, c) => origin === publicUrl(c).origin || origin === 'https://admin.example.com',
+  }),
+);
+```
+
+It only inspects the content types a browser can send cross-origin without a preflight — which is
+exactly the shape a server action arrives in, so a JSON API route is unaffected.
+
+[Hono — CSRF](https://hono.dev/docs/middleware/builtin/csrf)
+
+### Security headers and CSP
+
+`secureHeaders()` with no arguments sets a sensible set — HSTS, COOP, CORP, `nosniff`,
+`X-Frame-Options` and more:
+
+```ts
+import { secureHeaders } from 'hono/secure-headers';
+
+server.use(secureHeaders());
+```
+
+Add Hono's `NONCE` placeholder to `scriptSrc` and the CSP becomes per-request: Hono mints the nonce,
+and rshono stamps that value onto the bootstrap scripts and the inlined flight payload.
+
+```ts
+import { NONCE, secureHeaders } from 'hono/secure-headers';
+
+server.use(
+  secureHeaders({
+    contentSecurityPolicy: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", NONCE],
+      styleSrc: ["'self'", "'unsafe-inline'"], // React writes inline styles
+    },
+  }),
+);
+```
+
+Nothing there mentions `'unsafe-eval'`: React Refresh needs it, so rshono widens `script-src` under
+`rshono dev` and never in a build — one policy serves both. See [CSP](/docs/configuration#csp) for the
+full policy and what a nonce costs a static route.
+
+[Hono — Secure Headers](https://hono.dev/docs/middleware/builtin/secure-headers)
+
+### Rejections keep their status
+
+Middleware that refuses a request by throwing an `HTTPException` — `csrf()` with a 403, `bodyLimit()`
+with a 413, your own guard — is handed straight back rather than rendered as the 500 page:
+
+```ts
+import { HTTPException } from 'hono/http-exception';
+
+server.use('/admin/*', async (c, next) => {
+  if (!c.req.header('authorization')) throw new HTTPException(401, { message: 'Unauthorized' });
+  await next();
+});
+```
 
 One gap: `/_static` assets are served before the sub-app is reached, so middleware never sees them. The
 framework sets `nosniff`, `Referrer-Policy` and `X-Frame-Options` on
 [every response](/docs/configuration#response-headers-and-caching) to cover them, and stands aside
 wherever your own `secureHeaders()` set the same header.
+
+## Other middleware worth knowing
+
+Everything Hono ships works here, because this really is a Hono app. The ones that come up most:
+
+| Middleware                                                                 | For                                                                 |
+| -------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| [`cors`](https://hono.dev/docs/middleware/builtin/cors)                    | Cross-origin access to your `{ type: 'endpoint' }` API routes       |
+| [`basicAuth`](https://hono.dev/docs/middleware/builtin/basic-auth)         | Password-gating a staging deploy or an admin path                   |
+| [`bearerAuth`](https://hono.dev/docs/middleware/builtin/bearer-auth)       | Static-token auth on an API route                                   |
+| [`jwt`](https://hono.dev/docs/middleware/builtin/jwt)                      | Verifying a JWT and putting its payload on `c.var.jwtPayload`       |
+| [`requestId`](https://hono.dev/docs/middleware/builtin/request-id)         | A trace id per request, readable from a page as `ctx.var.requestId` |
+| [`logger`](https://hono.dev/docs/middleware/builtin/logger)                | Method, path, status and duration per request                       |
+| [`timeout`](https://hono.dev/docs/middleware/builtin/timeout)              | Refusing a request that outruns a deadline                          |
+| [`ipRestriction`](https://hono.dev/docs/middleware/builtin/ip-restriction) | Allow/deny lists in front of an internal route                      |
+| [`trailingSlash`](https://hono.dev/docs/middleware/builtin/trailing-slash) | Keeping `/about` and `/about/` from being two pages                 |
+
+Three exceptions, where the framework already owns the job or the two do not mix:
+
+- **`etag`** digests the whole response before sending it, so it would buffer a streaming page render
+  end to end. Prerendered pages already carry a weak `ETag` and answer `304`.
+- **`serveStatic`** is unnecessary — `/_static` and `public/` are mounted for you.
+- **`jsxRenderer`** is for Hono's own JSX; here React owns rendering.
+
+The full list is in [Hono's docs](https://hono.dev/docs), alongside its helpers —
+[`cookie`](https://hono.dev/docs/helpers/cookie), `proxy`, `streaming`, `testing` and the rest.
 
 ## Typing the context
 

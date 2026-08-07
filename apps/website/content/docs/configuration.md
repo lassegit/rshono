@@ -111,20 +111,31 @@ endpoint routes and your own handlers are equally exposed the moment they call `
 **[`csrf`](https://hono.dev/docs/middleware/builtin/csrf)** rejects a cross-origin POST with 403 before it
 can reach a server action. It layers `Sec-Fetch-Site` over `Origin`, and only inspects the content types
 a browser can send cross-origin without a preflight — which is exactly the shape a server action arrives
-in: `text/plain` for a client-initiated call, `multipart/form-data` for a no-JS form post. Add trusted
-origins with `csrf({ origin: ['https://admin.example.com'] })`.
+in: `text/plain` for a client-initiated call, `multipart/form-data` for a no-JS form post. A JSON API
+route is unaffected.
 
 Pass `publicUrl(c)` rather than relying on the default same-origin comparison, which reads `c.req.url` —
 the address the server was _reached_ on. Behind a proxy that terminates TLS or rewrites `Host` that is
 the internal address, and a legitimate post would then be riding on `Sec-Fetch-Site` alone. `publicUrl`
-honours [`trustProxy`](#proxy-headers), so it stays `c.req.url` where no proxy is declared.
+honours [`trustProxy`](#proxy-headers), so it stays `c.req.url` where no proxy is declared. To allow
+another origin:
+
+```ts
+server.use(
+  csrf({
+    origin: (origin, c) => origin === publicUrl(c).origin || origin === 'https://admin.example.com',
+  }),
+);
+```
 
 The check proves a request came from your own site. It says nothing about _who_ sent it — every
 [`'use server'` export is a public endpoint](/docs/server-actions#every-action-is-a-public-endpoint).
 
-Anything else Hono ships works the same way: [`secureHeaders`](#csp), `cors`, `basicAuth`, `ipRestriction`,
-`timeout`, `requestId`. A middleware that rejects by throwing an `HTTPException` keeps its own status —
-the framework hands it straight back rather than rendering the 500 page.
+Everything else Hono ships works the same way — `cors`, `basicAuth`, `jwt`, `ipRestriction`, `timeout`,
+`requestId`, and [`secureHeaders`](#csp) below. A middleware that rejects by throwing an `HTTPException`
+keeps its own status, rather than being rendered as the 500 page. See
+[Hono & middleware](/docs/hono#security-middleware) for worked examples and
+[Hono's docs](https://hono.dev/docs) for the full set.
 
 ## Proxy headers
 
@@ -164,8 +175,18 @@ flight payload depending on it.
 ## CSP
 
 A `Content-Security-Policy` comes from
-[`secureHeaders()`](https://hono.dev/docs/middleware/builtin/secure-headers) in `src/server.ts`. Put
-Hono's `NONCE` placeholder in `scriptSrc` and the policy becomes per-request: Hono mints a nonce and
+[`secureHeaders()`](https://hono.dev/docs/middleware/builtin/secure-headers) in `src/server.ts`. With no
+arguments it sets the rest of the usual set — HSTS, COOP, CORP, `nosniff`, `X-Frame-Options` — and no
+CSP at all:
+
+```ts
+// src/server.ts
+import { secureHeaders } from 'hono/secure-headers';
+
+server.use(secureHeaders());
+```
+
+Put Hono's `NONCE` placeholder in `scriptSrc` and the policy becomes per-request: Hono mints a nonce and
 rshono stamps that value onto the bootstrap scripts, the inlined flight payload and dynamically loaded
 chunks.
 
@@ -197,6 +218,9 @@ a nonce is in play the document for a static route is
 [rendered per request](/docs/routing#static-rendering), since a prerendered file is fixed bytes and
 cannot carry a fresh one. That is decided per request: a policy with no `NONCE` in it keeps its
 prerendered documents. The flight payload never carries a nonce and is served from the build either way.
+
+Every directive, `Permissions-Policy` and the reporting headers are in
+[Hono — Secure Headers](https://hono.dev/docs/middleware/builtin/secure-headers).
 
 ## Errors and redaction
 

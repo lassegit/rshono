@@ -187,18 +187,31 @@ That is the whole file. It holds what the **build** decides; per-request securit
 `src/server.ts`, which is mounted ahead of the page routes and so wraps renders and server actions too:
 
 ```ts
+// src/server.ts
 import { publicUrl } from '@rshono/core/server';
-import { bodyLimit } from 'hono/body-limit';
-import { csrf } from 'hono/csrf';
+import { bodyLimit } from 'hono/body-limit'; // https://hono.dev/docs/middleware/builtin/body-limit
+import { csrf } from 'hono/csrf'; // https://hono.dev/docs/middleware/builtin/csrf
+import { NONCE, secureHeaders } from 'hono/secure-headers'; // https://hono.dev/docs/middleware/builtin/secure-headers
 
+// Caps a body before anything buffers it — pages, actions and your own handlers alike. 413 over cap.
 server.use(bodyLimit({ maxSize: 1024 * 1024 }));
+
+// Rejects a cross-origin POST with 403 before it can reach a server action. `publicUrl(c)` rather
+// than Hono's default, which compares against the address the server was *reached* on — the internal
+// one behind any proxy. It honours `trustProxy`.
 server.use(csrf({ origin: (origin, c) => origin === publicUrl(c).origin }));
+
+// HSTS, COOP, CORP and the rest. `NONCE` in `scriptSrc` makes the CSP per-request: Hono mints the
+// nonce, rshono stamps it onto the bootstrap scripts and the inlined flight payload.
+server.use(secureHeaders({ contentSecurityPolicy: { scriptSrc: ["'self'", NONCE] } }));
 ```
 
-`create-rshono` scaffolds both. `secureHeaders()` with Hono's `NONCE` placeholder gives you a
-per-request-nonce CSP the same way — rshono stamps the nonce it minted onto the bootstrap scripts and the
-flight payload, widens `script-src` with `'unsafe-eval'` under `rshono dev` only, and falls back to
-rendering static routes per request while a nonce is in play.
+`create-rshono` scaffolds the first two. Under `rshono dev` the framework widens `script-src` with
+`'unsafe-eval'` for React Refresh — never in a build — so one policy serves both, and a route with a
+nonce in play falls back to rendering per request. Everything else Hono ships works the same way:
+`cors`, `basicAuth`, `jwt`, `timeout`, `requestId`, `ipRestriction`. A middleware that rejects by
+throwing an `HTTPException` keeps its own status rather than becoming the 500 page.
+[Middleware docs](https://www.rshono.com/docs/hono#security-middleware) · [Hono](https://hono.dev/docs).
 
 `deploy` and `rspack` are consumed by the CLI; `trustProxy` is **compiled into the server bundle** at build
 time, so changing it means a rebuild and there is no parallel env-var interface for it (environment
