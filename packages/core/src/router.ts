@@ -63,14 +63,14 @@ export interface PageProps<Path extends string = string, E extends Env = Env> {
    * the rest off it.
    *
    * A fresh instance per request that nothing else holds, so mutating it is local
-   * to the page — but note it is *not* serializable, so a `'use client'` component
-   * has to be handed `url.href` rather than `url`.
+   * to the page. It is not serializable, so a `'use client'` component has to be
+   * handed `url.href` rather than `url`.
    *
-   * On a prerendered page it is the build-time URL: a `render: 'static'` route is
-   * rendered once, against `siteUrl` and with no query string, and that one file
-   * then answers every request whatever its own query. So `url.searchParams` is
-   * always empty there — read the query from `useNavigation().url` in a
-   * `'use client'` component instead, or mark the route `render: 'dynamic'`.
+   * On a `render: 'static'` route this is the build-time URL — rendered once
+   * against `siteUrl` with no query string, and that one file answers every
+   * request whatever its own query. So `url.searchParams` is always empty there:
+   * read the query from `useNavigation().url` in a `'use client'` component
+   * instead, or mark the route `render: 'dynamic'`.
    */
   url: URL;
   /** Matched route params for this request, e.g. `{ id: '42' }` for `/profile/:id`. */
@@ -81,16 +81,12 @@ export interface PageProps<Path extends string = string, E extends Env = Env> {
    * an import.
    *
    * Server-only and never serialized: React puts a server component's *output* on
-   * the wire, not its props. It is also a deliberately non-enumerable property, so:
-   *
-   * - Handing it to a `'use client'` component (`<Counter ctx={ctx} />`) fails the
-   *   render with React's *"Only plain objects … can be passed to Client
-   *   Components"* — it wraps the live request and response, which do not exist in
-   *   the browser. Read what you need here and pass plain values down.
-   * - Spreading the page's props (`<Counter {...props} />`) drops `ctx` silently
-   *   instead, since a spread copies enumerables only. (That spread still fails,
-   *   mind — on `url`, which is enumerable and just as unserializable.)
-   * - `Object.keys(props)`, `JSON.stringify(props)` and friends don't see it.
+   * the wire, not its props. It is also deliberately **non-enumerable**, so
+   * `Object.keys(props)`, `JSON.stringify(props)` and a `{...props}` spread all
+   * skip it. Handing it to a `'use client'` component directly
+   * (`<Counter ctx={ctx} />`) fails the render — it wraps the live request and
+   * response, which do not exist in the browser. Read what you need here and pass
+   * plain values down.
    *
    * Reading it on a `render: 'static'` route throws: a prerendered page has no
    * per-request context at build time. Mark the route `render: 'dynamic'`, or use
@@ -247,9 +243,8 @@ export type Route = PageRoute | EndpointRoute;
  * Type guard narrowing a {@link Route} to a {@link PageRoute}. Because `type` is
  * optional on page routes, anything not explicitly `'endpoint'` is a page.
  *
- * Framework internal — deliberately absent from `index.ts`, so it is not part of the
- * `@rshono/core` surface. The request renderer and the builder use it to split the
- * route table; an app declares its routes rather than walking them.
+ * Framework internal — not re-exported from `index.ts`. The request renderer and
+ * the SSG pass use it to split the route table.
  *
  * @internal
  */
@@ -317,10 +312,10 @@ export interface RouteConfig<TRoutes extends readonly Route[] = readonly Route[]
   error?: FallbackPage;
 }
 
-// `PageProps<P, any>`, not `PageProps<P>`: this check is about the *path* matching the page's
-// `params`, and pinning the Env to the default would additionally demand that a page declaring its
-// own (`PageProps<'/x', MyEnv>`, to type `ctx.var`) accept a `RequestContext<Env>` — which it doesn't, so every
-// such page would fail its own route check. `any` makes `ctx` compatible either way.
+// `PageProps<P, any>`, not `PageProps<P>`: this checks the *path* against the page's `params`, and
+// pinning the Env to the default would additionally demand that a page declaring its own
+// (`PageProps<'/x', MyEnv>`, to type `ctx.var`) accept a `RequestContext<Env>` — which it doesn't, so
+// every such page would fail its own route check. `any` makes `ctx` compatible either way.
 type ValidateRoute<R> = R extends {
   path: infer P extends string;
   component: () => Promise<{ default: PageComponent<infer CP> }>;

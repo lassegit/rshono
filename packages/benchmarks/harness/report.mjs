@@ -167,14 +167,11 @@ function loadSection(section, ids, labels) {
 
   for (const route of ROUTES) {
     /*
-     * A route that answered with errors has no throughput to report, so it reports none.
-     *
-     * The rps of a run that 500s is not a slow version of the real number, it is a different
-     * measurement: an error path skips the render entirely, so it reads *faster* than a working
-     * server — a `/ssr` returning 500 to all 22,675 requests once published at 2,828 rps beside
-     * two working frameworks at ~270, and read as a 10× win. The failure was in the table the
-     * whole time, one row below, as `⚠ non-2xx`. Printing `—` instead is what makes the two
-     * impossible to read past each other.
+     * A route that answered with errors has no throughput to report, so it reports none. The rps of a
+     * run that 500s is not a slow version of the real number but a different measurement — the error
+     * path skips the render, so it reads *faster* than a working server. A `/ssr` returning 500 to all
+     * 22,675 requests once published at 2,828 rps beside two working frameworks at ~270, and was read
+     * as a 10× win; the `⚠ non-2xx` saying so was one row below the whole time.
      */
     const measured = (get) => (x) => (x?.ok === false ? '—' : get(x));
     const rows = [

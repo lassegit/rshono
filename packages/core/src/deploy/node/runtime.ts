@@ -13,12 +13,8 @@ const WILDCARD_HOST = '0.0.0.0';
  * Resolves the address to listen on: an explicit override (the dev server, which picks the port for its
  * worker) beats the environment, which beats the built-in default.
  *
- * `PORT` and `HOST` are the whole interface, because that is the deployment convention everywhere this
- * runs — a container, a process manager, a PaaS. `??` rather than `||` so an explicit `PORT=0`, which
- * means "any free port", is honoured.
- *
- * Lives here rather than in a `deploy/listen.ts` of its own because `node` is the only target that
- * binds anything: every other one is handed a request by its host.
+ * `PORT` and `HOST` are the whole interface, because that is the deployment convention everywhere
+ * this runs. `??` rather than `||` so an explicit `PORT=0`, meaning "any free port", is honoured.
  */
 function listenAddress(overrides?: { port?: number; hostname?: string }): { port: number; hostname: string } {
   const envPort = process.env.PORT !== undefined ? Number(process.env.PORT) : undefined;
@@ -29,12 +25,12 @@ function listenAddress(overrides?: { port?: number; hostname?: string }): { port
 }
 
 /**
- * Node: a long-lived process that owns its own port, with a filesystem behind every asset. The shape the
- * framework was built against, and the only target `rshono dev` ever produces.
+ * Node: a long-lived process that owns its own port, with a filesystem behind every asset. The shape
+ * the framework was built against, and the only target `rshono dev` ever produces.
  *
- * Anything that runs a Node process runs this build — a VPS, a container, a PaaS — and Bun and Deno are
- * expected to as well, since the listener below is `@hono/node-server` and both implement the `node:`
- * APIs it needs. They get no preset of their own: there was nothing in one but this.
+ * Anything that runs a Node process runs this build — a VPS, a container, a PaaS — and Bun and Deno
+ * are expected to as well, since the listener below is `@hono/node-server` and both implement the
+ * `node:` APIs it needs.
  */
 export const runtime: DeployRuntime = {
   ...fileSystemRuntime,

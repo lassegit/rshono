@@ -34,12 +34,11 @@ const OXLINT: Feature = {
 };
 
 /**
- * The one feature that changes a dependency the framework otherwise decides: typescript-eslint cannot be
- * installed alongside the TypeScript rshono is tested against, so an ESLint app pins the newest one its
- * peer range accepts (see {@link ESLINT_TYPESCRIPT}). Every other preset leaves TypeScript alone.
- *
- * The rules are type-aware, which is the reason to reach for ESLint over a syntax-only linter at all —
- * so the config it ships hands the whole program to the parser rather than linting file by file.
+ * The one feature that changes a dependency the framework otherwise decides: typescript-eslint cannot
+ * be installed alongside the TypeScript rshono is tested against, so an ESLint app pins the newest one
+ * its peer range accepts (see {@link ESLINT_TYPESCRIPT}). Its rules are type-aware — the reason to
+ * reach for ESLint over a syntax-only linter — so the config it ships hands the parser the whole
+ * program rather than linting file by file.
  */
 const ESLINT: Feature = {
   id: 'eslint',

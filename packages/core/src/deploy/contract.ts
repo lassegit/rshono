@@ -13,8 +13,8 @@ import type { PrerenderVariant, PrerenderedPage } from '../server/prerendered.js
  *
  * One entry per *handoff* — who opens the socket, and what shape a request arrives in — because that
  * is the part an app cannot arrange for itself. There is deliberately no target whose only content
- * would be "run the Node build": Bun and Deno had one each and that is all they were, so importing
- * the bundle under those runtimes replaces them.
+ * would be "run the Node build", which is why Bun and Deno have none: importing the `node` bundle
+ * under those runtimes is the whole of what one would say.
  *
  * `rshono dev` always runs the `node` server whatever this says — the dev server owns the process,
  * watches both compilers and fronts them on one port, none of which a hosting platform provides.
@@ -40,9 +40,9 @@ export interface DeployRuntime {
    * Hands the assembled app to the platform, and returns whatever the entry module should
    * `export default` there.
    *
-   * The two shapes hosting takes, in one call: where rshono owns the process (node, bun, deno) this
-   * binds a port and returns nothing; where the host owns it, it returns the export the platform
-   * looks for — `{ fetch }` on Workers, a handler function on Vercel/Netlify/Lambda.
+   * The two shapes hosting takes, in one call: where rshono owns the process this binds a port and
+   * returns nothing; where the host owns it, it returns the export the platform looks for —
+   * `{ fetch }` on Workers, a handler function on Vercel and Lambda.
    */
   serveApp(app: Hono): unknown;
   /**

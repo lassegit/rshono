@@ -41,13 +41,12 @@ export interface RshonoConfig {
   /**
    * The public origin the site is served from, e.g. `'https://example.com'`.
    *
-   * Only used when prerendering `render: 'static'` routes. A prerendered page is one fixed file
-   * handed to everyone, so any absolute URL inside it has to be decided at build time — there is no
-   * request to read a `Host` from. That is what a page's `url` prop is, so without this a static
-   * page bakes in `http://localhost` wherever it builds a canonical tag, an absolute link or an
-   * `og:url`. Dynamic routes are unaffected: they resolve the URL per request.
+   * Only used when prerendering `render: 'static'` routes: they are rendered once at build time, with
+   * no request to read a `Host` from, so a page's `url` prop falls back to `http://localhost` without
+   * this — and that is what its canonical tag, absolute links and `og:url` get baked with. Dynamic
+   * routes resolve the URL per request and are unaffected.
    *
-   * The origin is what's used; a path is rejected rather than silently dropped.
+   * Must be a bare origin; a path is rejected rather than silently dropped.
    *
    * @see {@link https://www.rshono.com/docs/configuration#siteurl | Docs — siteUrl}
    */
@@ -56,12 +55,11 @@ export interface RshonoConfig {
    * Honour `X-Forwarded-Host` / `X-Forwarded-Proto` when resolving the browser-facing request
    * URL (`getRequestContext().url`, a page's `url` prop, and the origin the CSRF check compares against).
    *
-   * **Off by default, and leave it off unless a proxy you control sets those headers**, because
-   * any client can send them: with it on and nothing stripping them at the edge, one request can
-   * point every absolute URL your app builds at an attacker's host (and poison a shared cache).
-   * Turn it on when you terminate TLS or rewrite `Host` at a reverse proxy / load balancer.
-   * Always `true` under `rshono dev`, where the framework's own proxy sets them and binds to
-   * localhost. Default `false`.
+   * **Off by default, and leave it off unless a proxy you control sets those headers**: any client
+   * can send them, so with nothing stripping them at the edge one request can point every absolute
+   * URL the app builds at an attacker's host (and poison a shared cache). Turn it on when you
+   * terminate TLS or rewrite `Host` at a reverse proxy / load balancer. Always `true` under
+   * `rshono dev`, where the framework's own proxy sets them and binds to localhost. Default `false`.
    *
    * @see {@link https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/X-Forwarded-Host | MDN — X-Forwarded-Host}
    * @see {@link https://www.rshono.com/docs/configuration#proxy-headers | Docs — proxy headers}

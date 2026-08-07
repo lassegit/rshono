@@ -7,12 +7,9 @@ const WORKER = fileURLToPath(new URL('./load-worker.mjs', import.meta.url));
 
 /**
  * A Node driver rather than a shell-out to oha/bombardier, on purpose: it is always present, it
- * behaves identically on every machine, and — the part that matters — it handicaps all three
- * targets in exactly the same way. Absolute rps from this driver is a lower bound on what the
- * server can do; the *ratio* between targets is the number worth reading.
- *
- * `--external` swaps in `oha` when it is installed, for a sanity check against a driver that isn't
- * competing for the same runtime.
+ * behaves identically on every machine, and — the part that matters — it handicaps all three targets
+ * in exactly the same way. Absolute rps from this driver is a lower bound on what the server can do;
+ * the *ratio* between targets is the number worth reading.
  */
 export async function drive(url, { connections = 32, durationMs = 8000, warmupMs = 2000, workers } = {}) {
   const threads = workers ?? Math.max(1, Math.min(4, os.cpus().length - 2));
@@ -70,6 +67,6 @@ export function driverBoundWarning(rpsByTarget) {
   if (values.length < 2) return null;
   const spread = (Math.max(...values) - Math.min(...values)) / Math.max(...values);
   return spread < 0.05
-    ? `rps spread across targets is ${(spread * 100).toFixed(1)}% — likely driver-bound, not server-bound. Re-run with --external (oha) or on a bigger box before quoting these.`
+    ? `rps spread across targets is ${(spread * 100).toFixed(1)}% — likely driver-bound, not server-bound. Re-run on a bigger box, or against a standalone driver such as oha, before quoting these.`
     : null;
 }

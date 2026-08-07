@@ -35,6 +35,6 @@ export { defineConfig, type RshonoConfig, type RspackHookContext } from './confi
 
 export type { DeployTarget } from './deploy/contract.js';
 
-// Hono's own `Context` and `Handler` used to be re-exported from here "for convenience". They are
-// Hono's types, `hono` is a peer dependency every app already has, and importing them from two places
-// only raised the question of which one is right — so an endpoint module imports them from `hono`.
+// Hono's `Context` and `Handler` are deliberately not re-exported: `hono` is a peer dependency every
+// app already has, so an endpoint module imports them from there rather than choosing between two
+// spellings of the same type.

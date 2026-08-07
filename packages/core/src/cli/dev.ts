@@ -41,9 +41,8 @@ export async function devCommand(options: DevOptions): Promise<void> {
 
   /**
    * Writes one already-encoded SSE frame to every open client, dropping the ones that have gone away.
-   *
-   * A browser that navigated or closed leaves a controller behind whose `enqueue` throws, and `cancel`
-   * is not always reached first — so a failed write is what retires a client, wherever it happens.
+   * A browser that navigated or closed leaves a controller whose `enqueue` throws, and `cancel` is not
+   * always reached first — so a failed write is what retires a client.
    */
   function sendToAll(chunk: Uint8Array): void {
     for (const controller of sseClients) {
@@ -104,10 +103,9 @@ export async function devCommand(options: DevOptions): Promise<void> {
           resolve({ worker, port: message.port });
         }
       });
-      // `on`, not `once`. An error *after* the worker is ready has no pending promise left to reject,
-      // so it has to be reported here or nowhere — the `exit` handler below only ever learns the code.
-      // And a consumed `once` would leave a later 'error' with no listener at all, which Node turns
-      // into an uncaught exception that takes the dev server down with the worker.
+      // `on`, not `once`: an error *after* the worker is ready has no pending promise left to reject,
+      // and a consumed `once` would leave that error with no listener at all — which Node turns into
+      // an uncaught exception that takes the dev server down with the worker.
       worker.on('error', (error) => {
         if (ready) {
           console.error('  ✗ server worker crashed:', error);
@@ -121,9 +119,9 @@ export async function devCommand(options: DevOptions): Promise<void> {
           console.error(`  ✗ server worker exited with code ${code} — waiting for the next rebuild`);
           currentWorker = null;
           // Opened with the reason rather than left closed: a request arriving before the next rebuild
-          // parks on this gate, and an unopened one means the browser hangs indefinitely with only the
-          // terminal saying why. `hooks.invalid` puts a fresh, closed gate here the moment a file
-          // changes, so the next build still holds requests until the worker is back.
+          // parks on this gate, and an unopened one would hang the browser with only the terminal
+          // saying why. `hooks.invalid` installs a fresh closed gate the moment a file changes, so the
+          // next build still holds requests until the worker is back.
           workerGate = createGate();
           workerGate.open({ error: `The server worker exited with code ${code}. See the terminal for the error it crashed with.` });
         }
@@ -162,10 +160,9 @@ export async function devCommand(options: DevOptions): Promise<void> {
         gate.open({ error: describe(error) });
       }
     });
-    // `restartChain` is the queue every later rebuild is appended to, so no link in it may be left
-    // rejected: `.then` on a rejected promise short-circuits, and from that point no worker is ever
-    // spawned again and no gate is ever opened — a dev server that answers nothing and explains
-    // nothing. The `try` above covers the restart itself; this covers the rest of the callback.
+    // No link in this queue may be left rejected: `.then` on a rejected promise short-circuits, and
+    // from that point no worker is ever spawned again and no gate is ever opened — a dev server that
+    // answers nothing and explains nothing. The `try` above covers the restart; this covers the rest.
     restartChain = restartChain.catch((error) => {
       console.error('  ✗ dev server restart failed:', error);
       gate.open({ error: describe(error) });
@@ -235,13 +232,10 @@ export async function devCommand(options: DevOptions): Promise<void> {
     const incoming = new URL(c.req.url);
     const target = `http://127.0.0.1:${workerPort}${incoming.pathname}${incoming.search}`;
 
-    // Hono's proxy helper, rather than a hand-rolled `fetch`: it carries the method, the streamed body
-    // (with the `duplex` Node requires) and — new here — the client's abort signal, so a browser that
-    // goes away takes the worker's render with it. On the way back it strips the hop-by-hop headers,
-    // framing that belongs to one connection and must not be forwarded onto another, and drops
-    // `content-length` alongside a `content-encoding` rather than unconditionally, so a response whose
-    // length is still accurate keeps it. `headers` replaces the set wholesale, so the request's own are
-    // spread back in first.
+    // Hono's proxy helper rather than a hand-rolled `fetch`: it carries the method, the streamed body
+    // (with the `duplex` Node requires) and the client's abort signal, so a browser that goes away
+    // takes the worker's render with it. On the way back it strips the hop-by-hop headers. `headers`
+    // replaces the set wholesale, so the request's own are spread back in first.
     const response = await proxy(target, {
       raw: c.req.raw,
       // The worker's redirects are the app's answer to this request, not something to follow here —
@@ -257,9 +251,9 @@ export async function devCommand(options: DevOptions): Promise<void> {
       },
     });
 
-    // `proxy` hands back a response whose headers are still mutable, so the one rewrite that is ours
-    // to make happens in place: a redirect to the worker's own address has to become a relative one,
-    // or the browser leaves the dev server for a port only this process knows about.
+    // A redirect to the worker's own address has to become a relative one, or the browser leaves the
+    // dev server for a random port only this process knows about. `proxy` hands back a response whose
+    // headers are still mutable, so the rewrite happens in place.
     const location = response.headers.get('location');
     const loc = location ? URL.parse(location, target) : null;
     if (loc && loc.host === `127.0.0.1:${workerPort}`) {

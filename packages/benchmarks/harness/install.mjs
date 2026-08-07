@@ -50,17 +50,13 @@ console.log(`  ✓ ${tarball} → .pack/rshono-core.tgz`);
  * Drops the `@rshono/core` entry from the app's lockfile, so npm re-resolves the tarball instead of
  * trusting what it recorded last time.
  *
- * Deleting `node_modules/@rshono` is not enough on its own, and the state it leaves behind is worse
- * than a stale one. The lockfile pins the *previous* tarball's integrity hash at a path
- * (`file:../../.pack/rshono-core.tgz`) whose contents have since changed underneath it; npm then
- * reifies a **merge** — writing the new files while leaving behind every file the new core no longer
- * ships, and keeping the old `version` in the extracted `package.json`. Observed here as an rc.7
- * `dist` carrying rc.3's `deploy/bun`, `deploy/deno` and `deploy/netlify` modules under a
- * `package.json` still claiming rc.3.
+ * Deleting `node_modules/@rshono` is not enough, and what it leaves behind is worse than a stale
+ * install: the lockfile pins the *previous* tarball's integrity hash at a path whose contents have
+ * since changed, so npm reifies a **merge** — writing the new files, keeping every file the new core
+ * no longer ships, and leaving the old `version` in the extracted `package.json`.
  *
- * Only this one entry is removed. The lockfile's whole job is pinning react, react-dom and the rest so
- * the three apps are comparable run to run, and deleting it would give that up to fix one dependency
- * that is rebuilt from source on every setup anyway.
+ * Only this one entry is removed. The lockfile's job is pinning react, react-dom and the rest so the
+ * three apps stay comparable run to run.
  */
 async function forgetLockedTarball(lockPath) {
   if (!existsSync(lockPath)) return;
@@ -101,15 +97,11 @@ for (const target of targets) {
   /*
    * The build that linked the *previous* core must not outlive it.
    *
-   * The freshness guard compares the installed core against the workspace, which says nothing about
-   * the bundle sitting in `dist` — and `rshono build` inlines core into it. So `setup:apps` followed
-   * by a single stage (`bench:load`, say, without the build stage in front of it) would pass the guard
-   * and then measure a bundle compiled against the core that was just replaced: the original failure
-   * exactly, one level up, and now wearing an all-clear.
-   *
-   * Deleting it is what makes that unrepresentable. There is no artifact left to measure by mistake,
-   * and the stage that finds none says so rather than reporting a number. Costs nothing on the full
-   * run, where `build.mjs` clears `dist` for its cold trials anyway.
+   * `rshono build` inlines core into `dist`, and the freshness guard only compares the *installed*
+   * core against the workspace — so `setup:apps` followed by a single stage (`bench:load` without the
+   * build stage in front of it) would pass the guard and then measure a bundle compiled against the
+   * core that was just replaced. Deleting `dist` leaves no artifact to measure by mistake, and costs
+   * nothing on a full run where `build.mjs` clears it for the cold trials anyway.
    */
   if (tarballDep) {
     await rm(path.join(target.dir, 'dist'), { recursive: true, force: true });

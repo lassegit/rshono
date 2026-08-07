@@ -35,7 +35,7 @@ export default {
         test: /\.ts$/,
         use: {
           loader: 'builtin:swc-loader',
-          options: { jsc: { parser: { syntax: 'typescript' } }, env: { targets: ['node >= 22.1'] } },
+          options: { jsc: { parser: { syntax: 'typescript' } }, env: { targets: ['node >= 22.18'] } },
         },
         type: 'javascript/auto',
       },

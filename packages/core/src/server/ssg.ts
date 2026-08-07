@@ -171,8 +171,8 @@ export async function prerenderStaticRoutes(options: PrerenderOptions): Promise<
       write('html', document.body);
 
       // The soft-navigation representation of the same page. Best-effort: if it doesn't come back
-      // cleanly the document is still valid on its own, and serving falls back to rendering flight
-      // per request — the behaviour before this was written at all.
+      // cleanly the document is still valid on its own, and serving falls back to rendering the
+      // flight payload per request.
       const flight = await renderVariant(fetch, origin + path, 'flight');
       if (flight.ok) {
         write('flight', flight.body);

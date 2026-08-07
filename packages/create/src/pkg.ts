@@ -22,18 +22,15 @@ function sorted<T>(record: Record<string, T>): Record<string, T> {
 }
 
 /**
- * pnpm's settings for the new app — written for pnpm and for nobody else, and only when a feature has
- * something to put in it. `null` means there is nothing to say, so no file is written.
+ * pnpm's settings for the new app, written only when a feature has something to put in them. `null`
+ * means there is nothing to say, so no file is written.
  *
- * It exists for one field. A dependency with an install script is a question pnpm will not answer on its
- * own: it fails the install, and fails every `pnpm dev` after it, until the project has said whether the
- * script should run. Nothing rshono itself installs has one — so this is empty for most apps, and the
- * ones that do have an answer to carry (wrangler's esbuild and workerd) declare it on the feature that
- * brings them, rather than every app inheriting a line about a package it never installs.
+ * It exists for one field, `allowBuilds`. pnpm fails an install — and every `pnpm dev` after it —
+ * until the project has said whether a dependency's install script should run. Nothing rshono itself
+ * installs has one, so most apps get no file; the packages that do (wrangler's esbuild and workerd)
+ * declare their answer on the feature that brings them.
  *
- * In this file rather than under a `pnpm` key in `package.json`, which pnpm 11 no longer reads, single-
- * package projects included. What lands here is a decision about *this* app: a scaffolded file the app
- * owns from then on, not something the framework reaches back into.
+ * A file rather than a `pnpm` key in `package.json`, which pnpm 11 no longer reads.
  */
 export function buildPnpmSettings(features: Feature[]): string | null {
   const allowBuilds: Record<string, boolean> = {};

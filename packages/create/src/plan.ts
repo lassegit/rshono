@@ -13,9 +13,8 @@ const TEMPLATES_DIR = join(import.meta.dirname, '..', 'templates');
  * Every file the scaffold will consist of, keyed by its path relative to the project root (POSIX
  * separators, so a snapshot taken on one platform matches the next).
  *
- * Text only: the templates are source files, and a generator that dealt in `Buffer` would lose the
- * token substitution and the ability to diff a plan in a test. An overlay wanting to ship a binary
- * asset would need this to widen.
+ * Text only, so a plan can be token-substituted and diffed in a test. An overlay wanting to ship a
+ * binary asset would need this to widen.
  */
 export interface Plan {
   files: Map<string, string>;
@@ -42,10 +41,9 @@ function readTemplateDir(dir: string): Map<string, string> {
 /**
  * `_gitignore` → `.gitignore`, and so on for every dotfile.
  *
- * npm strips a literal `.gitignore` out of a published tarball, so a template cannot simply contain
- * one — the file would exist in the repo, pass every local test, and be missing from the package
- * everybody actually installs. Naming them with an underscore and renaming here is the long-standing
- * fix. It applies to the basename only, so `src/lib/_x.ts` is a dotfile but `templates/_x/y.ts` is not.
+ * npm strips a literal `.gitignore` out of a published tarball, so a template cannot contain one — it
+ * would exist in the repo, pass every local test, and be missing from the package everybody installs.
+ * Applies to the basename only, so `src/lib/_x.ts` is a dotfile but `templates/_x/y.ts` is not.
  */
 function undotted(path: string): string {
   const segments = path.split(posix.sep);

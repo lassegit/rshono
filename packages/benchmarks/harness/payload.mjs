@@ -25,9 +25,9 @@ for (const target of targets) {
     server = await startServer(target);
   } catch (error) {
     out[target.id] = { label: target.label, error: error.message };
-    // Whole message, not just its first line: `startServer` puts the server's own output underneath
-    // the headline, and that is where the reason lives — "no production build found", most often,
-    // which is what `setup:apps` leaves behind on purpose until the app is rebuilt.
+    // Whole message, not just its first line: `startServer` appends the server's own output, and that
+    // is where the reason lives — most often "no production build found", which is what `setup:apps`
+    // deliberately leaves behind until the app is rebuilt.
     console.log(indent(error.message));
     continue;
   }

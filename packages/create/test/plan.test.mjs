@@ -29,7 +29,7 @@ function answers(overrides = {}) {
   return { packageName: 'my-app', deploy: 'node', styling: 'css', formatter: 'prettier', linter: 'oxlint', ...overrides };
 }
 
-/** Every combination the prompts can produce: 7 targets × 2 stylings × 5 presets. */
+/** Every combination the prompts can produce: each deploy target × 2 stylings × every quality preset. */
 function* matrix() {
   for (const deploy of DEPLOY_TARGET_NAMES) {
     for (const styling of ['css', 'tailwind']) {

@@ -1,3 +1,9 @@
+/**
+ * The fixture is reached through server functions rather than imported into components directly. A
+ * component in a client-router framework runs in the browser too, so a direct import would bundle all
+ * 100 users into the client graph — and the payload numbers would then be measuring a mistake rather
+ * than the framework. This is the idiomatic route: the data crosses the wire as data.
+ */
 import { createServerFn } from '@tanstack/react-start';
 
 export interface User {
@@ -14,12 +20,7 @@ export interface SignupResult {
   error?: string;
 }
 
-/**
- * The fixture is reached through server functions rather than imported into the components directly.
- * A component in a client-router framework runs in the browser too, so a direct import would bundle
- * all 100 users into the client graph — and then the payload numbers would be measuring a mistake
- * rather than the framework. This is the idiomatic route: the data crosses the wire as data.
- */
+/** The whole fixture, for a caller that wants the rows rather than a rendered table. */
 export const getUsers = createServerFn().handler(async () => {
   const { users, summary } = await import('./data');
   return { users, summary };

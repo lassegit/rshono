@@ -46,14 +46,10 @@ export function deployHint(name: DeployTargetName): string {
  * fill either slot — but presenting them as one question keeps combinations that make no sense
  * (Biome formatting next to a second linter) out of the flow.
  *
- * **What the ESLint preset costs.** Linting TypeScript with ESLint means `typescript-eslint`, which
- * reads the compiler API directly and so accepts `typescript >=4.8.4 <6.1.0` — below the version rshono
- * itself is built and tested against. An app that picks ESLint therefore pins TypeScript 6 (the newest
- * that range allows), which is why it is a preset a user chooses rather than the default: the framework's
- * declarations compile identically under either, but the compiler is a major version behind and, being
- * the JavaScript implementation rather than the native one, several times slower on a large app. Every
- * other preset leaves TypeScript where the framework put it. When upstream widens the range, the pin in
- * `features/quality.ts` is the only thing to remove.
+ * **What the ESLint preset costs.** `typescript-eslint` reads the compiler API directly and so accepts
+ * `typescript >=4.8.4 <6.1.0`, below the version rshono is built against — an app that picks ESLint
+ * therefore pins TypeScript 6 (`ESLINT_TYPESCRIPT` in `versions.ts`). That is why it is a preset a user
+ * chooses rather than the default; every other one leaves TypeScript where the framework put it.
  */
 export interface QualityPreset {
   id: string;

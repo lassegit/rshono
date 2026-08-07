@@ -24,6 +24,9 @@ for (const [from, to] of Object.entries(REDIRECTS)) {
   server.get(from, (c) => c.redirect(to, 301));
 }
 
+/** A JSON API route, with no page involved. The layout links to it. */
+server.get('/api/health', (c) => c.json({ status: 'ok' }));
+
 export default server;
 
 /** `hc<AppType>('/')` from `hono/client` gives paths, params and responses typed against the handlers above. */

@@ -20,20 +20,16 @@ const warmupMs = Number(flagValue('warmup', '2')) * 1000;
 const quick = hasFlag('quick');
 
 /**
- * An equal old-space budget for all three, because without one the memory numbers are not a
- * comparison of anything.
+ * An equal old-space budget for all three, because without one the memory numbers compare nothing.
  *
- * V8 grows the old generation to keep collection overhead roughly constant against the *allocation
- * rate*, and only collects in earnest as the heap approaches its limit. Left at the default (4144 MB
- * on a 16 GB machine) the after-load RSS therefore measures throughput, not memory: the fastest
- * server churns the most garbage in the fixed eight seconds and so grows the largest heap. Measured
- * on the rshono app, `/api/health` reached 472 MB RSS with 376 MB of heap in use — of which a single
- * forced GC returned 362 MB. Under the same load capped here, the same route holds flat at 120 MB
- * with throughput unchanged (37,961 rps capped vs 37,706 uncapped).
+ * V8 sizes the old generation against the *allocation rate* and only collects in earnest near the
+ * limit, so at the default (4144 MB on a 16 GB machine) after-load RSS measures throughput rather than
+ * memory: the fastest server churns the most in the fixed eight seconds and grows the largest heap.
+ * Measured on the rshono app, `/api/health` reached 472 MB RSS of which a forced GC returned 362 MB;
+ * capped, the same route holds flat at 120 MB with throughput unchanged (37,961 vs 37,706 rps).
  *
- * So a cap does not restrain the servers, it stops the metric rewarding slowness. `--heap=0` opts out
- * and restores whatever the runtime's default is; the value is reported alongside the numbers, since
- * it is part of what they mean.
+ * So the cap does not restrain the servers, it stops the metric rewarding slowness. `--heap=0` opts
+ * out, and the value is reported alongside the numbers since it is part of what they mean.
  */
 const heapMb = Number(flagValue('heap', '256'));
 
@@ -75,10 +71,9 @@ for (const target of targets) {
   const routes = {};
   let rssIdle = null;
   let rssLoaded = null;
-  // One sample per route rather than one at the end. The single after-load reading was always taken
-  // straight after the *last* route, which is the highest-throughput one for every target — so it
-  // caught each server at its churniest moment and could not show whether the figure had levelled
-  // off. The sequence can: flat across the last few routes means a plateau, a straight climb does not.
+  // One sample per route rather than one at the end: a single after-load reading lands straight after
+  // the highest-throughput route, catching each server at its churniest moment with no way to tell
+  // whether it had levelled off. The sequence can — flat across the last few routes means a plateau.
   const rssAfter = {};
   try {
     rssIdle = await treeRss(server.pid);
@@ -126,9 +121,8 @@ console.log('\nwrote results/latest.json → sections.load');
 
 /*
  * The per-route ⚠ above scrolls past in a full run, and the number beside it looks like a result.
- * Restate it at the end as the one thing that matters: these rows are not measurements. An error
- * response skips the render, so a broken route reports *higher* rps than a working one — which is
- * how a `/ssr` answering 500 to every request was once published as a 10× throughput win.
+ * Restated at the end because an error response skips the render, so a broken route reports *higher*
+ * rps than a working one — which is how a `/ssr` answering 500 was once published as a 10× win.
  */
 const unmeasured = [];
 for (const route of ROUTES) {

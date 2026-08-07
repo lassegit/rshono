@@ -10,11 +10,10 @@
  * `apps/website/src/components/benchmarks.tsx`, so regenerating data can never quietly overwrite prose
  * that took judgement to write.
  *
- * A second file, `benchmarks-summary.json`, carries the at-a-glance scorecard: the handful of headline
- * metrics pulled out of `latest.json`, each with every target's value and which one won. It is generated
- * for one reason — a hand-written "2.7× smaller" in the page would drift from the tables underneath it
- * the first time anyone re-ran the benchmark, and a summary that contradicts its own detail is worse than
- * no summary.
+ * A second file, `benchmarks-summary.json`, carries the at-a-glance scorecard: headline metrics pulled
+ * out of `latest.json`, each with every target's value and which one won. Generated for one reason — a
+ * hand-written "2.7× smaller" in the page would drift from the tables underneath it the first time
+ * anyone re-ran the benchmark.
  */
 import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -62,6 +61,9 @@ ${body}
 
 await writeFile(destination, out);
 console.log(`✓ wrote ${path.relative(path.resolve(ROOT, '..', '..'), destination)} (${(out.length / 1024).toFixed(1)} kB, measured ${measuredOn})`);
+
+/** The old-space cap the load actually ran under, so the memory hint below cannot claim a stale one. */
+const loadHeapMb = report?.sections?.load?.settings?.heapMb ?? 0;
 
 /**
  * The scorecard metrics, in the order the page shows them.
@@ -181,13 +183,12 @@ const METRICS = [
    * Memory, and only the three rows that mean something.
    *
    * `largest` rather than the tree total on both RSS rows: the tree sums whatever `npm run start` left
-   * running and double-counts shared pages, and the largest process is the server itself in all three
-   * apps — so it is the only one of the two that compares like with like.
+   * running and double-counts shared pages, while the largest process is the server itself in all
+   * three apps.
    *
-   * `churn` is the row to trust. RSS after a fixed-duration load is a high-water mark that includes
-   * garbage V8 has not collected, and V8 sizes the old generation against the *allocation rate*, so the
-   * server that answered the most requests grows the largest heap. Dividing the growth by requests
-   * served is what removes that bias.
+   * `churn` is the row to trust. RSS after a fixed-duration load is a high-water mark including
+   * uncollected garbage, and V8 sizes the old generation against the *allocation rate* — so the server
+   * that answered the most requests grows the largest heap. Dividing growth by requests removes that.
    */
   {
     id: 'rss-idle',
@@ -203,7 +204,7 @@ const METRICS = [
     id: 'rss-loaded',
     comparative: 'smaller',
     label: 'Server memory, after load',
-    hint: 'RSS high-water mark, 256 MB old space',
+    hint: `RSS high-water mark${loadHeapMb ? `, ${loadHeapMb} MB old space` : ''}`,
     lowerIsBetter: true,
     anchor: 'memory',
     format: bytes,
@@ -281,14 +282,11 @@ for (const metric of METRICS) {
     comparative: metric.comparative,
     winner: best.target,
     /*
-     * `relativeToBest` is what the bar length draws, and it is deliberately not the raw value.
-     *
-     * Each metric has its own scale — milliseconds and kilobytes share no axis — so a bar has to be
-     * normalised per row. Normalising against the raw maximum would make the *longest* bar the worst
-     * result on a lower-is-better row and the best one on a throughput row, so bar length would mean
-     * the opposite thing in different rows of the same card. Normalising against the winner instead
-     * makes longer always better, everywhere. The measured value is printed beside every bar, so the
-     * number is never inferred from the geometry.
+     * `relativeToBest` is what the bar length draws, deliberately not the raw value: milliseconds and
+     * kilobytes share no axis, so a bar has to be normalised per row. Normalised against the raw
+     * maximum, the longest bar would be the worst result on a lower-is-better row and the best on a
+     * throughput row. Against the winner, longer is always better. The measured value is printed
+     * beside every bar, so nothing is inferred from the geometry.
      */
     values: values.map((v) => ({
       ...v,

@@ -6,9 +6,9 @@
  * omitted — which is what a deploy image actually contains. Slow (three real npm installs), so it is
  * not part of `run.mjs` by default; pass --footprint.
  *
- * Note for rshono specifically: `@rspack/core` and `tsx` are in @rshono/core's `dependencies`, not
- * `devDependencies`, so they land in a production install. That is a real cost and this metric will
- * show it.
+ * Note for rshono specifically: `@rspack/core` is in @rshono/core's `dependencies`, not
+ * `devDependencies`, so the bundler lands in a production install. That is a real cost and this
+ * metric will show it.
  */
 import { mkdtemp, rm, readFile, writeFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';

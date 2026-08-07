@@ -20,14 +20,7 @@ declare global {
   var __FLIGHT_DATA: Array<string | Uint8Array> | undefined;
 }
 
-/**
- * The flight payload the document carried, read back out of `__FLIGHT_DATA`.
- *
- * The reader for the format `flight-inject.ts` writes — 14 lines, which is the whole reason neither
- * half of `rsc-html-stream` is a dependency: its server half mishandles a split document trailer
- * (see `flight-inject.ts`), and once that one is first-party, keeping the package for this one is a
- * dependency for a `for` loop.
- */
+/** The flight payload the document carried, read back out of `__FLIGHT_DATA` — see `flight-inject.ts`, which writes it. */
 function readFlightPayload(): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   // Assigned synchronously by `start`, which `new ReadableStream` runs before it returns.
@@ -124,11 +117,9 @@ function showFatal(error: unknown, componentStack?: string | null): void {
 /**
  * Asks a URL for its flight payload.
  *
- * There is no cache in front of this any more. A `data-prefetch` attribute used to warm one on
- * hover/focus, keyed by same-origin path+search and bounded to 8 entries — worth knowing about if you
- * are wondering where the speculative fetching went. Every navigation is now a fetch at the moment it
- * is asked for, so a payload can never be staler than the click that wanted it, and the browser's own
- * HTTP cache is what makes a repeat visit cheap.
+ * Deliberately uncached: every navigation fetches at the moment it is asked for, so a payload can
+ * never be staler than the click that wanted it, and the browser's own HTTP cache is what makes a
+ * repeat visit cheap.
  */
 function requestPayload(href: string): Promise<RscPayload> {
   return createFromFetch<RscPayload>(fetch(createRscRequest(new URL(href, location.href).href)));
@@ -286,14 +277,13 @@ async function main() {
     return result.value;
   });
 
-  // A `redirect()` / `notFound()` from a component *below* the page root can only reach us through
-  // React: it rides the flight payload as an error at that component's position, and boundaries
-  // re-throw it (see boundaries.tsx) so it lands here rather than rendering an error fallback.
+  // A `redirect()` / `notFound()` from a component *below* the page root reaches us through React: it
+  // rides the flight payload as an error at that component's position, and boundaries re-throw it
+  // (see boundaries.tsx) so it lands here rather than rendering an error fallback.
   //
-  // Anything that isn't a control signal falls back to what React would have done on its own —
-  // console for a caught error, `reportError` (i.e. window.onerror, so error-reporting tools still
-  // see it) for an uncaught one. Overriding these hooks means opting out of that default, so it has
-  // to be put back by hand.
+  // Installing these hooks opts out of React's own defaults, so anything that isn't a control signal
+  // has to be put back by hand: console for a caught error, `reportError` (i.e. window.onerror, so
+  // error-reporting tools still see it) for an uncaught one.
   hydrateRoot(document, <BrowserRoot />, {
     formState: initialPayload.formState,
     onCaughtError: (error, errorInfo) => {
@@ -319,11 +309,8 @@ async function main() {
 type NavigationType = 'push' | 'replace' | 'pop';
 
 /**
- * Runs teardown in reverse and empties the list, so a second call is a no-op.
- *
- * Collecting these as setup goes keeps each undo next to the thing it undoes: a listener added
- * without one is visible on the spot, rather than as a leak found later against a teardown block
- * that drifted out of sync.
+ * Runs teardown in reverse and empties the list, so a second call is a no-op. Collecting these as
+ * setup goes keeps each undo next to the thing it undoes.
  */
 function disposeAll(undo: Array<() => void>): void {
   for (const dispose of undo.splice(0).reverse()) dispose();
@@ -344,9 +331,8 @@ function isRouterLink(link: HTMLAnchorElement): boolean {
 /**
  * Upgrades the app's anchors: a plain left-click becomes a soft navigation.
  *
- * Kept apart from `listenNavigation` because the two share no state. A click here only calls
- * `history.pushState` — which is where that function picks the navigation up — so the whole contract
- * between them is one global the browser already provides.
+ * Kept apart from `listenNavigation` because the two share no state — a click here only calls
+ * `history.pushState`, which is where that function picks the navigation up.
  */
 function listenLinks(): () => void {
   const undo: Array<() => void> = [];
@@ -378,10 +364,9 @@ function listenLinks(): () => void {
 /**
  * The element the current `#fragment` names, if it is on the page.
  *
- * A fragment in a URL is percent-encoded and an `id` attribute is not, so one has to be decoded into the
- * other. A hand-written URL can carry a `%` that is not an escape, and `decodeURIComponent` throws on
- * that rather than passing it through — in which case the fragment is taken literally, since that is the
- * closest thing to an id it could have meant.
+ * A fragment is percent-encoded and an `id` attribute is not, so it has to be decoded first. A
+ * hand-written URL can carry a `%` that is not an escape, which throws — take the fragment literally
+ * then, since that is the closest thing to an id it could have meant.
  */
 function fragmentTarget(): HTMLElement | null {
   const fragment = location.hash.slice(1);
@@ -396,10 +381,9 @@ function fragmentTarget(): HTMLElement | null {
 function listenNavigation(onNavigation: (afterRender: () => void) => void): () => void {
   const undo: Array<() => void> = [];
 
-  // Scroll restoration is the browser's. It used to be ours: each history entry was tagged with a key
-  // in `history.state`, `scrollY` was remembered per key, and `manual` handed restoration over — about
-  // 130 lines to restore a traversal exactly. `auto` is set explicitly rather than left at the default,
-  // because it is a statement: the browser remembers a traversal's offset for us.
+  // Scroll restoration is the browser's. `auto` is set explicitly rather than left at the default,
+  // because it is a statement: the browser remembers a traversal's offset for us, and nothing here
+  // tracks one.
   const prevRestoration = window.history.scrollRestoration;
   try {
     window.history.scrollRestoration = 'auto';
@@ -411,19 +395,17 @@ function listenNavigation(onNavigation: (afterRender: () => void) => void): () =
   });
 
   /**
-   * A push is not a real navigation as far as the browser is concerned, so nothing resets the scroll
-   * offset — a click through to a new page would otherwise land wherever the last one was scrolled to.
-   * A `#hash` on that link names where to land instead, and a fragment naming nothing on the page falls
-   * back to the top, which is what a browser does with one it cannot resolve. `replace` keeps its
-   * position deliberately, and a traversal is the browser's to restore.
+   * A push is not a real navigation to the browser, so nothing resets the scroll offset — without
+   * this a click through to a new page lands wherever the last one was scrolled to. A `#hash` names
+   * where to land instead, and one naming nothing on the page falls back to the top, as a browser
+   * does. `replace` keeps its position deliberately, and a traversal is the browser's to restore.
    *
-   * `scrollIntoView` rather than measuring the element and calling `scrollTo`: it is the same algorithm a
-   * browser's own fragment jump uses, so a `scroll-padding-top` — how an app clears a sticky header —
-   * still applies. Neither call passes a `behavior`, so `scroll-behavior: smooth` is likewise the app's
-   * to ask for.
+   * `scrollIntoView` rather than `scrollTo`, because it is the algorithm a browser's own fragment jump
+   * uses — so `scroll-padding-top` still applies. Neither call passes a `behavior`, leaving
+   * `scroll-behavior: smooth` the app's to ask for.
    *
-   * The caller decides *when* this runs, and for a navigation that fetched a payload that has to be
-   * after the commit — see the layout effect in `BrowserRoot`.
+   * The caller decides *when* this runs; for a navigation that fetched a payload it has to be after
+   * the commit — see the layout effect in `BrowserRoot`.
    */
   const afterRenderFor = (type: NavigationType) => () => {
     if (type !== 'push') return;

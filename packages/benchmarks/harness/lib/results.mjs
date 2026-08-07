@@ -34,7 +34,6 @@ export async function merge(section, data) {
 export async function environment() {
   const cpus = os.cpus();
   return {
-    // No Date.now() sugar here beyond the timestamp itself — every metric is a duration or a size.
     at: new Date().toISOString(),
     platform: `${os.platform()} ${os.release()} ${os.arch()}`,
     cpu: cpus[0]?.model ?? 'unknown',

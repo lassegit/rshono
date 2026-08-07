@@ -61,12 +61,10 @@ export function beginPageRender(c: Context): void {
  * The shared explanation for a response mutation that arrived too late, thrown by
  * {@link RequestContext.setHeader} and the `cookies` writers.
  *
- * Worth being long: the failure it replaces was silent *and* inconsistent — a page setting a cookie
- * got it on a full page load and lost it on a soft navigation, because the flight stream's response
- * head is committed before the first line of the page component runs. There is no fixing that from
- * inside the render (React starts flight work in a microtask, and neither Hono nor the Node adapter
- * will re-read headers once the response exists), so the honest move is to refuse both ways round
- * and say where the write does belong.
+ * Refusing beats the alternative, which was silent *and* inconsistent: a page setting a cookie got it
+ * on a full page load and lost it on a soft navigation, because the flight stream's response head is
+ * committed before the page component's first line runs. Nothing inside the render can fix that, so
+ * the message says where the write does belong instead.
  */
 function tooLateToWrite(call: string): never {
   throw new Error(
@@ -89,11 +87,11 @@ function notOnContext(call: string, instead: string): never {
 /**
  * `process.env`, snapshotted on first read.
  *
- * It is not a plain object — every enumeration crosses into the host environment, which made
- * spreading it (~20µs) by far the most expensive thing {@link RequestContext.env} did, once per request that
- * touched it. Snapshotted lazily rather than at module load because `loadEnvFiles()` runs *after*
- * this module is imported, so an eager copy would miss everything from `.env`. The trade-off: a
- * `process.env` mutation after the first `ctx.env` read is not picked up.
+ * Enumerating it crosses into the host environment, which made the spread (~20µs) by far the most
+ * expensive thing {@link RequestContext.env} did, once per request that touched it. Lazily rather
+ * than at module load, because `loadEnvFiles()` runs *after* this module is imported and an eager
+ * copy would miss everything from `.env`. The trade-off: a `process.env` mutation after the first
+ * `ctx.env` read is not picked up.
  */
 let envSnapshot: Record<string, string | undefined> | undefined;
 
@@ -102,14 +100,11 @@ function processEnv(): Record<string, string | undefined> {
 }
 
 /**
- * True when this process is the SSG build prerendering `render: 'static'` routes,
- * rather than a server handling real requests. `build.ts` sets `RSHONO_PRERENDER`
- * before importing the app bundle and starting the prerender pass; the app bundle
- * inlines its own copy of this module, so a shared `process.env` (not a module-level
- * flag) is what reliably crosses that boundary. Read by {@link getRequestContext} to turn a
- * static route's request-context read into a clear build-time error instead of
- * silently baking synthetic build-time values (a `localhost` URL, no cookies, build
- * env) into the snapshot.
+ * True when this process is the SSG build prerendering `render: 'static'` routes rather than a server
+ * handling real requests. `build.ts` sets `RSHONO_PRERENDER` before importing the app bundle, which
+ * inlines its own copy of this module — so `process.env` is what crosses that boundary, not a
+ * module-level flag. {@link getRequestContext} reads it to fail loudly instead of baking synthetic
+ * build-time values (a `localhost` URL, no cookies, build env) into the prerendered page.
  */
 const prerendering = typeof process !== 'undefined' && !!process.env?.RSHONO_PRERENDER;
 
@@ -127,13 +122,10 @@ export function runWithContext<T>(c: Context, fn: () => T): T {
 }
 
 /**
- * Reads the matched route params, returning an empty object when there is no
- * active route match (rather than throwing), so the fallback behaviour stays in
- * one place.
+ * The matched route params, or an empty object when there is no active match.
  *
- * Framework internal — the request renderer calls this to build a page's `params`
- * prop, and {@link RequestContext.params} caches it. Read them from that prop, or
- * from `ctx.params` outside a page.
+ * Framework internal — the request renderer calls this to build a page's `params` prop, and
+ * {@link RequestContext.params} caches it. Read them from that prop, or from `ctx.params`.
  *
  * @internal
  */
@@ -159,12 +151,11 @@ const trustProxy = typeof __RSHONO_CONFIG__ !== 'undefined' && __RSHONO_CONFIG__
 /**
  * Resolves the browser-facing {@link URL} for a request.
  *
- * `c.req.url` reflects the internal address the server was reached on, which is wrong behind a
- * proxy or load balancer. `X-Forwarded-Host` / `X-Forwarded-Proto` fix that up — **but only when
- * `trustProxy` is enabled in `rshono.config.ts`** (always the case under `rshono dev`). Those
- * headers are client-supplied: honouring them unconditionally lets anyone who can reach the server
- * dictate the origin of every absolute URL the app builds — canonical tags, emails, redirects — and
- * poison a shared cache with them. So the default is to ignore them entirely.
+ * `c.req.url` reflects the internal address the server was reached on, which is wrong behind a proxy.
+ * `X-Forwarded-Host` / `X-Forwarded-Proto` fix that up — **but only when `trustProxy` is enabled in
+ * `rshono.config.ts`** (always so under `rshono dev`). They are client-supplied, so honouring them
+ * unconditionally would let anyone who can reach the server dictate the origin of every absolute URL
+ * the app builds, and poison a shared cache with it.
  *
  * Framework internal — prefer {@link RequestContext.url}, which caches the result per request.
  *
@@ -243,14 +234,12 @@ export class RequestContext<E extends Env = Env> {
   }
 
   /**
-   * The underlying Hono {@link Context} — the escape hatch for the long tail this wrapper does not
-   * expose. Everything a page or action actually reaches for has a home of its own now
-   * ({@link RequestContext.req}, {@link RequestContext.params}, {@link RequestContext.setHeader}), so
-   * this is for what is left: `executionCtx.waitUntil()` on Workers, and whatever Hono adds next.
+   * The underlying Hono {@link Context} — the escape hatch for what this wrapper does not expose,
+   * such as `executionCtx.waitUntil()` on Workers.
    *
-   * Be aware that the response builders on it (`redirect`, `notFound`, `json`, `body`, `status`, …)
-   * still do nothing from inside a page, for the reason the stubs on this class explain — reaching
-   * them through here bypasses the error, it does not make them work.
+   * Its response builders (`redirect`, `notFound`, `json`, `body`, `status`, …) still do nothing from
+   * inside a page, for the reason the stubs on this class explain: reaching them through here
+   * bypasses the error, it does not make them work.
    *
    * @example
    * ```ts
@@ -259,15 +248,13 @@ export class RequestContext<E extends Env = Env> {
    *
    * @see {@link https://hono.dev/docs/api/context | Hono — Context}
    */
-  // A getter over a private field rather than a plain property, so it is not an *own enumerable*
-  // one — which matters more than it looks. React's diagnostic for a value that cannot be sent to a
-  // client component (`describeObjectForErrorMessage`) walks `Object.keys` recursively with no depth
-  // limit and no cycle guard, and the Hono context graph reaches the socket and the whole server
-  // through `req.raw` and `env`. While this was a plain property, passing a `RequestContext` to a
-  // `'use client'` component blew the stack *inside that message builder* — so React's actual,
-  // accurate "you cannot pass this" error never got printed. Hidden from `Object.keys`, the walk
-  // stops here. Every member added since is a prototype getter or method for the same reason;
-  // `cookies` is the one own enumerable property, and it is a shallow object of four functions.
+  // A prototype getter rather than a plain property, so it is not *own enumerable*. React's
+  // diagnostic for a value that cannot be sent to a client component walks `Object.keys` recursively
+  // with no depth limit and no cycle guard, and the Hono context graph reaches the socket and the
+  // whole server through `req.raw` and `env` — as a plain property this blew the stack inside the
+  // message builder, so React's accurate "you cannot pass this" error never got printed. Every member
+  // here is a getter or method for the same reason; `cookies` is the one own enumerable property, and
+  // it is a shallow object of four functions.
   get hono(): Context<E> {
     return this.#raw;
   }
@@ -277,9 +264,9 @@ export class RequestContext<E extends Env = Env> {
    * {@link Context.req}, unwrapped, so `ctx.req.header('authorization')` rather than
    * `ctx.hono.req.header(…)`.
    *
-   * Reads only. Setting a response header is {@link RequestContext.setHeader}, which is a different
-   * thing living in a different place on purpose — Hono's `c.header()` writing the *response* while
-   * `c.req.header()` reads the *request* is a well-worn source of confusion.
+   * Reads only. Setting a *response* header is {@link RequestContext.setHeader}, deliberately in a
+   * different place — Hono's `c.header()` writing the response while `c.req.header()` reads the
+   * request is a well-worn source of confusion.
    *
    * @example
    * ```ts
@@ -296,12 +283,12 @@ export class RequestContext<E extends Env = Env> {
   }
 
   /**
-   * Matched route params for this request, e.g. `{ id: '42' }` for `/profile/:id`.
+   * Matched route params for this request, e.g. `{ id: '42' }` for `/profile/:id`. Empty when there
+   * is no active route match.
    *
-   * A **page** is handed these as its `params` prop, typed key-by-key from its route path, and that
-   * is the better read where it is available. This is the same record for everywhere else — a nested
-   * server component, or a `'use server'` action — which get no props from the framework. Empty when
-   * there is no active route match rather than throwing.
+   * A **page** is handed the same record as its `params` prop, typed key-by-key from its route path,
+   * and that is the better read where it is available. This is for everywhere else — a nested server
+   * component, or a `'use server'` action — which get no props from the framework.
    */
   get params(): Record<string, string> {
     return (this.#params ??= readParams(this.#raw as Context));
@@ -409,15 +396,14 @@ export class RequestContext<E extends Env = Env> {
    * Sets a header on the response — from a `'use server'` action, which is the one place a request
    * context exists *and* the response is still open.
    *
-   * From inside a page it throws. By then the response head is committed: a page streams, and on a
-   * soft navigation the flight response is built before the component's first line runs. Hono's
+   * From inside a page it throws: a page streams, so by then the response head is committed. Hono's
    * `c.header()` fails there silently and inconsistently — landing on a full page load, vanishing on
    * a soft navigation — so this refuses rather than doing it half the time.
    *
-   * Middleware and `{ type: 'endpoint' }` routes run outside the request context (no
-   * {@link getRequestContext} there) but are handed Hono's `c` directly, so they set headers with
-   * `c.header(…)`. That is also where a header belonging to the *page* rather than to one action
-   * goes — `Cache-Control`, `X-Robots-Tag` — since middleware runs before the render.
+   * Middleware and `{ type: 'endpoint' }` routes run outside the request context but are handed
+   * Hono's `c` directly, so they use `c.header(…)`. That is also where a header belonging to the
+   * *page* rather than to one action goes — `Cache-Control`, `X-Robots-Tag` — since middleware runs
+   * before the render.
    *
    * @param name - Header name, case-insensitive.
    * @param value - Header value.
@@ -440,15 +426,12 @@ export class RequestContext<E extends Env = Env> {
     this.#raw.header(name, value, options);
   }
 
-  // Hono's response builders, restated as errors that name the thing to use instead. A page returns
-  // JSX and `renderComponent` builds the response from it, so every one of these is a silent no-op
-  // through `ctx.hono` — which is exactly the confusion this class exists to remove. They are
-  // `@deprecated` so an editor strikes them through in autocomplete: visible, and visibly wrong.
-  //
-  // Each takes `...args: unknown[]` it never reads, so that `ctx.redirect('/dashboard')` reaches the
-  // message below instead of stopping at "Expected 0 arguments, but got 1" — an arity complaint that
-  // says nothing about what to do. The `@deprecated` strike-through is the compile-time signal; the
-  // thrown message is the one that explains.
+  // Hono's response builders, restated as errors naming what to use instead. A page returns JSX and
+  // `renderComponent` builds the response from it, so every one of these is a silent no-op through
+  // `ctx.hono`. `@deprecated` is the compile-time signal — an editor strikes them through in
+  // autocomplete — and the thrown message is the one that explains. Each takes `...args: unknown[]`
+  // it never reads so that `ctx.redirect('/dashboard')` reaches that message rather than stopping at
+  // "Expected 0 arguments, but got 1".
 
   /** @deprecated Not available on a page's context — use `redirect()` from `@rshono/core/server`. */
   redirect(...args: unknown[]): never {
@@ -504,16 +487,12 @@ export class RequestContext<E extends Env = Env> {
 }
 
 /**
- * Returns the {@link RequestContext} for the current request.
+ * Returns the {@link RequestContext} for the current request — the URL, cookies, params, env and
+ * middleware variables, read from a server component or a server action. Memoised per request, so
+ * repeated calls return the same instance.
  *
- * This is the primary entry point for reading request data from a server
- * component or server action — the URL, cookies, params, env, and middleware
- * variables. The returned wrapper is memoised per request, so repeated calls in
- * the same request are cheap and return the same instance.
- *
- * A **page** component is handed the very same object as its `ctx` prop, so this
- * import is for everywhere else: a nested server component, or a `'use server'`
- * action module — neither of which receives props from the framework.
+ * A **page** component is handed that same object as its `ctx` prop, so this import is for everywhere
+ * else: a nested server component, or a `'use server'` action module.
  *
  * @typeParam E - The app's Hono {@link Env}, to type {@link RequestContext.var} and {@link RequestContext.env}.
  * @throws If called at module load, where there is no ambient context to resolve.

@@ -31,8 +31,8 @@ export function parseDocument(html) {
     if (a.src) {
       external.push({ url: a.src, as: 'script', hint: 'script' });
     } else if (m[2].trim()) {
-      // The inlined flight payload lives here in all three frameworks (rshono via rsc-html-stream,
-      // Next via self.__next_f, TanStack via its dehydrated router state). It ships on every
+      // The inlined flight payload lives here in all three frameworks (rshono via `__FLIGHT_DATA`,
+      // Next via `self.__next_f`, TanStack via its dehydrated router state). It ships on every
       // request and it is not a file, so counting only external assets would hide it entirely.
       inlineScriptBytes += Buffer.byteLength(m[2], 'utf8');
       inlineScripts += 1;
