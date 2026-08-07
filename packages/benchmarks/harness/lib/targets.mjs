@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { assertCoreFresh } from './core-freshness.mjs';
 
 export const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 export const APPS_DIR = path.join(ROOT, 'apps');
@@ -69,13 +70,21 @@ export const TARGETS = [
   },
 ];
 
-export function resolveTargets(argv = process.argv.slice(2)) {
+/**
+ * The targets this invocation is for.
+ *
+ * `requireFreshCore` is on everywhere except `install.mjs`, which is the command that *fixes* a stale
+ * core and so cannot refuse to run because of one. Every other runner goes through here, which is why
+ * the check lives at this choke point rather than being repeated at the top of each stage.
+ */
+export function resolveTargets(argv = process.argv.slice(2), { requireFreshCore = true } = {}) {
   const only = argv.filter((a) => !a.startsWith('-'));
   const chosen = only.length ? TARGETS.filter((t) => only.includes(t.id)) : TARGETS;
   const missing = only.filter((id) => !TARGETS.some((t) => t.id === id));
   if (missing.length) throw new Error(`Unknown target(s): ${missing.join(', ')}. Known: ${TARGETS.map((t) => t.id).join(', ')}`);
   const notScaffolded = chosen.filter((t) => !existsSync(path.join(t.dir, 'package.json')));
   if (notScaffolded.length) throw new Error(`Not scaffolded: ${notScaffolded.map((t) => t.id).join(', ')}`);
+  if (requireFreshCore) assertCoreFresh(ROOT, chosen);
   return chosen;
 }
 

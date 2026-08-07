@@ -21,6 +21,18 @@ export async function login(_prev: LoginState, formData: FormData): Promise<Logi
   redirect('/dashboard');
 }
 
+/**
+ * The other half of `login`, and the one that exercises a redirect on the *client-initiated* action
+ * path: a `'use client'` button calls this directly, so the reply comes back as a flight payload
+ * carrying `redirect` rather than as an HTTP 3xx. Takes no arguments, which is what makes it callable
+ * from a test with a plain `[]` body.
+ */
+export async function logout(): Promise<never> {
+  const ctx = getRequestContext();
+  ctx.cookies.delete('session', { path: '/' });
+  redirect('/login');
+}
+
 export interface CrashState {
   ok?: boolean;
 }

@@ -9,12 +9,12 @@ import type { Plan } from './plan.js';
 const IGNORED_ENTRIES = new Set(['.git', '.DS_Store', '.idea', '.vscode', 'Thumbs.db']);
 
 /**
- * What is already at the target path, which is what decides whether scaffolding into it is safe: the
- * entries already there, ignoring the ones a fresh clone or an editor leaves behind.
+ * What is already at the target path, ignoring the entries a fresh clone or an editor leaves behind —
+ * which is what decides whether scaffolding into it is safe.
  *
- * A path that does not exist yet is no conflict. A path that exists and is *not* a directory is not
- * something `--force` should be able to write into, so it throws rather than reporting an empty list —
- * otherwise `create-rshono README.md` gets as far as `mkdir` before failing on a raw ENOTDIR.
+ * A path that does not exist yet is no conflict. A path that exists and is *not* a directory throws
+ * rather than reporting an empty list, since `--force` should not write into one either — otherwise
+ * `create-rshono README.md` gets as far as `mkdir` before failing on a raw ENOTDIR.
  */
 export function conflictingEntries(dir: string): string[] {
   const stats = statSync(dir, { throwIfNoEntry: false });

@@ -6,7 +6,7 @@
  * brotli 11, identically for all three — rather than trusted to each app's own compressor.
  */
 import { resolveTargets, ROUTES, hasFlag } from './lib/targets.mjs';
-import { startServer } from './lib/proc.mjs';
+import { indent, startServer } from './lib/proc.mjs';
 import { sizes } from './lib/sizes.mjs';
 import { parseDocument, textContent, detectDevBuild } from './lib/document.mjs';
 import { bytes } from './lib/stats.mjs';
@@ -25,7 +25,10 @@ for (const target of targets) {
     server = await startServer(target);
   } catch (error) {
     out[target.id] = { label: target.label, error: error.message };
-    console.log(`  ✗ ${error.message.split('\n')[0]}`);
+    // Whole message, not just its first line: `startServer` appends the server's own output, and that
+    // is where the reason lives — most often "no production build found", which is what `setup:apps`
+    // deliberately leaves behind until the app is rebuilt.
+    console.log(indent(error.message));
     continue;
   }
 

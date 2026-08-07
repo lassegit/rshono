@@ -166,10 +166,18 @@ function loadSection(section, ids, labels) {
   );
 
   for (const route of ROUTES) {
+    /*
+     * A route that answered with errors has no throughput to report, so it reports none. The rps of a
+     * run that 500s is not a slow version of the real number but a different measurement — the error
+     * path skips the render, so it reads *faster* than a working server. A `/ssr` returning 500 to all
+     * 22,675 requests once published at 2,828 rps beside two working frameworks at ~270, and was read
+     * as a 10× win; the `⚠ non-2xx` saying so was one row below the whole time.
+     */
+    const measured = (get) => (x) => (x?.ok === false ? '—' : get(x));
     const rows = [
-      ['Requests/sec', (x) => num(x?.rps)],
-      ['p50', (x) => ms(x?.latencyMs?.p50)],
-      ['p99', (x) => ms(x?.latencyMs?.p99)],
+      ['Requests/sec', measured((x) => num(x?.rps))],
+      ['p50', measured((x) => ms(x?.latencyMs?.p50))],
+      ['p99', measured((x) => ms(x?.latencyMs?.p99))],
       ['Errors', (x) => (x?.ok === false ? `⚠ ${x.problem}` : '0')],
     ];
     lines.push(`### \`${route.path}\``, '');
@@ -182,6 +190,16 @@ function loadSection(section, ids, labels) {
         ]),
       ),
     );
+    // Named, so the empty cells are attributable without cross-reading the Errors row.
+    const broken = ids.filter((id) => section.targets?.[id]?.routes?.[route.id]?.ok === false);
+    if (broken.length) {
+      lines.push(
+        '',
+        `> ⚠ **Not measured** for ${broken.map((id) => labels[ids.indexOf(id)]).join(', ')} — the route did not serve 2xx, and an error ` +
+          'response skips the render, so its rps would read higher than a working server rather than lower. Fix the route and re-run; ' +
+          'do not quote this row.',
+      );
+    }
     const warning = section.targets?._warnings?.[route.id];
     if (warning) lines.push('', `> ⚠ ${warning}`);
     lines.push('');

@@ -15,12 +15,10 @@
  * @packageDocumentation
  */
 
-// A barrel rather than `./context.js` itself, which is where all of this is implemented: that module
-// also exports the plumbing the framework's own entry points need (`runWithContext`, `readParams`,
-// `publicUrl`, `reportServerError`), and pointing the `./server` subpath straight at it published
-// every one of them — `@internal` in the docs, but present in a consumer's autocomplete and pinned
-// by semver all the same. They stay reachable by relative import, which is the only way the
-// framework itself ever reaches them.
+// A barrel rather than pointing the `./server` subpath straight at `./context.js`, where all of this
+// is implemented: that module also exports the framework's own plumbing (`runWithContext`,
+// `readParams`, `publicUrl`, `reportServerError`), and exposing it would put every one of those in a
+// consumer's autocomplete and under semver. They stay reachable by relative import.
 export {
   getRequestContext,
   notFound,

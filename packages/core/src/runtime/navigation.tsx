@@ -28,8 +28,8 @@ export interface NavigationRouter {
   pending: boolean;
 }
 
-// No `back()` / `forward()`: they were verbatim aliases for `history.back()` and `history.forward()`,
-// which need no framework. Traversal is picked up by the `popstate` listener either way.
+// No `back()` / `forward()` — `history.back()` and `history.forward()` need no framework, and the
+// traversal is picked up by the runtime's `popstate` listener either way.
 
 /** The current location plus the {@link NavigationRouter}, as returned by {@link useNavigation}. */
 export interface NavigationState {

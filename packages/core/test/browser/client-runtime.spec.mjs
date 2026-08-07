@@ -75,9 +75,8 @@ test.describe('soft navigation', () => {
 });
 
 test.describe('navigation fetching', () => {
-  // Hovering used to warm a payload into a cache that the click then consumed. Without it, a link is
-  // one fetch at click time and nothing before — which is the property worth pinning, since a stray
-  // speculative fetch is exactly what this removal was for.
+  // A link is one fetch at click time and nothing before it. Worth pinning: speculative prefetching
+  // is the easiest thing to reintroduce by accident, and it costs bandwidth on every hover.
   test('hovering a link fetches nothing; the click fetches once', async ({ page }) => {
     await page.goto('/');
 
@@ -88,7 +87,7 @@ test.describe('navigation fetching', () => {
 
     const users = page.getByRole('link', { name: 'Users', exact: true });
     await users.hover();
-    await page.waitForTimeout(400); // longer than the dwell time the old prefetch waited out
+    await page.waitForTimeout(400); // long enough for any hover-triggered fetch to have started
     expect(flightRequests, 'hover must not speculate').toHaveLength(0);
 
     await users.click();

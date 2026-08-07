@@ -109,16 +109,22 @@ export interface PrerenderResult {
   skipped: string[];
 }
 
-/** Renders one representation of a path, or `null` if the app didn't answer with it. */
-async function renderVariant(
-  fetch: PrerenderOptions['fetch'],
-  url: string,
-  variant: PrerenderVariant,
-): Promise<{ body: string } | { status: number } | null> {
+/**
+ * One representation of a path, as the app answered for it at build time.
+ *
+ * Discriminated on `ok` rather than returned as a body-or-status-or-null union: both callers have to
+ * tell "the app rendered this" from "it did not", and only one of them cares *why* — which as three
+ * shapes made every read a `'body' in result` check against a value that could also be null.
+ */
+type RenderedVariant = { ok: true; body: string } | { ok: false; reason: string };
+
+async function renderVariant(fetch: PrerenderOptions['fetch'], url: string, variant: PrerenderVariant): Promise<RenderedVariant> {
   const response = await fetch(new Request(url, { headers: { Accept: VARIANTS[variant].accept } }));
-  if (response.status !== 200) return { status: response.status };
-  if (!(response.headers.get('Content-Type') ?? '').includes(VARIANTS[variant].contentType)) return null;
-  return { body: await response.text() };
+  if (response.status !== 200) return { ok: false, reason: `${response.status}` };
+  if (!(response.headers.get('Content-Type') ?? '').includes(VARIANTS[variant].contentType)) {
+    return { ok: false, reason: `a non-${VARIANTS[variant].contentType} response` };
+  }
+  return { ok: true, body: await response.text() };
 }
 
 export async function prerenderStaticRoutes(options: PrerenderOptions): Promise<PrerenderResult> {
@@ -151,9 +157,8 @@ export async function prerenderStaticRoutes(options: PrerenderOptions): Promise<
 
     for (const path of paths) {
       const document = await renderVariant(fetch, origin + path, 'html');
-      if (document === null || !('body' in document)) {
-        const rendered = document === null ? 'a non-HTML response' : `${document.status}`;
-        console.warn(`  ⚠ "${path}" rendered ${rendered} at build time — skipping, will SSR per request.`);
+      if (!document.ok) {
+        console.warn(`  ⚠ "${path}" rendered ${document.reason} at build time — skipping, will SSR per request.`);
         skipped.push(path);
         continue;
       }
@@ -166,10 +171,10 @@ export async function prerenderStaticRoutes(options: PrerenderOptions): Promise<
       write('html', document.body);
 
       // The soft-navigation representation of the same page. Best-effort: if it doesn't come back
-      // cleanly the document is still valid on its own, and serving falls back to rendering flight
-      // per request — the behaviour before this was written at all.
+      // cleanly the document is still valid on its own, and serving falls back to rendering the
+      // flight payload per request.
       const flight = await renderVariant(fetch, origin + path, 'flight');
-      if (flight !== null && 'body' in flight) {
+      if (flight.ok) {
         write('flight', flight.body);
       } else {
         console.warn(`  ⚠ "${path}" produced no flight payload — soft navigations to it will render per request.`);

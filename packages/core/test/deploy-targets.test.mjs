@@ -4,9 +4,9 @@
 // layout a `finalize` hook assembles — so that is what this asserts. The request handling underneath is
 // the same code the Node and Workers suites already cover end to end.
 //
-// `node` and `cloudflare` are not here: they have suites of their own. Bun and Deno used to be, back when
-// each had a preset; they run the `node` build now, and asserting on its export shape under Node — which
-// is all the old tests did — proved nothing about either runtime.
+// `node` and `cloudflare` are not here: they have suites of their own. Bun and Deno have no preset —
+// they run the `node` build — and asserting on its export shape under Node would prove nothing about
+// either runtime.
 //
 // One build per target, so this is a slow file. Nothing else depends on it.
 import assert from 'node:assert/strict';

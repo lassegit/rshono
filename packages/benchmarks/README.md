@@ -8,6 +8,14 @@ pnpm --filter @rshono/benchmarks setup:apps   # build + pack core, install all t
 pnpm --filter @rshono/benchmarks bench        # everything, then write results/latest.md
 ```
 
+**Re-run `setup:apps` after every change to `packages/core`.** The rshono app installs the framework
+from a packed tarball, not a workspace link (see `harness/install.mjs` for why), and nothing re-packs
+it except that command — so a `bench` after an unpacked change measures whatever core was current the
+last time you ran it. Every runner now refuses to start when the installed core differs from what this
+checkout builds, and says so; before that guard existed, a `/ssr` route that 500'd on every request
+against a four-release-candidates-old core was published at **2,828 rps against ~270 for the other
+two**, because an error response skips the render and so reads _faster_ than a working server.
+
 Script names here avoid pnpm's built-in commands on purpose. `pnpm --filter <pkg> setup` resolves
 pnpm's own `setup` rather than the script and fails with `Unknown option: 'recursive'`; `clean` is
 taken too. Hence `setup:apps` and `clean:apps`.
@@ -115,20 +123,20 @@ These are limitations of the comparison, not of the frameworks. Read them before
 Each writes its own section into `results/latest.json` and can run alone. Pass target ids to narrow:
 `node harness/payload.mjs rshono next`.
 
-| Command                | Notes                                                                                    |
-| ---------------------- | ---------------------------------------------------------------------------------------- |
-| `pnpm setup:apps`      | Builds `@rshono/core`, packs it to a tarball, installs all three apps.                   |
-| `pnpm bench`           | Every stage, then a snapshot and a report. `--footprint` adds the install measurement.   |
-| `pnpm bench:build`     | `--trials=N` (default 3).                                                                |
-| `pnpm bench:payload`   | `--strict` exits non-zero on a failed spec check.                                        |
-| `pnpm bench:load`      | `--connections=32 --duration=8 --warmup=2 --heap=256`, or `--quick`.                     |
-| `pnpm bench:coldstart` | `--trials=N` (default 5).                                                                |
-| `pnpm bench:devstart`  | Clobbers the production builds and rebuilds them afterwards; `--no-restore` skips that.  |
-| `pnpm bench:footprint` | Three real `npm install --omit=dev` runs. Slow. `--source-only` skips them.              |
-| `pnpm report`          | Re-render `results/latest.md` from whatever sections exist.                              |
-| `pnpm site:publish`    | Copy the report into the website — see below.                                            |
-| `pnpm clean:apps`      | Build outputs; `--deep` also removes `node_modules` and lockfiles.                       |
-| `pnpm fixtures`        | Regenerates the committed `fixtures/data.json`, invalidating every result in `results/`. |
+| Command                | Notes                                                                                                                              |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm setup:apps`      | Builds `@rshono/core`, packs it to a tarball, installs all three apps. Run after core changes.                                     |
+| `pnpm bench`           | Every stage, then a snapshot and a report. `--footprint` adds the install measurement.                                             |
+| `pnpm bench:build`     | `--trials=N` (default 3).                                                                                                          |
+| `pnpm bench:payload`   | `--strict` exits non-zero on a failed spec check.                                                                                  |
+| `pnpm bench:load`      | `--connections=32 --duration=8 --warmup=2 --heap=256`, or `--quick`. A route that serves non-2xx is reported as `—`, never as rps. |
+| `pnpm bench:coldstart` | `--trials=N` (default 5).                                                                                                          |
+| `pnpm bench:devstart`  | Clobbers the production builds and rebuilds them afterwards; `--no-restore` skips that.                                            |
+| `pnpm bench:footprint` | Three real `npm install --omit=dev` runs. Slow. `--source-only` skips them.                                                        |
+| `pnpm report`          | Re-render `results/latest.md` from whatever sections exist.                                                                        |
+| `pnpm site:publish`    | Copy the report into the website — see below.                                                                                      |
+| `pnpm clean:apps`      | Build outputs; `--deep` also removes `node_modules` and lockfiles.                                                                 |
+| `pnpm fixtures`        | Regenerates the committed `fixtures/data.json`, invalidating every result in `results/`.                                           |
 
 ### Publishing to the website
 

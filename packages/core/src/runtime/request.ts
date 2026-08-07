@@ -48,9 +48,9 @@ export function wantsRsc(renderRequest: RenderRequest): boolean {
 }
 
 /**
- * {@link wantsRsc} straight off the request, for the error and control-signal paths that have no parsed
- * {@link RenderRequest} to hand — they are reached from Hono's `onError` / `notFound`, not from the
- * render, so each one used to re-parse with `wantsRsc(parseRenderRequest(c.req.raw))`.
+ * {@link wantsRsc} straight off the request, for the error and control-signal paths that have no
+ * parsed {@link RenderRequest} to hand — they are reached from Hono's `onError` / `notFound` rather
+ * than from the render.
  */
 export function requestWantsRsc(request: Request): boolean {
   return wantsRsc(parseRenderRequest(request));

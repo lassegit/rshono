@@ -62,12 +62,8 @@ export interface DeployPreset {
 
 /**
  * Node: a long-lived server process. The generated config is already this shape, so the preset has
- * nothing to contribute — the platform-specific settings still living in `builder/rspack-config.ts`
- * (`target: 'node'`, the externals policy, ESM chunk output) are the Node ones by default.
- *
- * Anywhere that runs a Node process runs this build: a VPS, a container, a PaaS. Bun and Deno are
- * expected to as well, through their `node:` compatibility — they had a preset each, and since neither
- * held anything but a default export, running the bundle (`bun dist/server/main.mjs`) replaces it.
+ * nothing to contribute — the settings in `builder/rspack-config.ts` (`target: 'node'`, the externals
+ * policy, ESM chunk output) are the Node ones by default.
  */
 export const NODE_PRESET: DeployPreset = {
   name: 'node',

@@ -17,10 +17,10 @@
 /**
  * {@link Transformer} plus the `cancel` hook the Streams standard added for a cancelled readable side.
  *
- * Node calls it — verified on 22.x — but the bundled lib types have not caught up, so it is declared
- * here rather than reached for with an `any`. It matters because `cancel` is the only notification that
- * a response ended *without* finishing, and both users of it release a listener that would otherwise
- * outlive the request.
+ * Node calls it (verified on 22.x) but the bundled lib types have not caught up, so it is declared
+ * here rather than reached for with an `any`. It matters because `cancel` is the only notification
+ * that a response ended *without* finishing, and both users of it release a listener that would
+ * otherwise outlive the request.
  */
 export type CancellableTransformer<I, O> = Transformer<I, O> & { cancel?: (reason?: unknown) => void };
 
@@ -59,8 +59,8 @@ function escapeScript(script: string): string {
  * The bytes of `chunk` as a latin1 string, which is the form `btoa` takes.
  *
  * Sliced rather than `String.fromCharCode(...chunk)`, which passes one argument per byte and
- * overflows the call stack on a chunk of any size. Only reached for a chunk that split a multi-byte
- * character, so it is off the hot path and the slice size is a stack-safety choice, not a tuned one.
+ * overflows the call stack on a chunk of any size. The slice width is a stack-safety choice, not a
+ * tuned one — this is only reached for a chunk that split a multi-byte character.
  */
 function latin1(chunk: Uint8Array): string {
   let out = '';

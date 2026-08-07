@@ -1,8 +1,7 @@
 // `rshono start` decides, from what is on disk, whether it can run the build at all.
 //
-// This used to ride along on the per-target build suite, which built the testbed once per platform to
-// get a non-Node `dist/` to refuse. The gate only reads two files, so the fixtures are written directly
-// — the same assertions, without six production builds.
+// The gate reads two files, so the fixtures are written directly rather than produced by building the
+// testbed once per platform — the same assertions, without six production builds.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';

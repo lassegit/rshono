@@ -37,12 +37,11 @@ export const TOOL_VERSIONS = {
 
 /**
  * The TypeScript an ESLint app pins, in place of the framework's own — the one deliberate exception to
- * {@link FRAMEWORK_DEPS}, and the reason it is spelled out here.
+ * {@link FRAMEWORK_DEPS}.
  *
- * typescript-eslint reads TypeScript's compiler API directly rather than through a stable interface, so
- * it accepts `typescript >=4.8.4 <6.1.0` and nothing above. `~6.0.3` is the newest that satisfies it:
- * patch releases of 6.0, no minor. The framework itself stays on the TypeScript it is tested against —
- * rshono's declarations compile the same under either, which is what makes this pin an app's business
+ * typescript-eslint reads TypeScript's compiler API directly rather than through a stable interface,
+ * so it accepts `typescript >=4.8.4 <6.1.0` and nothing above; `~6.0.3` is the newest that satisfies
+ * it. rshono's declarations compile the same under either, which is what makes this an app's business
  * and not the framework's.
  *
  * When upstream widens the range, this constant and the ESLint feature's use of it are what to delete.

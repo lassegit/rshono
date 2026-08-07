@@ -72,11 +72,7 @@ function tristate(on: boolean | undefined, off: boolean | undefined, flag: strin
   return undefined;
 }
 
-/**
- * `parseArgs` rejects an unknown flag with a message that names it but nothing else — so a mistyped
- * `--tailwnid` reads as a wall of text about positional arguments. Pointing at `--help` is the whole
- * addition.
- */
+/** `parseArgs` names an unknown flag but says nothing about what to do next; this points at `--help`. */
 function parse() {
   try {
     return parseArgs({
@@ -111,11 +107,9 @@ async function main(): Promise<void> {
   if (values.help) return console.log(HELP);
   if (values.version) return console.log(__CREATE_RSHONO_VERSION__);
 
-  /*
-   * A pipe, a CI job or an agent gets the defaults rather than a prompt nothing can answer. Both streams
-   * have to be a terminal: the prompts draw on stdout but *read from stdin*, so `echo | npx @rshono/create`
-   * with stdout still attached would otherwise ask a question with nothing behind the keyboard.
-   */
+  // A pipe, a CI job or an agent gets the defaults rather than a prompt nothing can answer. Both
+  // streams have to be a terminal: the prompts draw on stdout but *read from stdin*, so
+  // `echo | npx @rshono/create` would otherwise ask a question with nothing behind the keyboard.
   const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY) && !values.yes;
 
   const pmFlag = oneOf(values.pm, PACKAGE_MANAGERS, 'pm');
@@ -195,10 +189,8 @@ async function main(): Promise<void> {
     );
   }
 
-  /*
-   * The preset asks one question instead of two. The two axes stay independent underneath — a
-   * `--formatter` or `--linter` flag addresses either on its own, and skips the question entirely.
-   */
+  // One question instead of two. The axes stay independent underneath: a `--formatter` or `--linter`
+  // flag addresses either on its own, and skips the question entirely.
   let preset: QualityPreset | undefined = QUALITY_PRESETS.find((candidate) => candidate.id === qualityFlag);
   if (!preset && !formatterFlag && !linterFlag) {
     const fallback = QUALITY_PRESETS[0]!;

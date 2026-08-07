@@ -1,3 +1,10 @@
+/**
+ * `redirect()` and `notFound()` as thrown errors, and the `digest` string that carries them.
+ *
+ * The digest is the only part that survives React: an error thrown inside a server component reaches
+ * the browser as a digest with no message, so the redirect target has to be encoded into it. The
+ * server catches the class (`isControlSignal`), the client matches the string (`isControlDigest`).
+ */
 const REDIRECT_PREFIX = 'RSHONO_REDIRECT;';
 const NOT_FOUND_DIGEST = 'RSHONO_NOT_FOUND';
 

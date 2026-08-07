@@ -34,10 +34,9 @@ export function packageManager(name: PackageManagerName, version?: string): Pack
 }
 
 /**
- * Which package manager invoked us. Every one of them sets `npm_config_user_agent` for the process it
- * spawns, from its runner as much as from `create` — `pnpm/11.9.0 npm/? node/v22.14.0 darwin arm64` — so
- * `pnx @rshono/create` scaffolds a pnpm project without asking, and the exact version comes along for the
- * `packageManager` field.
+ * Which package manager invoked us. Every one of them sets `npm_config_user_agent` on the process it
+ * spawns — `pnpm/11.9.0 npm/? node/v22.14.0 darwin arm64` — so `pnx @rshono/create` scaffolds a pnpm
+ * project without asking, and the exact version comes along for the `packageManager` field.
  *
  * Falls back to npm, which is also what a bare `node bin/create-rshono.mjs` gets.
  */

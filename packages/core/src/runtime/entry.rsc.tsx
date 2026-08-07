@@ -8,8 +8,8 @@ import type { ReactFormState } from 'react-dom/client';
 // `<Page {...props} />`, because a spread would drop the non-enumerable `ctx` prop. See `pageProps`.
 import { jsx } from 'react/jsx-runtime';
 // The bare specifier, not `/server.node`: the package ships a build per runtime behind export
-// conditions (`node`, `workerd`, `deno`, `edge-light`), and the RSC layer's `conditionNames` is what
-// picks one — so a non-Node deploy target gets its own build instead of Node's by hard-coded path.
+// conditions, and the RSC layer's `conditionNames` picks one — so a non-Node deploy target gets its
+// own build rather than Node's by hard-coded path.
 import {
   createTemporaryReferenceSet,
   decodeAction,
@@ -39,11 +39,10 @@ import { acceptsRsc, isActionRequest, parseRenderRequest, requestWantsRsc, wants
 
 const serverApp = ((serverAppModule as { default?: unknown }).default ?? null) as Hono | null;
 
-// Framework settings resolved from rshono.config.ts and compiled into the bundle at build time
-// (see builder/rspack-config.ts). These have no runtime env-var interface — env is for secrets.
-// Named after their ServerConfig fields, so what a setting does here is one grep from where it is
-// resolved. `isDev` among them: the build mode is decided by which command produced the bundle, not
-// by `process.env.NODE_ENV`, and not every runtime this deploys to has a `process` to read anyway.
+// Framework settings resolved from rshono.config.ts and compiled into the bundle at build time (see
+// builder/rspack-config.ts). There is no runtime env-var interface for these — env is for secrets.
+// `isDev` among them: the build mode is decided by which command produced the bundle, and not every
+// runtime this deploys to has a `process.env.NODE_ENV` to read.
 const CONFIG = __RSHONO_CONFIG__;
 const { isDev, cspEnabled, checkOrigin, maxBodyBytes } = CONFIG;
 /** Extra cross-origin hosts permitted to post server actions, beyond the app's own origin. */
@@ -86,16 +85,15 @@ export type RscPayload = {
 /**
  * CSRF guard for server-action POSTs, layering the two signals a browser gives us.
  *
- * `Sec-Fetch-Site` is set by the browser and unforgeable by page script, so `same-origin` settles
- * the question on its own — and short-circuiting on it is what keeps the check from misfiring on a
- * legitimate request whose `Host` the proxy rewrote. Everything else falls back to comparing the
- * `Origin` host against our own (see {@link publicUrl} — deliberately *not* against a raw
- * `X-Forwarded-Host`, which the client controls unless `trustProxy` says a proxy owns it).
+ * `Sec-Fetch-Site` is set by the browser and unforgeable by page script, so `same-origin` settles the
+ * question on its own — and short-circuiting on it keeps the check from misfiring on a legitimate
+ * request whose `Host` the proxy rewrote. Everything else compares the `Origin` host against our own
+ * (see {@link publicUrl} — deliberately *not* against a raw `X-Forwarded-Host`).
  *
  * A missing `Origin` is treated as same-origin: no-JS form posts from older browsers omit it, and
- * those same browsers send no `Sec-Fetch-Site` either, so there is nothing left to check. Hosts are
- * compared case-insensitively; the scheme is not compared, so this alone won't stop an
- * `http://` origin posting to the `https://` site (HSTS is the control for that).
+ * those same browsers send no `Sec-Fetch-Site` either, so there is nothing left to check. The scheme
+ * is not compared, so this alone won't stop an `http://` origin posting to the `https://` site — HSTS
+ * is the control for that.
  */
 function isSameOriginAction(c: Context): boolean {
   if (!checkOrigin) return true;
@@ -139,6 +137,15 @@ async function loadPageModule(load: () => Promise<{ default: PageComponent }>, l
 /** A browser navigation or a crawler, as opposed to a fetch that would rather have plain text. */
 function acceptsHtml(c: Context): boolean {
   return c.req.header('accept')?.includes('text/html') ?? false;
+}
+
+/**
+ * The 404 for an app with no `notFound` page, and for a client that wanted neither HTML nor a flight
+ * payload. Shared for the `Vary`: this is still one of the answers a page URL gives depending on
+ * `Accept`, and a cache not told so can hand a plain-text 404 to a browser asking for a document.
+ */
+function plainNotFound(c: Context): Response {
+  return c.text('Not Found', 404, { vary: 'Accept' });
 }
 
 /** A lazy once-cell: runs `load` at most once and caches the promise, but clears a rejection so a later call can retry. */
@@ -188,50 +195,25 @@ interface ComponentRenderOptions {
 }
 
 /**
- * There is no render deadline here any more.
- *
- * A `renderTimeout` setting used to wrap every request in an `AbortController` with a timer, covering
- * the server action as well as the flight and SSR passes. Every host this deploys to enforces its own
- * request timeout — Workers, Vercel and Lambda all do — so the only shape that needed one was a Node
- * process facing the internet directly, and there a proxy is both the conventional and the more capable
- * place for it. The README shows the middleware for a Node deploy that wants one in-process.
- *
- * What the deadline *also* did was carry the client-disconnect signal into the two React renderers, and
- * that is kept — but not by handing them `c.req.raw.signal`. Both React renderers add an `abort`
- * listener to whatever signal they are given and only remove it if the abort fires, so a listener left on
- * a request-lifetime signal pins the flight request, the Fizz request and the whole rendered tree. That
- * is not theoretical: handing them the request signal directly cost ~169 kB per `/ssr` request, never
- * reclaimed by a major GC, and took GC from 5.8% to 12.9% of wall time under load.
- *
- * The deadline's own `AbortController` was, accidentally, what had kept that collectable — its signal
- * died with the render. So {@link renderComponent} keeps a per-render controller and forwards the request
- * signal into it, releasing the forwarder when the response ends. Never through `AbortSignal.any([...])`,
- * which reads better and leaks worse: a signal it produced is *composite*, and Node holds every composite
- * signal carrying an `abort` listener in a process-lifetime set (`gcPersistentSignals`) until it either
- * aborts or loses its last listener.
- */
-
-/**
  * Builds the props a page component is called with.
  *
- * `url` and `params` match `useNavigation()` field for field, so a read can move between a page and
- * a `'use client'` component unchanged. The `URL` is this page's own — `RequestContext` parses its own — so a
- * page that mutates it cannot disturb anything else on the request.
+ * `url` and `params` match `useNavigation()` field for field, so a read can move between a page and a
+ * `'use client'` component unchanged. The `URL` is this page's own, so mutating it cannot disturb
+ * anything else on the request.
  *
- * `ctx` is *defined* rather than assigned, and both parts of how carry their weight:
+ * `ctx` is *defined* rather than assigned, and both halves of how carry their weight:
  *
  * - **A getter**, so nothing is built for the pages that never read it, and so a `render: 'static'`
- *   page that does read it gets {@link getRequestContext}'s own "no per-request context while
- *   prerendering" error rather than a bare `undefined` — one explanation, in one place.
+ *   page that does read it gets {@link getRequestContext}'s "no per-request context while
+ *   prerendering" error rather than a bare `undefined`.
  * - **Non-enumerable**, so React's *development-only* serialization of a server component's props
  *   (the debug channel behind component stacks and the performance track) skips it. That walks own
  *   enumerable properties, and `ctx.hono` is the Hono {@link Context} — whose `env` holds the
- *   runtime's bindings. An enumerable `ctx` ships every one of them, secrets included, to the
- *   browser in dev, and grows a small page's flight payload by well over 10 kB. Production never
- *   serializes a server component's props at all, so this is the dev half of the same guarantee.
+ *   runtime's bindings. An enumerable `ctx` would ship every one of them, secrets included, to the
+ *   browser in dev, and add well over 10 kB to a small page's flight payload.
  *
- * The cost is that the element has to be created by handing this object to `jsx()` *by reference*:
- * a `<Page {...props} />` spread copies enumerable properties only, and would drop `ctx` silently.
+ * The cost is that the element has to be created by handing this object to `jsx()` *by reference*: a
+ * `<Page {...props} />` spread copies enumerable properties only, and would drop `ctx` silently.
  */
 function pageProps(c: Context, errorInfo: ErrorPageInfo | undefined): PageProps & { error?: ErrorPageInfo } {
   const props = { url: publicUrl(c), params: readParams(c), ...(errorInfo ? { error: errorInfo } : null) };
@@ -240,18 +222,16 @@ function pageProps(c: Context, errorInfo: ErrorPageInfo | undefined): PageProps 
 }
 
 async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opts: ComponentRenderOptions): Promise<Response> {
-  // The client going away is the one thing that still aborts a render — but React's renderers must not
-  // be handed `c.req.raw.signal` to watch for it. Both of them add an `abort` listener and only remove
-  // it if the abort fires, so on the happy path the listener stays on a signal that lives as long as the
-  // request object, and through it pins the flight request, the Fizz request and the whole rendered
-  // tree. Measured at ~169 kB per `/ssr` request, never reclaimed by a major GC.
+  // A client going away aborts the render — but React's renderers must never be handed
+  // `c.req.raw.signal` to watch for it. Both add an `abort` listener and only remove it if the abort
+  // fires, so on the happy path that listener stays on a request-lifetime signal and through it pins
+  // the flight request, the Fizz request and the whole rendered tree (~169 kB per `/ssr` request,
+  // never reclaimed by a major GC).
   //
-  // So the render gets a controller of its own and the request signal only forwards into it. The
-  // forwarding listener is `once`, so an abort removes it, and {@link release} removes it on the normal
-  // path — which is what keeps the request from retaining the render. Deliberately not
-  // `AbortSignal.any()`: a signal it produced is *composite*, and Node holds every composite signal
-  // carrying an `abort` listener in a process-lifetime set until it aborts or loses its last listener,
-  // which is a worse leak than the one being fixed here.
+  // So the render gets a controller of its own and the request signal only forwards into it: the
+  // forwarder is `once`, so an abort removes it, and `release` removes it on the normal path. Not
+  // `AbortSignal.any()` — a signal it produced is *composite*, and Node holds every composite signal
+  // carrying an `abort` listener in a process-lifetime set until it aborts or loses its last listener.
   const requestSignal = c.req.raw.signal;
   const renderAbort = new AbortController();
   const signal = renderAbort.signal;
@@ -392,11 +372,10 @@ async function renderPage(c: Context, loadPage: () => Promise<ServerEntry<PageCo
 function buildApp(): Hono {
   const app = new Hono();
 
-  // Cheap, unconditional headers that only matter when something else has gone wrong: stop
-  // content-type sniffing, keep the full URL (paths, query) out of cross-origin referrers, and
-  // refuse to be framed by another origin (clickjacking). `frame-ancestors` in the opt-in CSP is
-  // stricter and takes precedence where both apply; this is the floor for everyone else.
-  // Set after `next()` so a route or middleware that sets its own value wins.
+  // Baseline security headers: stop content-type sniffing, keep the full URL out of cross-origin
+  // referrers, and refuse to be framed by another origin. `frame-ancestors` in the opt-in CSP is
+  // stricter and takes precedence where both apply; this is the floor for everyone else. Set after
+  // `next()` so a route or middleware that sets its own value wins.
   app.use(async (c, next) => {
     await next();
     const headers = c.res.headers;
@@ -404,16 +383,14 @@ function buildApp(): Hono {
     if (!headers.has('referrer-policy')) headers.set('referrer-policy', 'strict-origin-when-cross-origin');
     if (!headers.has('x-frame-options')) headers.set('x-frame-options', 'SAMEORIGIN');
 
-    // Page responses only, from here down. Two things are true of them and of nothing else served
-    // here: one URL answers with either an HTML document or a flight payload depending on `Accept`,
-    // and the default page is request-specific (cookies, session, headers).
+    // Page responses only, from here down: one URL answers with either an HTML document or a flight
+    // payload depending on `Accept`, and the default page is request-specific.
     if (!PAGE_CONTENT_TYPE.test(headers.get('content-type') ?? '')) return;
     appendVary(headers, 'Accept');
-    // Without this a page carries no cache directives at all, and a shared cache — a CDN, a
-    // corporate proxy — is free to store a logged-in user's page and hand it to someone else.
-    // `private` forbids exactly that; `no-cache` makes the browser revalidate its own copy rather
-    // than re-showing a stale personalised page. Neither blocks bfcache, which `no-store` would.
-    // A prerendered page, or anything a route set deliberately, already has its own value.
+    // Without this a page carries no cache directives at all, and a shared cache — a CDN, a corporate
+    // proxy — is free to store a logged-in user's page and hand it to someone else. `private` forbids
+    // that; `no-cache` makes the browser revalidate rather than re-show a stale personalised page.
+    // Neither blocks bfcache, which `no-store` would. A prerendered page already has its own value.
     if (!headers.has('cache-control')) headers.set('cache-control', 'private, no-cache');
   });
 
@@ -442,7 +419,9 @@ function buildApp(): Hono {
     const isRsc = requestWantsRsc(c.req.raw);
     if (signal instanceof RedirectSignal) {
       if (isRsc) {
-        return c.body(renderToReadableStream({ root: null, redirect: signal.location } satisfies RscPayload, { signal: c.req.raw.signal }), 200, {
+        // No `signal`, deliberately — see `renderComponent`. This payload is two fields and no
+        // component tree, so there is nothing worth aborting and nothing worth a listener.
+        return c.body(renderToReadableStream({ root: null, redirect: signal.location } satisfies RscPayload), 200, {
           'content-type': 'text/x-component;charset=utf-8',
         });
       }
@@ -451,8 +430,7 @@ function buildApp(): Hono {
     if (loadNotFoundPage) {
       return renderComponent(c, await loadNotFoundPage(), { status: 404, isRsc, notFound: true });
     }
-    // Plain text, but still one of the two answers this URL gives depending on `Accept`.
-    return c.text('Not Found', 404, { vary: 'Accept' });
+    return plainNotFound(c);
   };
 
   for (const route of routes) {
@@ -469,12 +447,10 @@ function buildApp(): Hono {
             // under `csp` the *document* has to be rendered per request. The flight payload never
             // carries a nonce, so it stays servable from the build either way.
             const mustRenderForNonce = cspEnabled && !isRsc;
-            // Otherwise both representations come from the build, so a soft navigation is served from
-            // it too rather than re-rendering a page that was already built.
             if (!mustRenderForNonce) {
               const page = await runtime.readPrerendered(c, isRsc ? 'flight' : 'html');
               // A prerendered page is request-independent by construction, so it is safe to cache
-              // publicly; the short max-age matches what `public/` files get. The ETag turns the
+              // publicly; the short max-age matches what `public/` files get, and the ETag turns the
               // revalidation that follows into a 304 rather than the page all over again.
               //
               // Answered outside `runWithContext`: no app code runs on this path, so there is no
@@ -517,7 +493,7 @@ function buildApp(): Hono {
     if (loadNotFoundPage && (isRsc || acceptsHtml(c))) {
       return runWithContext(c, async () => renderComponent(c, await loadNotFoundPage(), { status: 404, isRsc }));
     }
-    return c.text('Not Found', 404, { vary: 'Accept' });
+    return plainNotFound(c);
   });
 
   const loadErrorPage = routeConfig.error ? memoizePage(routeConfig.error, 'the error page') : null;

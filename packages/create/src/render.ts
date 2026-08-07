@@ -9,10 +9,9 @@ import type { PackageManager } from './pm.js';
 export type Tokens = Record<string, string>;
 
 /**
- * `{{NAME}}`, and not the `__NAME__` this used to be. A template is a real file that real tools run
- * over, and in markdown `__NAME__` *is* strong emphasis — Prettier rewrites it to `**NAME**`, which
- * turns a token into literal text that no substitution will ever match again. `{{…}}` means nothing to
- * any of the formats these templates are written in.
+ * `{{NAME}}`, deliberately not `__NAME__`: templates are real files that real tools run over, and in
+ * markdown `__NAME__` *is* strong emphasis — Prettier rewrites it to `**NAME**` and the token stops
+ * matching. `{{…}}` means nothing to any format these templates are written in.
  */
 const TOKEN_PATTERN = /\{\{[A-Z][A-Z\d_]*\}\}/g;
 

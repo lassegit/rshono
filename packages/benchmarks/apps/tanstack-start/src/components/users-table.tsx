@@ -3,10 +3,10 @@ import type { User } from '../server-fns';
 /**
  * The body of `/ssr`, as a server component.
  *
- * Its own module, reached only through a dynamic import inside the route's server function, so it
- * never enters the client graph — the same reason `server-fns.ts` imports the fixture that way.
- * Rendered through `renderServerComponent`, which is what puts React's flight encode (here) and
- * decode (in the SSR pass) on the request path, matching what rshono and Next do for every page.
+ * In its own module, reached only through a dynamic import inside the route's server function, so it
+ * never enters the client graph. Rendered through `renderServerComponent`, which puts React's flight
+ * encode (here) and decode (in the SSR pass) on the request path — matching what rshono and Next do
+ * for every page.
  */
 export function UsersTable({ users, summary }: { users: User[]; summary: { count: number; totalScore: number; admins: number } }) {
   return (

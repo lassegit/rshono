@@ -3,17 +3,13 @@ import { TOOL_VERSIONS } from '../versions.js';
 import type { Feature } from './types.js';
 
 /**
- * What a deploy target adds beyond the `deploy` line in `rshono.config.ts` — which is the build's job
- * to read, and the template's to carry.
+ * What a deploy target adds beyond the `deploy` line in `rshono.config.ts`, which the template carries.
  *
- * Deliberately thin. The framework already knows how to arrange its own output for every platform, and
- * `rshono build` writes the one platform config that has to exist (`wrangler.jsonc`, with the
- * `compatibility_date` of the day it ran) if the project has none. Generating a second copy here would
- * be a copy that goes stale.
- *
- * So a target contributes only what is true of it: the command that runs or ships the build, the CLI
- * that command needs installed locally, the directories its platform leaves behind for `.gitignore`, and
- * a note for the step no command covers. Several contribute just one of those.
+ * Deliberately thin: the framework arranges its own output for every platform, and `rshono build`
+ * writes the one platform config that has to exist (`wrangler.jsonc`, dated the day it ran) if the
+ * project has none — a second copy generated here would only go stale. So a target contributes the
+ * command that ships the build, the CLI that command needs, the directories to gitignore, and a note
+ * for the step no command covers. Several contribute just one of those.
  */
 const DEPLOY_FEATURES: Record<DeployTargetName, Feature> = {
   // Where a Node build goes from here is a Dockerfile or a process manager, neither of which this can
@@ -25,9 +21,10 @@ const DEPLOY_FEATURES: Record<DeployTargetName, Feature> = {
   cloudflare: {
     id: 'deploy-cloudflare',
     devDependencies: { wrangler: TOOL_VERSIONS.wrangler },
-    // wrangler brings workerd, whose install script only picks the platform binary out of the optional
-    // dependency that already carries it — `workerd --version` answers without it having run.
-    allowBuilds: { workerd: false },
+    // The only two install scripts a scaffolded app can end up with, and wrangler brings both. Each
+    // one merely picks the platform binary out of the optional dependency that already carries it, so
+    // neither needs to run — `workerd --version` and `esbuild --version` both answer without it.
+    allowBuilds: { esbuild: false, workerd: false },
     scripts: { deploy: 'rshono build && wrangler deploy' },
     gitignore: ['.wrangler/'],
     notes: ['The first build writes wrangler.jsonc — yours to edit after that.'],

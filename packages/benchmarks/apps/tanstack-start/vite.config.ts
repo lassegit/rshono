@@ -7,12 +7,9 @@ export default defineConfig({
   plugins: [
     tanstackStart({
       // APP_SPEC.md: `/` is prerendered in all three apps; `/ssr` and `/interactive` must stay
-      // dynamic. Prerendering is therefore declared per page and left off globally — enabling it at
-      // the top level prerenders every route in the tree, which would turn the two dynamic routes
-      // into static files and make their numbers meaningless.
-      // `crawlLinks: false` is load-bearing: the nav links to both dynamic routes, and the crawler
-      // follows them by default — which prerenders the two routes whose whole purpose is to be
-      // rendered per request.
+      // dynamic. So prerendering is declared per page, not globally — enabling it at the top level
+      // would turn the two dynamic routes into static files. `crawlLinks: false` is load-bearing for
+      // the same reason: the nav links to both, and the crawler follows them by default.
       pages: [{ path: '/', prerender: { enabled: true, crawlLinks: false } }],
       // APP_SPEC.md: the two dynamic routes render their body as a server component, so the flight
       // encode/decode round trip is on the request path here as it is in the other two apps.

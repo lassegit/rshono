@@ -9,14 +9,13 @@ import type { DeployRuntime } from './contract.js';
 const isDev = __RSHONO_CONFIG__.isDev;
 
 /**
- * The project root, derived from where the bundle itself ended up: `rshono build` writes the server
- * bundle to `<root>/dist/server/main.mjs`, and this module is bundled into it, which makes
- * `import.meta.dirname` `<root>/dist/server` at runtime.
+ * The project root, derived from where the bundle ended up: this module is compiled into
+ * `<root>/dist/server/main.mjs`, so `import.meta.dirname` is `<root>/dist/server` at runtime.
  *
- * Derived rather than baked in at build time on purpose: an absolute build-time path would tie the
- * output to the machine that produced it, and building in CI to run somewhere else is the normal case.
- * A preset that relocates the bundle keeps `dist/server/main.mjs` intact inside its own layout for
- * exactly this reason.
+ * Derived rather than baked in at build time, because an absolute build-time path would tie the
+ * output to the machine that produced it — and building in CI to run somewhere else is the normal
+ * case. A preset that relocates the bundle keeps `dist/server/main.mjs` intact inside its own layout
+ * for exactly this reason.
  */
 const rootDir = join(import.meta.dirname, '..', '..');
 

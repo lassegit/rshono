@@ -37,15 +37,15 @@ function enclosingNodeModules(file: string): string | undefined {
 /**
  * Where packages are resolved from: the app's own `node_modules`, then the framework's.
  *
- * The second part is what makes {@link INJECTED_PACKAGES} resolvable from app source. npm, yarn and bun
- * hoist the framework's dependencies to the app's own `node_modules`, so they need nothing; pnpm gives
- * `@rshono/core` a private directory and installs its dependencies as *siblings* of the framework
- * rather than inside it, and nothing under the app's tree can see them — the build fails with
- * `Can't resolve 'react-server-dom-rspack/client'` in a file the user never wrote that import into.
+ * The second part is what makes {@link INJECTED_PACKAGES} resolvable from app source. npm, yarn and
+ * bun hoist the framework's dependencies into the app's own `node_modules`; pnpm installs them as
+ * *siblings* of `@rshono/core` where nothing under the app's tree can see them, and the build then
+ * fails with `Can't resolve 'react-server-dom-rspack/client'` in a file the user never wrote that
+ * import into.
  *
  * Asking Node where the framework itself resolves the package finds the directory in any layout, and
- * making it a search path rather than an alias keeps the package's own `exports` conditions in play —
- * the RSC layer, the SSR layer and each deploy target need a different build of it.
+ * a search path rather than an alias keeps the package's own `exports` conditions in play — the RSC
+ * layer, the SSR layer and each deploy target need a different build of it.
  */
 function resolveModules(): string[] {
   const require = createRequire(import.meta.url);
@@ -69,10 +69,9 @@ function resolveModules(): string[] {
  *
  * Rspack's RSC plugins ask for their client and server-entry proxies by *absolute path*, which on
  * Windows means a drive letter (`D:\app\src\home.tsx`) instead of a leading slash. Externalizing one
- * of those emits `import("D:\\app\\src\\home.tsx")`, and Node rejects that with
- * `ERR_UNSUPPORTED_ESM_URL_SCHEME` ("Received protocol 'd:'") — a build that works everywhere else
- * fails on Windows only. `win32.isAbsolute` also accepts the POSIX form, so it is used on every
- * platform: one code path, and the Windows shapes stay testable off Windows.
+ * of those emits `import("D:\\app\\src\\home.tsx")`, which Node rejects with
+ * `ERR_UNSUPPORTED_ESM_URL_SCHEME`. `win32.isAbsolute` also accepts the POSIX form, so it is used on
+ * every platform — one code path, and the Windows shapes stay testable off Windows.
  */
 function isPathRequest(request: string): boolean {
   return request.startsWith('.') || win32.isAbsolute(request);
@@ -84,13 +83,12 @@ const NODE_TARGETS = ['node >= 22'];
 /**
  * Rspack's native CSS pipeline, which both compilers get.
  *
- * It parses *finished* CSS, so a stylesheet needing a PostCSS plugin — Tailwind, most obviously — adds
- * the loader through the {@link RshonoConfig.rspack} hook, along with the two packages a PostCSS pass
- * takes. The framework stays out of it: `postcss` is a dependency an app that wants one can have, rather
- * than one every app pays for. The Styling section of the README has the four lines involved.
+ * It parses *finished* CSS, so a stylesheet needing a PostCSS plugin — Tailwind, most obviously —
+ * adds the loader through the {@link RshonoConfig.rspack} hook, along with the packages a PostCSS
+ * pass takes. `postcss` is then a dependency of the apps that want one rather than of every app.
  *
- * A fresh object per compiler, not one shared between them — the hook is handed each config in turn, and
- * an app that reaches in to change this rule should not find it has changed the other bundle's too.
+ * A fresh object per compiler, so an app that reaches in to change this rule does not find it has
+ * changed the other bundle's too.
  */
 function cssRule(): RuleSetRule {
   return { test: /\.css$/i, type: 'css/auto' };
@@ -292,8 +290,7 @@ export function createConfigs(options: RspackConfigOptions): [RspackOptions, Rsp
     plugins: [
       pageScanPlugin,
       new ServerPlugin({ onServerComponentChanges }),
-      // Bake the framework settings from rshono.config.ts into the bundle (read as __RSHONO_CONFIG__
-      // in entry.rsc.tsx) — the server-side counterpart to the client's publicEnv injection.
+      // Bakes rshono.config.ts into the bundle, read back as `__RSHONO_CONFIG__` at request time.
       new rspack.DefinePlugin({ __RSHONO_CONFIG__: JSON.stringify(resolveServerConfig(config, { isDev })) }),
     ],
     performance: false,

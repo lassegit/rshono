@@ -6,8 +6,8 @@ const cli = fileURLToPath(new URL('./bin/rshono.mjs', import.meta.url));
 const PORT = 3210;
 
 // These run against a real production build in a real browser, because that is the only place the
-// client runtime — soft navigation, prefetching, scroll restoration, the fatal overlay — actually
-// executes. The node:test suite can only check that the code was shipped.
+// client runtime — soft navigation, server actions, anchor and scroll behaviour, the fatal overlay —
+// actually executes. The node:test suite can only check that the code was shipped.
 export default defineConfig({
   testDir: './test/browser',
   // One app, one server, shared state (the testbed's user list is mutable): parallelism would make

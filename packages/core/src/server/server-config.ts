@@ -31,13 +31,12 @@ export interface ServerConfig {
 }
 
 /**
- * The single source of truth for the framework's built-in defaults.
+ * The framework's built-in defaults.
  *
- * `maxBodyBytes` is resolved here, into the bundle. `port` and `host` are not
- * settings at all: they are read from `PORT` / `HOST` (or `--port`) wherever the address is resolved
- * — `deploy/node/runtime.ts` for a server bundle, `cli/dev.ts` for the dev server — and this is the
- * default both fall back to. A config field for them would have been a fourth precedence level for
- * one number, overridden by the environment on every host that matters.
+ * `maxBodyBytes` is resolved from here into the bundle. `port` and `host` are not config fields at
+ * all — they come from `PORT` / `HOST` (or `--port`) wherever the address is resolved,
+ * `deploy/node/runtime.ts` for a server bundle and `cli/dev.ts` for the dev server, and this is what
+ * both fall back to.
  */
 export const SERVER_DEFAULTS = {
   maxBodyBytes: 1024 * 1024, // 1 MiB, matching Next.js's server-action body-size limit.
@@ -84,10 +83,10 @@ export function parseByteSize(value: string | number | false | undefined): numbe
  * Normalize a config `allowedOrigins` entry (full origin or bare host) to a lowercase `URL.host`,
  * ready for a direct comparison against a parsed `Origin` header's host.
  *
- * A bare `host:port` has to be retried against a base, because on its own `'localhost:4000'`
- * parses as the *scheme* `localhost:` with path `4000` — leaving an empty host that would
- * silently never match anything. Throws rather than passing a junk entry through, so a typo
- * fails the build instead of quietly disabling the allowlist entry it was meant to add.
+ * A bare `host:port` has to be retried against a base: on its own `'localhost:4000'` parses as the
+ * *scheme* `localhost:` with path `4000`, leaving an empty host that would never match anything.
+ * Throws rather than passing a junk entry through, so a typo fails the build instead of quietly
+ * disabling the allowlist entry it was meant to add.
  */
 function normalizeOrigin(entry: string): string {
   const host = URL.parse(entry)?.host || URL.parse(`http://${entry}`)?.host;

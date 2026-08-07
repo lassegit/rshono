@@ -43,6 +43,18 @@ export function tail(text, lines) {
 }
 
 /**
+ * A failure printed as one block: `✗` against the headline, the detail indented under it.
+ *
+ * Beside {@link startServer} because that is what builds the messages this formats — a headline with
+ * the server's own output appended, where the reason a stage cannot run always is. Print only the
+ * first line and that half is thrown away.
+ */
+export function indent(message) {
+  const [headline, ...rest] = String(message).split('\n');
+  return [`  ✗ ${headline}`, ...rest.map((line) => `      ${line}`)].join('\n');
+}
+
+/**
  * Boot a server and wait until it answers. Returns a handle whose `stop()` takes the whole process
  * group down — Next and Vite both spawn children, and an orphaned child holds the port.
  */
