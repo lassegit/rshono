@@ -149,7 +149,7 @@ function firstForwardedValue(header: string | undefined): string | undefined {
 const trustProxy = typeof __RSHONO_CONFIG__ !== 'undefined' && __RSHONO_CONFIG__.trustProxy;
 
 /**
- * Resolves the browser-facing {@link URL} for a request.
+ * Resolves the browser-facing {@link URL} for a request, from a Hono {@link Context}.
  *
  * `c.req.url` reflects the internal address the server was reached on, which is wrong behind a proxy.
  * `X-Forwarded-Host` / `X-Forwarded-Proto` fix that up — **but only when `trustProxy` is enabled in
@@ -157,9 +157,28 @@ const trustProxy = typeof __RSHONO_CONFIG__ !== 'undefined' && __RSHONO_CONFIG__
  * unconditionally would let anyone who can reach the server dictate the origin of every absolute URL
  * the app builds, and poison a shared cache with it.
  *
- * Framework internal — prefer {@link RequestContext.url}, which caches the result per request.
+ * This is the form for **middleware**, which is handed `c` and runs outside the request context. In
+ * a server component or a `'use server'` action prefer {@link RequestContext.url}, which is this same
+ * value cached per request.
  *
- * @internal
+ * Its main use is giving Hono's own middleware the origin the browser actually used, since they all
+ * read `c.req.url` on their own and so see the internal one:
+ *
+ * @example
+ * ```ts
+ * // src/server.ts — a CSRF check that still works behind a proxy that rewrites Host
+ * import { publicUrl } from '@rshono/core/server';
+ * import { csrf } from 'hono/csrf';
+ *
+ * server.use(csrf({ origin: (origin, c) => origin === publicUrl(c).origin }));
+ * ```
+ *
+ * A fresh instance per call, so mutating it disturbs nothing else.
+ *
+ * @param c - The Hono {@link Context} for the request.
+ * @returns The browser-facing URL — proxy-corrected under `trustProxy`, `c.req.url` otherwise.
+ *
+ * @see {@link https://www.rshono.com/docs/configuration#proxy-headers | Docs — proxy headers}
  */
 export function publicUrl(c: Context): URL {
   const url = new URL(c.req.url);

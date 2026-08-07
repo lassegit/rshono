@@ -1,5 +1,7 @@
-import { onServerError } from '@rshono/core/server';
+import { onServerError, publicUrl } from '@rshono/core/server';
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
+import { csrf } from 'hono/csrf';
 import { trimTrailingSlash } from 'hono/trailing-slash';
 
 /**
@@ -13,6 +15,15 @@ onServerError((error, { source, request }) => {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`[error] ${source} ${new URL(request.url).pathname}: ${message}`);
 });
+
+/** Caps every request body before anything downstream buffers it. Raise it where you accept uploads. */
+server.use(bodyLimit({ maxSize: 1024 * 1024 }));
+
+/** Cross-origin hosts allowed to post server actions, alongside this app's own. */
+const ALLOWED_ORIGINS: string[] = [];
+
+/** Rejects a cross-origin POST before it reaches a server action. `publicUrl(c)`, not `c.req.url`: behind a proxy those differ. */
+server.use(csrf({ origin: (origin, c) => origin === publicUrl(c).origin || ALLOWED_ORIGINS.includes(origin) }));
 
 /** `/about/` and `/about` should not be two pages. */
 server.use(trimTrailingSlash({ alwaysRedirect: true }));

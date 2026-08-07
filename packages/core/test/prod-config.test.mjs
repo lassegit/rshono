@@ -1,19 +1,24 @@
-// What rshono.config.ts changes about a production build. There is no runtime env-var interface for
-// any of it — CSP, the CSRF allowlist, the body cap and trustProxy are resolved
-// at build time and baked into the server bundle — so each permutation means its own build. They run
-// one after another in this one file so the builds never race over `dist/` (the suite as a whole is
-// serialised by `--test-concurrency=1`; suites inside a file are serial too).
+// The security middleware an app registers in `src/server.ts` — Hono's `csrf()`, `bodyLimit()` and
+// `secureHeaders()` — plus the one security setting that is still build-time config, `trustProxy`.
+//
+// Only `trustProxy` needs a build of its own: it is resolved before Rspack compiles anything and
+// baked into the server bundle. The rest is middleware, so the testbed reads its profile from the
+// environment and one build serves every permutation — which is the point of having moved them.
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { after, before, describe, test } from 'node:test';
 import { buildTestbed, FIXTURES_DIR, startTestbed, stopServer } from './helpers.mjs';
 
-/** Builds the testbed against a fixture config and serves it for the enclosing suite. */
-function serve(configFile) {
+// One build for the whole file, with the only config setting under test here baked in. The suites
+// below differ by environment alone. Serialised with the rest of the suite by
+// `--test-concurrency=1`, so this never races another file over `dist/`.
+before(() => buildTestbed(join(FIXTURES_DIR, 'trust-proxy.config.mjs')));
+
+/** Serves the already-built testbed under `env` for the enclosing suite. */
+function serve(env) {
   const app = {};
   before(async () => {
-    buildTestbed(join(FIXTURES_DIR, configFile));
-    const server = await startTestbed('start');
+    const server = await startTestbed('start', { env });
     app.base = server.base;
     app.child = server.child;
   });
@@ -21,34 +26,45 @@ function serve(configFile) {
   return app;
 }
 
-describe('a hardened config', () => {
-  const app = serve('hardened.config.mjs');
+describe('a hardened server.ts', () => {
+  const app = serve({
+    TESTBED_CSP: '1',
+    TESTBED_BODY_LIMIT: '1024',
+    TESTBED_ALLOWED_ORIGINS: 'https://admin.example,https://alt.example:8443',
+  });
 
-  test('csp: true sends a nonce-based CSP and renders static documents per request', async () => {
+  test('secureHeaders + NONCE sends a nonce-based CSP and renders static documents per request', async () => {
     const res = await fetch(`${app.base}/`);
     const header = res.headers.get('content-security-policy');
     assert.ok(header, 'missing content-security-policy header');
     const nonce = header.match(/'nonce-([^']+)'/)[1];
     assert.doesNotMatch(header, /unsafe-eval/, 'prod CSP must not allow eval');
-    assert.ok((await res.text()).includes(`nonce="${nonce}"`), 'nonce not stamped on scripts');
+    assert.ok((await res.text()).includes(`nonce="${nonce}"`), 'the nonce Hono minted was not stamped on the scripts');
 
+    // A prerendered file is fixed bytes and cannot carry a fresh nonce, so the document falls back to
+    // rendering per request while a nonce is in play.
     const ssg = await fetch(`${app.base}/docs/getting-started`);
     assert.ok(ssg.headers.get('content-security-policy'), 'SSG route missing CSP header');
     assert.match(await ssg.text(), /nonce="/);
   });
 
-  test('the CSP closes the gaps default-src does not cover, and cspDirectives merge over it', async () => {
+  test('two requests get two nonces — the value is per request, not per build', async () => {
+    const nonceOf = async () => (await fetch(`${app.base}/`)).headers.get('content-security-policy').match(/'nonce-([^']+)'/)[1];
+    assert.notEqual(await nonceOf(), await nonceOf(), 'a reused nonce is no better than no nonce at all');
+  });
+
+  test('the policy closes the gaps default-src does not cover', async () => {
     const header = (await fetch(`${app.base}/`)).headers.get('content-security-policy');
     // None of these are covered by default-src, and each closes an injection route of its own.
     for (const directive of ['base-uri', 'object-src', 'form-action']) {
       assert.match(header, new RegExp(`(^|; )${directive} `), `CSP is missing ${directive}`);
     }
-    assert.match(header, /img-src 'self' https:\/\/images\.example/, 'a cspDirectives entry should widen the built-in directive');
-    assert.match(header, /frame-ancestors 'self'/, 'a cspDirectives entry should replace the built-in default');
-    assert.match(header, /script-src [^;]*'nonce-/, 'the per-request nonce must survive directive overrides');
+    assert.match(header, /img-src 'self' data: https:\/\/images\.example/, 'the app widened img-src');
+    assert.match(header, /frame-ancestors 'self'/);
+    assert.match(header, /script-src [^;]*'nonce-/);
   });
 
-  test('csp: true still serves the prerendered flight payload — only the document needs a nonce', async () => {
+  test('the prerendered flight payload is still served from disk — only the document needs a nonce', async () => {
     // A flight payload never carries a nonce (that only goes on the HTML bootstrap), so there is
     // nothing per-request about it and no reason for CSP to cost soft navigations their prerender.
     const res = await fetch(`${app.base}/docs/getting-started`, { headers: { Accept: 'text/x-component' } });
@@ -58,7 +74,7 @@ describe('a hardened config', () => {
     assert.doesNotMatch(await res.text(), /nonce/, 'and it carries no nonce to go stale');
   });
 
-  test('allowedOrigins lets the listed origins through, in every form, and nothing else', async () => {
+  test("csrf()'s origin handler lets the app's allowlist through, and nothing else", async () => {
     // Clearing the CSRF gate means the request fails later on the bogus action id — a 400, not a 403.
     const post = (origin) =>
       fetch(`${app.base}/users`, {
@@ -67,26 +83,30 @@ describe('a hardened config', () => {
         body: '[]',
       });
 
-    const allowed = [
-      ['https://admin.example', 'a listed origin'],
-      // 'alt.example:8443' parses as a *scheme* on its own, so it used to normalize to an empty
-      // string and silently match nothing — leaving the entry inert and putting '' in the allowlist.
-      ['https://alt.example:8443', "a bare 'host:port' allowlist entry"],
-      ['HTTPS://ADMIN.EXAMPLE', 'the Origin host comparison, which must be case-insensitive'],
-    ];
-    for (const [origin, why] of allowed) {
+    for (const origin of ['https://admin.example', 'https://alt.example:8443']) {
       const res = await post(origin);
       await res.text();
-      assert.notEqual(res.status, 403, `${why} must not be rejected as CSRF`);
+      assert.notEqual(res.status, 403, `${origin} is on the allowlist and must not be rejected as CSRF`);
     }
 
-    // `URL.parse('file://').host` is '', which used to be a real allowlist member whenever a
-    // bare-host entry had been mis-normalized — making `Origin: file://` trusted.
     for (const origin of ['https://evil.example', 'file://']) {
       const res = await post(origin);
       await res.text();
       assert.equal(res.status, 403, `${origin} is not on the allowlist and must be rejected`);
     }
+  });
+
+  test('a 403 from csrf() keeps its own status rather than becoming the 500 error page', async () => {
+    // `csrf()` rejects by throwing an HTTPException, and registering an `onError` at all replaces the
+    // Hono default that would have turned it back into a response. Without the framework's
+    // passthrough this is a 500 with the app's error page in it.
+    const res = await fetch(`${app.base}/users`, {
+      method: 'POST',
+      headers: { Origin: 'https://evil.example', 'sec-fetch-site': 'cross-site', 'x-rsc-action': 'whatever', 'content-type': 'text/plain' },
+      body: '[]',
+    });
+    assert.equal(res.status, 403);
+    assert.doesNotMatch(await res.text(), /<html/i, 'the CSRF rejection should not render a page');
   });
 
   test('trustProxy: true honours X-Forwarded-* without dragging the internal port along', async () => {
@@ -99,7 +119,29 @@ describe('a hardened config', () => {
     assert.doesNotMatch(flight, /proxied\.example:\d/, 'the internal port must not survive onto a forwarded host that carries none');
   });
 
-  test('bodySizeLimit rejects an oversized action POST with 413, declared length or not', async () => {
+  test('a csrf() built on publicUrl() accepts the forwarded origin, and only under trustProxy', async () => {
+    // The pairing that makes `trustProxy` mean anything to middleware: Hono's own default compares
+    // `Origin` against `c.req.url`, the address this server was reached on, so behind a proxy that
+    // rewrites Host every legitimate post rides on `Sec-Fetch-Site` alone. `publicUrl(c)` is the
+    // browser's origin instead — and still refuses a forwarded host it was not told to trust, which
+    // prod.test.mjs asserts against the default build.
+    const res = await fetch(`${app.base}/users`, {
+      method: 'POST',
+      headers: {
+        Origin: 'https://proxied.example',
+        'x-forwarded-host': 'proxied.example',
+        'x-forwarded-proto': 'https',
+        'sec-fetch-site': 'cross-site',
+        'x-rsc-action': 'whatever',
+        'content-type': 'text/plain',
+      },
+      body: '[]',
+    });
+    await res.text();
+    assert.equal(res.status, 400, 'should clear the CSRF gate and fail on the unknown action id instead');
+  });
+
+  test('bodyLimit rejects an oversized action POST with 413, declared length or not', async () => {
     const oversized = JSON.stringify([{ blob: 'x'.repeat(4096) }]);
     const post = (body, extra) =>
       fetch(`${app.base}/users`, {
@@ -129,10 +171,10 @@ describe('a hardened config', () => {
   });
 });
 
-describe('checkOrigin: false', () => {
-  const app = serve('no-check.config.mjs');
+describe('a server.ts with no csrf()', () => {
+  const app = serve({ TESTBED_CSRF: 'off' });
 
-  test('disables the CSRF origin check, for a gateway that enforces it instead', async () => {
+  test('nothing rejects a cross-origin action, for a gateway that enforces it instead', async () => {
     const res = await fetch(`${app.base}/users`, {
       method: 'POST',
       headers: {
@@ -144,17 +186,6 @@ describe('checkOrigin: false', () => {
       body: '[]',
     });
     await res.text();
-    assert.notEqual(res.status, 403, 'with the origin check disabled, a cross-origin action must not be rejected');
+    assert.notEqual(res.status, 403, 'with no csrf() middleware, a cross-origin action must not be rejected');
   });
-});
-
-// Config is resolved before Rspack compiles anything, so a bad security setting fails the build in
-// seconds rather than producing a bundle that quietly does nothing. Last, and needing no server: the
-// build fails while resolving the config, so it never writes over the `dist/` above.
-test('a malformed allowedOrigins entry fails the build instead of silently matching nothing', () => {
-  assert.throws(
-    () => buildTestbed(join(FIXTURES_DIR, 'bad-origin.config.mjs')),
-    /invalid allowedOrigins entry/,
-    'an unparseable origin must fail the build — an inert allowlist entry looks like a working one',
-  );
 });

@@ -13,14 +13,17 @@ export interface RspackHookContext {
  * Project configuration for rshono, default-exported from `rshono.config.ts` at the project root
  * (`.js` / `.mjs` also work). Every field is optional; omit the file entirely to accept all defaults.
  *
+ * Deliberately small: it holds what only the *build* can decide. Everything that is a per-request
+ * concern — CSRF, CSP, the body cap — is Hono middleware in `src/server.ts` instead, because Hono
+ * already ships all of it and a config field would only be a worse way to spell the same call.
+ *
  * @example
  * ```ts
  * import { defineConfig } from '@rshono/core';
  *
  * export default defineConfig({
- *   csp: true,
- *   bodySizeLimit: '4mb',
- *   allowedOrigins: ['https://admin.example.com'],
+ *   deploy: 'cloudflare',
+ *   siteUrl: 'https://example.com',
  * });
  * ```
  *
@@ -53,7 +56,12 @@ export interface RshonoConfig {
   siteUrl?: string;
   /**
    * Honour `X-Forwarded-Host` / `X-Forwarded-Proto` when resolving the browser-facing request
-   * URL (`getRequestContext().url`, a page's `url` prop, and the origin the CSRF check compares against).
+   * URL — `getRequestContext().url` and a page's `url` prop.
+   *
+   * Middleware in `src/server.ts` is handed Hono's `c` and so reads `c.req.url`, the *internal*
+   * address, whatever this says. Hono's `csrf()` is the one to watch: behind a proxy that rewrites
+   * `Host`, give it the public origin explicitly (`csrf({ origin: 'https://example.com' })`) rather
+   * than leaving it to compare against an address the browser never used.
    *
    * **Off by default, and leave it off unless a proxy you control sets those headers**: any client
    * can send them, so with nothing stripping them at the edge one request can point every absolute
@@ -65,55 +73,6 @@ export interface RshonoConfig {
    * @see {@link https://www.rshono.com/docs/configuration#proxy-headers | Docs — proxy headers}
    */
   trustProxy?: boolean;
-  /**
-   * CSRF origin check on server-action POSTs — rejects a cross-origin request with 403.
-   * Turn off only behind a gateway that already enforces it. Default `true`.
-   *
-   * @see {@link https://www.rshono.com/docs/configuration#csrf | Docs — CSRF}
-   */
-  checkOrigin?: boolean;
-  /**
-   * Extra origins allowed to post server actions, in addition to the app's own origin.
-   * Accepts full origins or bare hosts, e.g. `['https://admin.example.com', 'localhost:4000']`.
-   */
-  allowedOrigins?: string[];
-  /**
-   * Send a strict per-request-nonce `Content-Security-Policy` with every HTML document.
-   * While enabled, `render: 'static'` routes render per request (a prerendered file can't carry a
-   * per-request nonce). Default `false`.
-   *
-   * @see {@link https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy | MDN — Content-Security-Policy}
-   * @see {@link https://www.rshono.com/docs/configuration#csp-opt-in | Docs — CSP}
-   */
-  csp?: boolean;
-  /**
-   * Directives merged over the built-in {@link csp} policy, which is deliberately strict
-   * (`default-src 'self'`, no framing, no plugins) and so blocks third-party images, fonts and
-   * API hosts until you widen it here. Set a directive to `''` to drop it entirely.
-   *
-   * The per-request nonce is always appended to `script-src`, whatever you put there.
-   * Ignored unless `csp` is `true`.
-   *
-   * @example
-   * ```ts
-   * cspDirectives: {
-   *   'img-src': "'self' data: https://images.example.com",
-   *   'font-src': "'self' https://fonts.gstatic.com",
-   *   'frame-ancestors': "'self'",
-   * }
-   * ```
-   *
-   * @see {@link https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy#directives | MDN — CSP directives}
-   */
-  cspDirectives?: Record<string, string>;
-  /**
-   * Max server-action request body before it's rejected with 413 — a memory-exhaustion guard.
-   * A number is bytes; a string carries a unit (`'512kb'`, `'4mb'`); `false` (or `0`) disables the cap.
-   * Default `'1mb'`.
-   *
-   * @see {@link https://www.rshono.com/docs/configuration#request-body-limit | Docs — request-body limit}
-   */
-  bodySizeLimit?: string | number | false;
   /**
    * Escape hatch: mutate the generated Rspack config just before it's compiled. Called once per
    * compiler — inspect {@link RspackHookContext.isServer} to tell them apart. Mutate `config` in

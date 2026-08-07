@@ -1,6 +1,10 @@
 import type { Context, Handler } from 'hono';
 import { Hono } from 'hono';
-import { bodyLimit } from 'hono/body-limit';
+import { HTTPException } from 'hono/http-exception';
+// Type-only, and imported for its side effect on the *type* level: the module augments Hono's
+// `ContextVariableMap` with `secureHeadersNonce`, which is how a nonce set by `secureHeaders()` in
+// src/server.ts is read back below. Nothing from it is used at runtime.
+import type {} from 'hono/secure-headers';
 import type { ContentfulStatusCode, RedirectStatusCode } from 'hono/utils/http-status';
 import type React from 'react';
 import type { ReactFormState } from 'react-dom/client';
@@ -43,10 +47,7 @@ const serverApp = ((serverAppModule as { default?: unknown }).default ?? null) a
 // builder/rspack-config.ts). There is no runtime env-var interface for these — env is for secrets.
 // `isDev` among them: the build mode is decided by which command produced the bundle, and not every
 // runtime this deploys to has a `process.env.NODE_ENV` to read.
-const CONFIG = __RSHONO_CONFIG__;
-const { isDev, cspEnabled, checkOrigin, maxBodyBytes } = CONFIG;
-/** Extra cross-origin hosts permitted to post server actions, beyond the app's own origin. */
-const allowedOrigins = new Set(CONFIG.allowedOrigins);
+const { isDev } = __RSHONO_CONFIG__;
 
 /** How long a prerendered page may be reused before revalidating. Also what `public/` files get. */
 const SSG_CACHE_CONTROL = 'public, max-age=300';
@@ -56,13 +57,6 @@ const SSG_CACHE_CONTROL = 'public, max-age=300';
  * the `Accept` header, which is what makes `Vary` non-optional here.
  */
 const PAGE_CONTENT_TYPE = /^(?:text\/html|text\/x-component)\b/;
-
-// The CSP is fixed per build apart from the nonce, so assemble everything but `script-src` once.
-const CSP_STATIC = Object.entries(CONFIG.cspDirectives)
-  .filter(([name]) => name !== 'script-src')
-  .map(([name, value]) => `${name} ${value}`)
-  .join('; ');
-const CSP_SCRIPT_SRC = CONFIG.cspDirectives['script-src'] ?? "'self'";
 
 // Called here rather than at the top of the deploy runtime's own module so the timing is unchanged:
 // `.env` is loaded once every import above has been evaluated, exactly as before.
@@ -83,38 +77,19 @@ export type RscPayload = {
 };
 
 /**
- * CSRF guard for server-action POSTs, layering the two signals a browser gives us.
+ * The per-request CSP nonce, if the app asked for one.
  *
- * `Sec-Fetch-Site` is set by the browser and unforgeable by page script, so `same-origin` settles the
- * question on its own — and short-circuiting on it keeps the check from misfiring on a legitimate
- * request whose `Host` the proxy rewrote. Everything else compares the `Origin` host against our own
- * (see {@link publicUrl} — deliberately *not* against a raw `X-Forwarded-Host`).
+ * The framework does not mint this. `secureHeaders()` from `hono/secure-headers` does, when its
+ * policy contains the `NONCE` placeholder, and it stores it here — so an app opts into a
+ * nonce-based CSP by registering that middleware in `src/server.ts` and the framework's only job is
+ * to stamp the value into the render.
  *
- * A missing `Origin` is treated as same-origin: no-JS form posts from older browsers omit it, and
- * those same browsers send no `Sec-Fetch-Site` either, so there is nothing left to check. The scheme
- * is not compared, so this alone won't stop an `http://` origin posting to the `https://` site — HSTS
- * is the control for that.
+ * Readable from a route handler because `secureHeaders` resolves its directives *before* calling
+ * `next()`; the header itself is written on the way back out. Absent when the app registered no CSP,
+ * or one with no nonce in it — a fixed policy needs nothing from the render.
  */
-function isSameOriginAction(c: Context): boolean {
-  if (!checkOrigin) return true;
-
-  const secFetchSite = c.req.header('sec-fetch-site');
-  if (secFetchSite === 'same-origin') return true;
-
-  const origin = c.req.header('origin');
-  const originHost = origin ? URL.parse(origin)?.host.toLowerCase() || null : null;
-  if (origin !== undefined && originHost === null) return false; // an Origin we can't parse is untrusted.
-
-  const trusted = originHost !== null && (originHost === publicUrl(c).host.toLowerCase() || allowedOrigins.has(originHost));
-
-  if (secFetchSite && secFetchSite !== 'none') {
-    // The browser tells us (unforgeably) this didn't originate from our own site — only a
-    // trusted (allowlisted) Origin may proceed.
-    return trusted;
-  }
-
-  if (originHost === null) return true;
-  return trusted;
+function cspNonce(c: Context): string | undefined {
+  return c.get('secureHeadersNonce');
 }
 
 async function loadPageModule(load: () => Promise<{ default: PageComponent }>, label: string): Promise<ServerEntry<PageComponent>> {
@@ -241,7 +216,10 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
   /** Detaches the forwarder once the response has been written, so nothing survives the request. */
   const release = () => requestSignal.removeEventListener('abort', forwardAbort);
 
-  const nonce = cspEnabled && !opts.isRsc ? crypto.randomUUID() : undefined;
+  // Documents only: the nonce goes on the bootstrap scripts and the `<meta>` React hydrates from,
+  // and a flight payload has neither. Leaving it off there is also what keeps a prerendered flight
+  // payload servable from disk under a nonce-based CSP.
+  const nonce = opts.isRsc ? undefined : cspNonce(c);
   const props = pageProps(c, opts.errorInfo);
   const root = (
     <>
@@ -304,15 +282,9 @@ async function renderComponent(c: Context, Page: ServerEntry<PageComponent>, opt
     release();
     throw controlSignal;
   }
-  const headers: Record<string, string> = { 'content-type': 'text/html;charset=utf-8' };
-  if (nonce) {
-    // The nonce is always appended to whatever `script-src` resolved to, so overriding the
-    // directive in `cspDirectives` can widen the policy but can't accidentally drop the nonce.
-    // Dev additionally needs 'unsafe-eval' for react-refresh.
-    const scriptSrc = `script-src ${CSP_SCRIPT_SRC} 'nonce-${nonce}'${isDev ? " 'unsafe-eval'" : ''}`;
-    headers['content-security-policy'] = CSP_STATIC ? `${CSP_STATIC}; ${scriptSrc}` : scriptSrc;
-  }
-  return c.body(ssrResult.stream, (ssrResult.status ?? opts.status ?? 200) as ContentfulStatusCode, headers);
+  return c.body(ssrResult.stream, (ssrResult.status ?? opts.status ?? 200) as ContentfulStatusCode, {
+    'content-type': 'text/html;charset=utf-8',
+  });
 }
 
 async function renderPage(c: Context, loadPage: () => Promise<ServerEntry<PageComponent>>): Promise<Response> {
@@ -324,9 +296,6 @@ async function renderPage(c: Context, loadPage: () => Promise<ServerEntry<PageCo
   let temporaryReferences: TemporaryReferenceSet | undefined;
   let actionStatus: number | undefined;
   if (isActionRequest(renderRequest)) {
-    if (!isSameOriginAction(c)) {
-      return c.text('Forbidden: cross-origin server action rejected', 403);
-    }
     if (renderRequest.kind === 'rsc-action') {
       // Checked before the body is decoded, so an unknown id costs nothing to reject — and
       // `loadServerAction` would otherwise fault on the missing manifest entry, turning a bad
@@ -373,15 +342,29 @@ function buildApp(): Hono {
   const app = new Hono();
 
   // Baseline security headers: stop content-type sniffing, keep the full URL out of cross-origin
-  // referrers, and refuse to be framed by another origin. `frame-ancestors` in the opt-in CSP is
-  // stricter and takes precedence where both apply; this is the floor for everyone else. Set after
-  // `next()` so a route or middleware that sets its own value wins.
+  // referrers, and refuse to be framed by another origin. A floor, not a policy — an app that wants
+  // the full set registers `secureHeaders()` from `hono/secure-headers` in src/server.ts, and
+  // because this is registered first it unwinds *last* and the "only if unset" checks stand aside
+  // for whatever that set. Kept in the framework rather than left to the app because it is
+  // registered ahead of `mountStaticAssets`, which is a terminal handler the sub-app never sees:
+  // without this, `/_static/*` would carry no security headers at all.
   app.use(async (c, next) => {
     await next();
     const headers = c.res.headers;
     if (!headers.has('x-content-type-options')) headers.set('x-content-type-options', 'nosniff');
     if (!headers.has('referrer-policy')) headers.set('referrer-policy', 'strict-origin-when-cross-origin');
     if (!headers.has('x-frame-options')) headers.set('x-frame-options', 'SAMEORIGIN');
+
+    // React Refresh compiles updates with `eval`, so a dev build cannot run under any CSP an app
+    // would sensibly write for production. Widened here rather than asked of the app, so one policy
+    // in src/server.ts serves both and nobody debugs a blocked HMR socket. Only ever in dev, and
+    // only when the app has a `script-src` to widen.
+    if (isDev) {
+      const csp = headers.get('content-security-policy');
+      if (csp?.includes('script-src ')) {
+        headers.set('content-security-policy', csp.replace('script-src ', "script-src 'unsafe-eval' "));
+      }
+    }
 
     // Page responses only, from here down: one URL answers with either an HTML document or a flight
     // payload depending on `Accept`, and the default page is request-specific.
@@ -394,19 +377,12 @@ function buildApp(): Hono {
     if (!headers.has('cache-control')) headers.set('cache-control', 'private, no-cache');
   });
 
-  // A memory-exhaustion guard for *every* route — pages and actions, `{ type: 'endpoint' }` routes
-  // and the src/server.ts sub-app alike — since anything that buffers a body (`.json()`,
-  // `.formData()`) is exposed, not just server actions. Rejects an over-cap `Content-Length` up
-  // front and otherwise counts the stream, so a chunked or under-reported body is still cut off.
-  if (maxBodyBytes > 0) {
-    app.use(bodyLimit({ maxSize: maxBodyBytes, onError: (c) => c.text('Payload Too Large', 413) }));
-  }
-
   runtime.mountStaticAssets(app);
 
-  // Mounted ahead of the page routes so the sub-app's middleware (auth, logging, trailing-slash)
-  // wraps page requests too. The flip side: a *terminal* handler in src/server.ts at the same path
-  // as a page route wins over the page.
+  // Mounted ahead of the page routes so the sub-app's middleware (auth, logging, trailing-slash,
+  // and the security middleware the framework no longer owns — `csrf()`, `bodyLimit()`,
+  // `secureHeaders()`) wraps page requests too. The flip side: a *terminal* handler in
+  // src/server.ts at the same path as a page route wins over the page.
   if (serverApp) {
     app.route('/', serverApp);
   }
@@ -444,9 +420,13 @@ function buildApp(): Hono {
           if (servesPrerendered && c.req.method === 'GET') {
             const isRsc = acceptsRsc(c.req.raw);
             // A prerendered file is one fixed set of bytes, so it cannot carry a per-request nonce:
-            // under `csp` the *document* has to be rendered per request. The flight payload never
-            // carries a nonce, so it stays servable from the build either way.
-            const mustRenderForNonce = cspEnabled && !isRsc;
+            // where the app's CSP has one, the *document* has to be rendered per request. The flight
+            // payload never carries a nonce, so it stays servable from the build either way.
+            //
+            // Decided per request rather than per build, which is what moving the CSP to
+            // `secureHeaders()` buys: an app whose policy carries no `NONCE` keeps its prerendered
+            // documents, where the old build-time `csp: true` flag gave every one of them up.
+            const mustRenderForNonce = !isRsc && cspNonce(c) !== undefined;
             if (!mustRenderForNonce) {
               const page = await runtime.readPrerendered(c, isRsc ? 'flight' : 'html');
               // A prerendered page is request-independent by construction, so it is safe to cache
@@ -499,6 +479,16 @@ function buildApp(): Hono {
   const loadErrorPage = routeConfig.error ? memoizePage(routeConfig.error, 'the error page') : null;
   app.onError(async (error, c) => {
     if (isControlSignal(error)) return runWithContext(c, () => respondToControlSignal(c, error));
+    // Registering an `onError` at all replaces Hono's default handler, which is what would otherwise
+    // turn an `HTTPException` into the response it carries. Without this every middleware that
+    // rejects a request by throwing one — `csrf()` with a 403, `bodyLimit()` with a 413, an app's own
+    // `throw new HTTPException(401)` — would surface as a 500 error page instead of its own status.
+    // Rebuilt through `c` rather than returned as-is, exactly as Hono's own default does, so headers
+    // already prepared on the context (`c.header(…)` from middleware that ran first) survive.
+    if (error instanceof HTTPException) {
+      const res = error.getResponse();
+      return c.newResponse(res.body, res);
+    }
     reportServerError(error, { source: 'request', request: c.req.raw, message: '[rshono] request error:' });
     const isRsc = requestWantsRsc(c.req.raw);
     if (loadErrorPage && (isRsc || acceptsHtml(c))) {

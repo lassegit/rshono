@@ -12,7 +12,7 @@ import { scanPageFiles } from '../dist/builder/page-files.js';
 import { createConfigs } from '../dist/builder/rspack-config.js';
 import { DEPLOY_TARGETS, deployHintFor, NODE_PRESET, resolveDeployPreset } from '../dist/deploy/presets.js';
 import { appendVary, etagMatches } from '../dist/server/headers.js';
-import { parseByteSize, resolveServerConfig } from '../dist/server/server-config.js';
+import { resolveServerConfig } from '../dist/server/server-config.js';
 import { prerenderedRelPath, ssgFilePath } from '../dist/server/prerendered.js';
 import { prerenderStaticRoutes, readPrerendered, resolveSiteOrigin } from '../dist/server/ssg.js';
 import { injectFlightPayload } from '../dist/runtime/flight-inject.js';
@@ -177,33 +177,13 @@ describe('injectFlightPayload', () => {
   });
 });
 
-describe('parseByteSize', () => {
-  test('accepts numbers, units and the disabling values', () => {
-    assert.equal(parseByteSize(undefined), undefined, 'undefined means "use the default"');
-    assert.equal(parseByteSize(false), 0);
-    assert.equal(parseByteSize(0), 0);
-    assert.equal(parseByteSize(4_000_000), 4_000_000);
-    assert.equal(parseByteSize('1mb'), 1024 * 1024);
-    assert.equal(parseByteSize('512kb'), 512 * 1024);
-    assert.equal(parseByteSize('1.5mb'), Math.floor(1.5 * 1024 * 1024));
-    assert.equal(parseByteSize(' 2 MB '), 2 * 1024 * 1024, 'whitespace and case are tolerated');
-    assert.equal(parseByteSize('900'), 900, 'a bare number string is bytes');
-  });
-
-  test('throws on a malformed size rather than silently uncapping the server', () => {
-    assert.throws(() => parseByteSize('1 terabyte'), /invalid bodySizeLimit/);
-    assert.throws(() => parseByteSize('mb'), /invalid bodySizeLimit/);
-  });
-});
-
+// Two fields, because only two things here are decided by the build. The CSRF check, the CSP and the
+// body cap used to live alongside them and are now Hono middleware an app registers in src/server.ts
+// — see prod-config.test.mjs, which exercises them over HTTP rather than through a resolver.
 describe('resolveServerConfig', () => {
   test('applies the documented defaults', () => {
     const config = resolveServerConfig({}, { isDev: false });
-    assert.equal(config.maxBodyBytes, 1024 * 1024);
-    assert.equal(config.checkOrigin, true, 'CSRF checking is on unless turned off');
     assert.equal(config.trustProxy, false, 'proxy headers are never trusted by default');
-    assert.equal(config.cspEnabled, false);
-    assert.deepEqual(config.allowedOrigins, []);
     assert.equal(config.isDev, false, 'the build mode is baked in rather than read from NODE_ENV at runtime');
   });
 
@@ -211,25 +191,6 @@ describe('resolveServerConfig', () => {
     const config = resolveServerConfig({ trustProxy: false }, { isDev: true });
     assert.equal(config.trustProxy, true);
     assert.equal(config.isDev, true);
-  });
-
-  test('normalizes allowedOrigins to bare hosts and rejects junk', () => {
-    const { allowedOrigins } = resolveServerConfig(
-      { allowedOrigins: ['https://Admin.Example.com', 'localhost:4000', '  ', 'http://a.test:8080/ignored/path'] },
-      { isDev: false },
-    );
-    assert.deepEqual(allowedOrigins, ['admin.example.com', 'localhost:4000', 'a.test:8080']);
-    assert.throws(() => resolveServerConfig({ allowedOrigins: ['://'] }, { isDev: false }), /invalid allowedOrigins entry/);
-  });
-
-  test('cspDirectives merge over the defaults, and an empty string drops a directive', () => {
-    const { cspDirectives } = resolveServerConfig(
-      { csp: true, cspDirectives: { 'img-src': "'self' https://cdn.test", 'frame-ancestors': '' } },
-      { isDev: false },
-    );
-    assert.equal(cspDirectives['img-src'], "'self' https://cdn.test", 'overrides win');
-    assert.equal(cspDirectives['default-src'], "'self'", 'untouched defaults survive');
-    assert.equal('frame-ancestors' in cspDirectives, false, "'' removes a directive entirely");
   });
 });
 

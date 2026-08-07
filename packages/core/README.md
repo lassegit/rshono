@@ -177,24 +177,49 @@ export default defineConfig({
   deploy: 'node', // hosting platform to build for (--deploy or RSHONO_DEPLOY override)
   siteUrl: 'https://example.com', // public origin, baked into prerendered pages' absolute URLs
   trustProxy: false, // honour X-Forwarded-Host/-Proto — only behind a proxy you control
-  checkOrigin: true, // CSRF origin check on server-action POSTs
-  allowedOrigins: [], // extra origins allowed to post actions, e.g. ['https://admin.example.com']
-  csp: false, // strict per-request-nonce Content-Security-Policy
-  cspDirectives: {}, // widen the built-in CSP, e.g. { 'img-src': "'self' https://cdn.example.com" }
-  bodySizeLimit: '1mb', // request body cap: '512kb' | 4_000_000 | false to disable
   rspack(config, { isServer, isDev }) {
     return config; // escape hatch: mutate the generated Rspack config
   },
 });
 ```
 
-`deploy` and `rspack` are consumed by the CLI; the rest are **compiled into the server bundle** at build
-time, so changing one means a rebuild and there is no parallel env-var interface for them (environment
+That is the whole file. It holds what the **build** decides; per-request security is Hono middleware in
+`src/server.ts`, which is mounted ahead of the page routes and so wraps renders and server actions too:
+
+```ts
+// src/server.ts
+import { publicUrl } from '@rshono/core/server';
+import { bodyLimit } from 'hono/body-limit'; // https://hono.dev/docs/middleware/builtin/body-limit
+import { csrf } from 'hono/csrf'; // https://hono.dev/docs/middleware/builtin/csrf
+import { NONCE, secureHeaders } from 'hono/secure-headers'; // https://hono.dev/docs/middleware/builtin/secure-headers
+
+// Caps a body before anything buffers it — pages, actions and your own handlers alike. 413 over cap.
+server.use(bodyLimit({ maxSize: 1024 * 1024 }));
+
+// Rejects a cross-origin POST with 403 before it can reach a server action. `publicUrl(c)` rather
+// than Hono's default, which compares against the address the server was *reached* on — the internal
+// one behind any proxy. It honours `trustProxy`.
+server.use(csrf({ origin: (origin, c) => origin === publicUrl(c).origin }));
+
+// HSTS, COOP, CORP and the rest. `NONCE` in `scriptSrc` makes the CSP per-request: Hono mints the
+// nonce, rshono stamps it onto the bootstrap scripts and the inlined flight payload.
+server.use(secureHeaders({ contentSecurityPolicy: { scriptSrc: ["'self'", NONCE] } }));
+```
+
+`create-rshono` scaffolds the first two. Under `rshono dev` the framework widens `script-src` with
+`'unsafe-eval'` for React Refresh — never in a build — so one policy serves both, and a route with a
+nonce in play falls back to rendering per request. Everything else Hono ships works the same way:
+`cors`, `basicAuth`, `jwt`, `timeout`, `requestId`, `ipRestriction`. A middleware that rejects by
+throwing an `HTTPException` keeps its own status rather than becoming the 500 page.
+[Middleware docs](https://www.rshono.com/docs/hono#security-middleware) · [Hono](https://hono.dev/docs).
+
+`deploy` and `rspack` are consumed by the CLI; `trustProxy` is **compiled into the server bundle** at build
+time, so changing it means a rebuild and there is no parallel env-var interface for it (environment
 variables are for secrets). The port and bind address are deliberately not config fields — on every host
 that runs this, the environment is what sets them. [Configuration docs](https://www.rshono.com/docs/configuration).
 
-The defaults those fields describe, in short: CSRF-checked action POSTs, untrusted proxy headers, a 1 MiB
-body cap on **every** route, `nosniff` / `Referrer-Policy` / `X-Frame-Options` on every response,
+The defaults, in short: untrusted proxy headers, `nosniff` / `Referrer-Policy` / `X-Frame-Options` on
+every response (a floor your own `secureHeaders()` overrides),
 `private, no-cache` plus `Vary: Accept` on dynamic pages, `public, max-age=300` and a weak `ETag` on
 prerendered ones, and errors redacted in production — with one `onServerError()` funnel for reporting them
 and three fallbacks (a fatal client overlay, a visible 500 document, a reported bootstrap failure) so a
@@ -261,8 +286,9 @@ Every target streams, which is the bar a new one has to clear.
   loads in plain Node.
 - **production e2e** — builds `apps/testbed`, boots the real production server, and asserts pages, the flight
   protocol, actions (client and no-JS), CSRF rejection, secret stripping in bundles _and_ rendered HTML, SSG
-  output with `ETag`/304, cache and security headers, and error reporting. Settings baked into the bundle
-  (CSP, CSRF, body cap) each get their own build from a fixture config.
+  output with `ETag`/304, cache and security headers, and error reporting. The hardened permutations — a
+  nonce CSP, a CSRF allowlist, a small body cap — are middleware, so they run against that same build
+  under a different environment; `trustProxy` is baked in and gets a fixture config.
 - **the other deploy targets** — the `cloudflare` bundle driven as `fetch(request, env, ctx)` against a
   stand-in `ASSETS` binding, a real build per serverless target checked against the handoff its platform
   expects, and `rshono start`'s refusal to run a build made for another one.

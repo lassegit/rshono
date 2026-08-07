@@ -57,8 +57,8 @@ For headers that belong to a route rather than to a mutation, use
 ## Every action is a public endpoint
 
 That is the RSC model, not an rshono choice: the client is handed an id for each action and can call it
-with whatever arguments it likes. The [CSRF check](/docs/configuration#csrf) proves a request came from
-your own site; it says nothing about _who_ sent it. Authenticate, authorize and validate arguments
+with whatever arguments it likes. A [CSRF check](/docs/configuration#security-middleware) proves a
+request came from your own site; it says nothing about _who_ sent it. Authenticate, authorize and validate arguments
 inside the action, exactly as in a route handler.
 
 ## Errors

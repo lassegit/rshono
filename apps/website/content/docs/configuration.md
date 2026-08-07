@@ -13,22 +13,21 @@ export default defineConfig({
   deploy: 'node', // hosting platform to build for (--deploy or RSHONO_DEPLOY override)
   siteUrl: 'https://example.com', // public origin, baked into prerendered pages' absolute URLs
   trustProxy: false, // honour X-Forwarded-Host/-Proto — only behind a proxy you control
-  checkOrigin: true, // CSRF origin check on server-action POSTs
-  allowedOrigins: [], // extra origins allowed to post actions, e.g. ['https://admin.example.com']
-  csp: false, // strict per-request-nonce Content-Security-Policy
-  cspDirectives: {}, // widen the built-in CSP, e.g. { 'img-src': "'self' https://cdn.example.com" }
-  bodySizeLimit: '1mb', // request body cap: '512kb' | 4_000_000 | false to disable
   rspack(config, { isServer, isDev }) {
     return config; // escape hatch: mutate the generated Rspack config
   },
 });
 ```
 
-The framework settings — `trustProxy`, `checkOrigin`, `allowedOrigins`, `csp`, `cspDirectives`,
-`bodySizeLimit` — are resolved at build time and **compiled into the server bundle**. There is no
-parallel env-var interface for them, so changing one means a rebuild. Two deployment-conventional
-exceptions stay env-overridable: `--port` / `PORT` and `HOST`, each winning over the file, which wins
-over the default. Point a build at a different file with `--config <path>`.
+That is the whole file, and deliberately so: it holds only what the **build** decides. Everything that
+is a per-request concern — CSRF, CSP, the request-body cap — is Hono middleware in
+[`src/server.ts`](/docs/hono), because Hono already ships all of it and a config field would only be a
+worse way to spell the same call. See [security middleware](#security-middleware) below.
+
+`trustProxy` is resolved at build time and **compiled into the server bundle**, so changing it means a
+rebuild. Two deployment-conventional exceptions stay env-overridable: `--port` / `PORT` and `HOST`, each
+winning over the file, which wins over the default. Point a build at a different file with
+`--config <path>`.
 
 ## `siteUrl`
 
@@ -80,19 +79,63 @@ Two things worth remembering:
   failure if that slips, add React's `server-only` package — the RSC layer resolves its `react-server`
   condition, so importing it from client code throws.
 
-## CSRF
+## Security middleware
 
-Server-action POSTs are origin-checked automatically. A cross-origin `Origin` compared against your own
-host is rejected with 403, as is anything the browser labels `Sec-Fetch-Site: cross-site` or `same-site`.
-A browser-asserted `same-origin` is accepted directly, which keeps the check from misfiring behind a
-proxy that rewrites `Host`.
+The framework runs no CSRF check, body cap or CSP of its own. All three are Hono middleware you
+register in `src/server.ts`, which is mounted **ahead of the page routes** — so anything registered
+there wraps page renders and server actions, not just your own handlers.
 
-It applies to client-initiated calls and no-JS form posts alike. Turn it off with `checkOrigin: false`
-behind a gateway that enforces it, or list trusted cross-origins in `allowedOrigins` — full origins or
-bare hosts; a malformed entry fails the build.
+`create-rshono` scaffolds the first two into every new app. An app written by hand down to
+`src/routes.ts` has neither until it adds them.
+
+```ts
+// src/server.ts
+import { publicUrl } from '@rshono/core/server';
+import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
+import { csrf } from 'hono/csrf';
+
+const server = new Hono();
+
+server.use(bodyLimit({ maxSize: 1024 * 1024 }));
+server.use(csrf({ origin: (origin, c) => origin === publicUrl(c).origin }));
+
+export default server;
+```
+
+**[`bodyLimit`](https://hono.dev/docs/middleware/builtin/body-limit)** caps a request body _before_ it is
+buffered into memory and answers `413`. Registered here it covers every route, not just actions —
+endpoint routes and your own handlers are equally exposed the moment they call `.json()` or
+`.formData()`. An over-cap `Content-Length` is refused up front; a chunked body is cut off mid-stream.
+
+**[`csrf`](https://hono.dev/docs/middleware/builtin/csrf)** rejects a cross-origin POST with 403 before it
+can reach a server action. It layers `Sec-Fetch-Site` over `Origin`, and only inspects the content types
+a browser can send cross-origin without a preflight — which is exactly the shape a server action arrives
+in: `text/plain` for a client-initiated call, `multipart/form-data` for a no-JS form post. A JSON API
+route is unaffected.
+
+Pass `publicUrl(c)` rather than relying on the default same-origin comparison, which reads `c.req.url` —
+the address the server was _reached_ on. Behind a proxy that terminates TLS or rewrites `Host` that is
+the internal address, and a legitimate post would then be riding on `Sec-Fetch-Site` alone. `publicUrl`
+honours [`trustProxy`](#proxy-headers), so it stays `c.req.url` where no proxy is declared. To allow
+another origin:
+
+```ts
+server.use(
+  csrf({
+    origin: (origin, c) => origin === publicUrl(c).origin || origin === 'https://admin.example.com',
+  }),
+);
+```
 
 The check proves a request came from your own site. It says nothing about _who_ sent it — every
 [`'use server'` export is a public endpoint](/docs/server-actions#every-action-is-a-public-endpoint).
+
+Everything else Hono ships works the same way — `cors`, `basicAuth`, `jwt`, `ipRestriction`, `timeout`,
+`requestId`, and [`secureHeaders`](#csp) below. A middleware that rejects by throwing an `HTTPException`
+keeps its own status, rather than being rendered as the 500 page. See
+[Hono & middleware](/docs/hono#security-middleware) for worked examples and
+[Hono's docs](https://hono.dev/docs) for the full set.
 
 ## Proxy headers
 
@@ -102,22 +145,24 @@ builds, poisoning canonical tags, emails, redirects and any shared cache in fron
 `trustProxy: true` only when a proxy you control sets them. `rshono dev` forces it on for its own
 localhost-bound proxy.
 
-## Request-body limit
-
-Bodies are capped (`bodySizeLimit`, default 1 MiB) **before** being buffered into memory; oversized ones
-are rejected with `413`. This covers every route, not just actions — endpoint routes and the
-`src/server.ts` sub-app are equally exposed the moment they call `.json()` or `.formData()`. An over-cap
-`Content-Length` is refused up front; chunked bodies are cut off mid-stream. Set `false` to disable.
+It governs the browser-facing URL the framework builds — a page's `url` prop and
+`getRequestContext().url`. Middleware is handed Hono's `c` and reads `c.req.url` on its own, so where a
+middleware needs the public origin, give it `publicUrl(c)` from `@rshono/core/server`.
 
 ## Response headers and caching
 
-Unconditionally, on every response:
+A floor, on every response — including `/_static` assets, which your middleware never sees because they
+are served before it:
 
 ```
 X-Content-Type-Options: nosniff
 Referrer-Policy: strict-origin-when-cross-origin
 X-Frame-Options: SAMEORIGIN
 ```
+
+Each is set only if nothing already did, so
+[`secureHeaders()`](https://hono.dev/docs/middleware/builtin/secure-headers) in `src/server.ts` wins
+wherever both apply. That is the way to add the rest — HSTS, COOP, CORP, `Permissions-Policy`.
 
 A **dynamic page** is answered `Cache-Control: private, no-cache` — a page is request-specific by
 default, and with no directives a shared cache is free to store one user's page and serve it to the
@@ -127,15 +172,55 @@ next. Set your own value from middleware and it is left alone. **Prerendered pag
 Every page response carries `Vary: Accept`, because one URL answers with either an HTML document or a
 flight payload depending on it.
 
-## CSP (opt-in)
+## CSP
 
-`csp: true` sends a strict per-request-nonce `Content-Security-Policy` with every HTML document; the
-nonce is stamped on bootstrap scripts, the inlined flight payload and dynamically loaded chunks.
+A `Content-Security-Policy` comes from
+[`secureHeaders()`](https://hono.dev/docs/middleware/builtin/secure-headers) in `src/server.ts`. With no
+arguments it sets the rest of the usual set — HSTS, COOP, CORP, `nosniff`, `X-Frame-Options` — and no
+CSP at all:
 
-Beyond `default-src 'self'` it closes the gaps `default-src` does not cover — `base-uri`, `object-src`,
-`frame-ancestors`, `form-action` — so it blocks framing and third-party assets until widened with
-`cspDirectives`. The nonce is always re-appended to `script-src`, and `''` drops a directive. While
-enabled, the document for a static route is [rendered per request](/docs/routing#static-rendering).
+```ts
+// src/server.ts
+import { secureHeaders } from 'hono/secure-headers';
+
+server.use(secureHeaders());
+```
+
+Put Hono's `NONCE` placeholder in `scriptSrc` and the policy becomes per-request: Hono mints a nonce and
+rshono stamps that value onto the bootstrap scripts, the inlined flight payload and dynamically loaded
+chunks.
+
+```ts
+// src/server.ts
+import { NONCE, secureHeaders } from 'hono/secure-headers';
+
+server.use(
+  secureHeaders({
+    contentSecurityPolicy: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", NONCE],
+      styleSrc: ["'self'", "'unsafe-inline'"], // React writes inline styles
+      imgSrc: ["'self'", 'data:'],
+      connectSrc: ["'self'"],
+      // Not covered by default-src, and each closes an injection route of its own.
+      baseUri: ["'self'"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      formAction: ["'self'"],
+    },
+  }),
+);
+```
+
+Two things the framework does for you. React Refresh compiles updates with `eval`, so `script-src` is
+widened with `'unsafe-eval'` under `rshono dev` and never in a build — one policy serves both. And while
+a nonce is in play the document for a static route is
+[rendered per request](/docs/routing#static-rendering), since a prerendered file is fixed bytes and
+cannot carry a fresh one. That is decided per request: a policy with no `NONCE` in it keeps its
+prerendered documents. The flight payload never carries a nonce and is served from the build either way.
+
+Every directive, `Permissions-Policy` and the reporting headers are in
+[Hono — Secure Headers](https://hono.dev/docs/middleware/builtin/secure-headers).
 
 ## Errors and redaction
 

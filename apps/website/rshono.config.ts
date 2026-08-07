@@ -4,9 +4,10 @@ import { defineConfig } from '@rshono/core';
  * Every field is optional — delete this file to accept all the defaults. The commented lines are the
  * defaults, kept as documentation of what is there to change.
  *
- * The framework settings are compiled into the server bundle at build time, so changing one means a
- * rebuild; there is no env-var interface for them. The port and bind address are not settings at all —
- * they are `--port` / `PORT` and `HOST`.
+ * `trustProxy` is compiled into the server bundle at build time, so changing it means a rebuild; there
+ * is no env-var interface for it. The port and bind address are not settings at all — they are
+ * `--port` / `PORT` and `HOST`. Per-request security (CSRF, CSP, the body cap) is Hono middleware in
+ * `src/server.ts`, not config.
  */
 export default defineConfig({
   /** Where `build` targets. Overridable per build with `--deploy` or `RSHONO_DEPLOY`. */
@@ -19,11 +20,6 @@ export default defineConfig({
   siteUrl: 'https://www.rshono.com',
 
   // trustProxy: false,   // honour X-Forwarded-Host/-Proto — only behind a proxy you control
-  // checkOrigin: true,   // CSRF origin check on server-action POSTs
-  // allowedOrigins: [],  // extra origins allowed to post actions
-  // csp: false,          // strict per-request-nonce Content-Security-Policy
-  // cspDirectives: {},   // widen it, e.g. { 'img-src': "'self' https://cdn.example.com" }
-  // bodySizeLimit: '1mb',// request body cap before a 413; false disables it
 
   rspack(config) {
     /**

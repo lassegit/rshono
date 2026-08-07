@@ -1,7 +1,7 @@
 // The production build of the testbed, served by `rshono start` and driven over HTTP. Everything the
 // framework does that a browser is not required to observe is asserted here; what only exists once
-// the client runtime is running lives in test/browser, and anything that has to be switched on in
-// rshono.config.ts (CSP, the CSRF allowlist, the body cap, trustProxy) in prod-config.test.mjs.
+// the client runtime is running lives in test/browser, and the hardened permutations — a CSP, a CSRF
+// allowlist, a small body cap, trustProxy — in prod-config.test.mjs.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { Agent, request } from 'node:http';
@@ -522,6 +522,10 @@ test('secrets never reach the browser — not in the HTML, the flight payload, o
   );
 });
 
+// `csrf()` from hono, registered in the testbed's src/server.ts. The framework has no origin check
+// of its own any more; what is asserted here is that Hono's covers the shapes a server action
+// actually arrives in — `text/plain` for a client-initiated call, `multipart/form-data` for a no-JS
+// form post — since it deliberately ignores content types a browser cannot send cross-origin.
 test('an action POST that cannot be shown to be same-origin is rejected (CSRF)', async () => {
   const cases = [
     { name: 'a form POST from another origin', path: '/signup', headers: { Origin: 'https://evil.example' }, body: signupBody() },
@@ -592,8 +596,9 @@ test('an action id the app does not export is a 400, not a fault or a prototype 
 
 test('the body-size cap covers endpoint routes and the server sub-app, not just actions', async () => {
   // What is under test is the *coverage* — that a plain Hono route in src/server.ts sits behind the same
-  // cap as a server action. Both mechanisms the cap uses (a declared length, and the streaming counter for
-  // a chunked body) are asserted against a small configured cap in prod-config.test.mjs.
+  // `bodyLimit()` as a server action, because it is registered as middleware ahead of both. Its two
+  // mechanisms (a declared length, and the streaming counter for a chunked body) are asserted against a
+  // small cap in prod-config.test.mjs.
   const status = await postDeclaringBodyOf('/api/users', 2 * 1024 * 1024);
   assert.equal(status, 413, 'a 2MB body declared to a sub-app route should be refused by the 1MiB default cap');
 });
