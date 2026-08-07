@@ -7,21 +7,11 @@ import { readFileSync } from 'node:fs';
 import { Agent, request } from 'node:http';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
-import { actionFormData, APP_ENV, buildTestbed, clientChunks, TESTBED_DIST, startTestbed, stopServer } from './helpers.mjs';
+import { actionFormData, APP_ENV, buildTestbed, clientChunks, TESTBED_DIST, serverActionId, startTestbed, stopServer } from './helpers.mjs';
 
 buildTestbed();
 const { base, child, getOutput } = await startTestbed('start');
 after(() => stopServer(child));
-
-/** The id React assigned the testbed's `createUser` action, as the browser would call it. */
-function createUserActionId() {
-  for (const source of clientChunks()) {
-    if (!source.includes('Add user')) continue;
-    const match = source.match(/createServerReference\)?\(\s*"([0-9a-f]{20,})"/);
-    if (match) return match[1];
-  }
-  throw new Error('could not locate the createUser server-reference id');
-}
 
 /** An action-shaped multipart POST body, for requests that are meant to be rejected before it is read. */
 function signupBody() {
@@ -137,6 +127,34 @@ test('redirect() in a server component: an HTTP 3xx on hard navigation, a digest
   assert.match(await soft.text(), /RSHONO_REDIRECT/, 'the client needs the digest to follow the redirect itself');
 });
 
+test('a client-initiated action that redirects answers with a flight payload the runtime navigates on', async () => {
+  // The other redirect shape, and the only one that reaches the RSC branch of `respondToControlSignal`.
+  // A signal thrown *during* the render rides the payload as an error digest (the test above); one
+  // thrown by an action runs before the render begins, escapes to the route handler, and — because the
+  // browser is holding a live tree and asked for `text/x-component` — has to come back as a payload
+  // carrying `redirect` rather than as a 3xx the fetch would follow behind React's back.
+  const res = await fetch(`${base}/dashboard`, {
+    method: 'POST',
+    headers: {
+      Origin: base,
+      'x-rsc-action': serverActionId('Logging out'),
+      Accept: 'text/x-component',
+      'content-type': 'text/plain;charset=UTF-8',
+      cookie: 'session=ada%40example.com',
+    },
+    body: '[]',
+    redirect: 'manual',
+  });
+
+  assert.equal(res.status, 200, 'a soft redirect is a 200 carrying the destination, not an HTTP redirect');
+  assert.match(res.headers.get('content-type'), /text\/x-component/);
+  assert.match(await res.text(), /"redirect":"\/login"/, 'the payload is what tells the client runtime where to go');
+  assert.ok(
+    res.headers.getSetCookie().some((cookie) => /^session=;/.test(cookie)),
+    'the response head is still the action’s to write on the way out, redirect or not',
+  );
+});
+
 test('a cookie-gated server component renders once the session cookie is present', async () => {
   const res = await fetch(`${base}/dashboard`, { headers: { cookie: 'session=ada%40example.com' } });
   assert.equal(res.status, 200);
@@ -246,7 +264,7 @@ test('client-initiated server action mutates and re-renders', async () => {
     method: 'POST',
     headers: {
       Origin: base,
-      'x-rsc-action': createUserActionId(),
+      'x-rsc-action': serverActionId('Add user'),
       Accept: 'text/x-component',
       'content-type': 'text/plain;charset=UTF-8',
     },
@@ -314,7 +332,7 @@ test('a thrown server action is redacted in the payload, but logged in full serv
   const logsBefore = getOutput().length;
   const res = await fetch(`${base}/users`, {
     method: 'POST',
-    headers: { Origin: base, 'x-rsc-action': createUserActionId(), Accept: 'text/x-component', 'content-type': 'text/plain;charset=UTF-8' },
+    headers: { Origin: base, 'x-rsc-action': serverActionId('Add user'), Accept: 'text/x-component', 'content-type': 'text/plain;charset=UTF-8' },
     body: JSON.stringify([{ name: '', email: 'invalid' }]),
   });
   assert.equal(res.status, 500);

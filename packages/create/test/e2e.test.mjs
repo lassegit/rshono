@@ -90,9 +90,10 @@ test("and installs and builds on pnpm, whose layout hides the framework's own de
   manifest.dependencies['@rshono/core'] = `file:${tarball}`;
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 
-  // Exactly what a user runs, with no flags to smooth anything over: `pnpm install` also fails on an
-  // install script the project has not decided about, and `pnpm run` fails again on its way to the
-  // script, so this covers the `allowBuilds` list in the generated pnpm-workspace.yaml as well.
+  // Exactly what a user runs, with no flags to smooth anything over. `pnpm install` fails on an install
+  // script the project has not decided about, and `pnpm run` fails again on its way to the script — so
+  // this is also what proves a default scaffold needs no `allowBuilds` at all, and is right to ship no
+  // pnpm-workspace.yaml. (Cloudflare, the one target that does bring install scripts, ships one.)
   run('pnpm', ['install'], dir, `pnpm install (${name})`);
   run('pnpm', ['run', 'typecheck'], dir, 'typecheck (pnpm)');
   assert.match(run('pnpm', ['run', 'build'], dir, 'build (pnpm)'), /build complete/);

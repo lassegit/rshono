@@ -92,7 +92,9 @@ export function plan(answers: Answers, pm: PackageManager): Plan {
   if (gitignore) files.set('.gitignore', appendGitignore(gitignore, features));
 
   files.set('package.json', buildPackageJson(answers, features, pm));
-  if (pm.name === 'pnpm') files.set('pnpm-workspace.yaml', buildPnpmSettings(features));
+  // Only for pnpm, and only when a feature brought an install script to answer for — see `buildPnpmSettings`.
+  const pnpmSettings = pm.name === 'pnpm' ? buildPnpmSettings(features) : null;
+  if (pnpmSettings) files.set('pnpm-workspace.yaml', pnpmSettings);
 
   return {
     // Sorted, so both the write order and a test's snapshot are stable.

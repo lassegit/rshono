@@ -25,9 +25,10 @@ const DEPLOY_FEATURES: Record<DeployTargetName, Feature> = {
   cloudflare: {
     id: 'deploy-cloudflare',
     devDependencies: { wrangler: TOOL_VERSIONS.wrangler },
-    // wrangler brings workerd, whose install script only picks the platform binary out of the optional
-    // dependency that already carries it — `workerd --version` answers without it having run.
-    allowBuilds: { workerd: false },
+    // The only two install scripts a scaffolded app can end up with, and wrangler brings both. Each
+    // one merely picks the platform binary out of the optional dependency that already carries it, so
+    // neither needs to run — `workerd --version` and `esbuild --version` both answer without it.
+    allowBuilds: { esbuild: false, workerd: false },
     scripts: { deploy: 'rshono build && wrangler deploy' },
     gitignore: ['.wrangler/'],
     notes: ['The first build writes wrangler.jsonc — yours to edit after that.'],

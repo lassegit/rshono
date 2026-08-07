@@ -3,6 +3,7 @@ import { redirect } from '@rshono/core/server';
 // Type-only, so importing the server sub-app from a page module costs nothing at runtime.
 import type { AppEnv } from '../server';
 import { Layout } from './layout';
+import { LogoutButton } from './logout-button';
 
 export default function Dashboard({ ctx }: PageProps<'/dashboard', AppEnv>) {
   const session = ctx.cookies.get('session');
@@ -20,6 +21,7 @@ export default function Dashboard({ ctx }: PageProps<'/dashboard', AppEnv>) {
           Served for request <code data-ctx="request-id">{ctx.var.requestId}</code> — a variable set by middleware in <code>src/server.ts</code> and
           typed by handing this app's Hono <code>Env</code> to <code>PageProps</code>.
         </p>
+        <LogoutButton />
       </div>
     </Layout>
   );

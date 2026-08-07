@@ -251,20 +251,24 @@ test('the React pins are the ones the framework is tested against, not a copy th
   assert.match(FRAMEWORK_DEPS['react-dom'], /^\d+\.\d+\.\d+$/);
 });
 
-test('a pnpm app answers for the install scripts it inherits, its deploy target included', () => {
+test('a pnpm app answers for the install scripts its deploy target brings, and says nothing otherwise', () => {
   // Unanswered, they fail `pnpm install` and every `pnpm dev` after it — a scaffold that cannot start.
-  // esbuild comes with the framework (through tsx) and reaches every app; workerd comes with wrangler.
+  // wrangler is the only dependency a scaffold can pick up that has any: esbuild and workerd, both of
+  // which merely unpack a binary an optional dependency already carries. Nothing rshono itself installs
+  // has one, so an app that never chose Cloudflare has no question to answer and gets no file for it.
   const settings = (combination) => plan(answers(combination), packageManager('pnpm', '11.9.0')).files.get('pnpm-workspace.yaml');
-  const node = settings({ deploy: 'node' });
-  assert.ok(node, 'a pnpm scaffold needs pnpm-workspace.yaml — pnpm 11 does not read these from package.json');
-  assert.match(node, /^allowBuilds:\n {2}esbuild: false$/m);
-  assert.doesNotMatch(node, /workerd/, 'a target that never installs wrangler has nothing to say about workerd');
+
+  assert.equal(settings({ deploy: 'node' }), undefined, 'a target with no install scripts should not carry a file about them');
 
   const cloudflare = settings({ deploy: 'cloudflare' });
-  assert.match(cloudflare, /^allowBuilds:\n {2}esbuild: false\n {2}workerd: false$/m, 'the deploy feature should contribute its own');
+  assert.ok(cloudflare, 'a Cloudflare scaffold needs pnpm-workspace.yaml — pnpm 11 does not read these from package.json');
+  assert.match(cloudflare, /^allowBuilds:\n {2}esbuild: false\n {2}workerd: false$/m, 'the deploy feature should contribute both of wrangler’s');
 
   for (const name of ['npm', 'yarn', 'bun']) {
-    assert.ok(!plan(answers(), packageManager(name)).files.has('pnpm-workspace.yaml'), `${name} has no use for pnpm's settings file`);
+    assert.ok(
+      !plan(answers({ deploy: 'cloudflare' }), packageManager(name)).files.has('pnpm-workspace.yaml'),
+      `${name} has no use for pnpm's settings file`,
+    );
   }
 });
 

@@ -124,6 +124,58 @@ export function clientChunks() {
   return readdirSync(dir).map((file) => readFileSync(join(dir, file), 'utf8'));
 }
 
+/** Where one module's body starts inside a minified chunk: `DRuE(e,c,a){` or `"+TQ/"(e,c,a){`. */
+const MODULE_BOUNDARY = /(?:"(?:[^"\\]|\\.)*"|[A-Za-z_$][\w$]*)\(\w+,\w+,\w+\)\{/g;
+
+/** The chunk from the start of the module containing `marker` — enough to read that module's call sites. */
+function moduleContaining(chunk, marker) {
+  const at = chunk.indexOf(marker);
+  if (at === -1) return null;
+  let start = 0;
+  for (const boundary of chunk.matchAll(MODULE_BOUNDARY)) {
+    if (boundary.index > at) break;
+    start = boundary.index;
+  }
+  return chunk.slice(start);
+}
+
+/**
+ * The id React assigned a server action, found the way the browser finds it: through the `'use client'`
+ * component that calls it, identified by `marker` — a string only that component renders.
+ *
+ * Not by position. The RSC transform turns the app's action module into a proxy of
+ * `createServerReference("<id>")` declarations, and *every* chunk that needs *any* action gets the whole
+ * proxy — so all of the app's ids appear in all of them, in an order that is the minifier's business and
+ * shifts when an action is added. What is unambiguous is the call site: the component reaches for exactly
+ * one of the proxy's mangled exports, and that name maps back to a declaration and so to an id.
+ */
+export function serverActionId(marker) {
+  for (const chunk of clientChunks()) {
+    const body = moduleContaining(chunk, marker);
+    if (!body) continue;
+
+    // `let r=(0,f.createServerReference)("<id>"),d=…` — the declaration order, as local names.
+    const idForLocal = new Map(
+      [...chunk.matchAll(/([A-Za-z_$][\w$]*)=\(0,\w+\.createServerReference\)\(\s*"([0-9a-f]{20,})"/g)].map((m) => [m[1], m[2]]),
+    );
+    // `a.d(c,{},{$5:b,Oy:n,…})` — the mangled export names those locals are published under.
+    const localForExport = new Map(
+      [...chunk.matchAll(/\.d\(\w+,\{\},\{([^}]*)\}\)/g)].flatMap((m) => [...m[1].matchAll(/([\w$]+):([\w$]+)/g)].map((e) => [e[1], e[2]])),
+    );
+
+    // The first of those exports the marker's own module calls, e.g. `(0,d.ri)()`.
+    for (const call of body.matchAll(/\(0,[\w$]+\.([\w$]+)\)\(/g)) {
+      const id = idForLocal.get(localForExport.get(call[1]));
+      if (id) return id;
+    }
+  }
+  throw new Error(
+    `no client component rendering ${JSON.stringify(marker)} calls a server action. ` +
+      'It has to *call* one — an action handed to `useActionState` is passed along as a value and never ' +
+      'appears as a call site, so there is no mangled export name to trace back to an id.',
+  );
+}
+
 /**
  * The body a browser would POST for a form React rendered, with no JavaScript involved. React emits
  * one of two field shapes: the `$ACTION_REF`/`$ACTION_KEY` set for a `useActionState` form, or a

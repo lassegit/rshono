@@ -22,35 +22,31 @@ function sorted<T>(record: Record<string, T>): Record<string, T> {
 }
 
 /**
- * The install script every app inherits, from the framework rather than from anything it chose. tsx
- * reads `rshono.config.ts` through esbuild, and esbuild's script only picks the platform binary out of
- * the optional dependency that already carries it — rshono's own repo denies it for the same reason.
- */
-const BASE_ALLOW_BUILDS: Record<string, boolean> = { esbuild: false };
-
-/**
- * pnpm's settings for the new app — written for pnpm and for nobody else.
+ * pnpm's settings for the new app — written for pnpm and for nobody else, and only when a feature has
+ * something to put in it. `null` means there is nothing to say, so no file is written.
  *
  * It exists for one field. A dependency with an install script is a question pnpm will not answer on its
  * own: it fails the install, and fails every `pnpm dev` after it, until the project has said whether the
- * script should run. None of the ones an rshono app inherits need to (each is a native package whose
- * binary arrives as an optional dependency), so a fresh app carries the answer rather than meeting
- * `pnpm approve-builds` before it has rendered a page once.
+ * script should run. Nothing rshono itself installs has one — so this is empty for most apps, and the
+ * ones that do have an answer to carry (wrangler's esbuild and workerd) declare it on the feature that
+ * brings them, rather than every app inheriting a line about a package it never installs.
  *
  * In this file rather than under a `pnpm` key in `package.json`, which pnpm 11 no longer reads, single-
  * package projects included. What lands here is a decision about *this* app: a scaffolded file the app
  * owns from then on, not something the framework reaches back into.
  */
-export function buildPnpmSettings(features: Feature[]): string {
-  const allowBuilds = { ...BASE_ALLOW_BUILDS };
+export function buildPnpmSettings(features: Feature[]): string | null {
+  const allowBuilds: Record<string, boolean> = {};
   for (const feature of features) Object.assign(allowBuilds, feature.allowBuilds);
+  const entries = Object.entries(sorted(allowBuilds));
+  if (entries.length === 0) return null;
 
   return [
     '# Which dependencies may run an install script. pnpm runs none it has not been told about, and',
     '# fails the install rather than skip one quietly — so anything added later belongs here too.',
     '# `false` means the script was looked at: these ship their real binary as an optional dependency.',
     'allowBuilds:',
-    ...Object.entries(sorted(allowBuilds)).map(([name, allowed]) => `  ${name}: ${allowed}`),
+    ...entries.map(([name, allowed]) => `  ${name}: ${allowed}`),
     '',
   ].join('\n');
 }

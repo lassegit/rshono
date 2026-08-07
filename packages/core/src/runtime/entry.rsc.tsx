@@ -141,6 +141,18 @@ function acceptsHtml(c: Context): boolean {
   return c.req.header('accept')?.includes('text/html') ?? false;
 }
 
+/**
+ * The 404 for an app with no `notFound` page, and for a client that wanted neither HTML nor a flight
+ * payload.
+ *
+ * A function for two call sites because of the `Vary`, not the string: this is still one of the two
+ * answers a page URL gives depending on `Accept`, and a cache that is not told so can hand a plain-text
+ * 404 to a browser asking for a document. Easy to leave off a third one written later.
+ */
+function plainNotFound(c: Context): Response {
+  return c.text('Not Found', 404, { vary: 'Accept' });
+}
+
 /** A lazy once-cell: runs `load` at most once and caches the promise, but clears a rejection so a later call can retry. */
 function once<T>(load: () => Promise<T>): () => Promise<T> {
   let promise: Promise<T> | undefined;
@@ -442,7 +454,11 @@ function buildApp(): Hono {
     const isRsc = requestWantsRsc(c.req.raw);
     if (signal instanceof RedirectSignal) {
       if (isRsc) {
-        return c.body(renderToReadableStream({ root: null, redirect: signal.location } satisfies RscPayload, { signal: c.req.raw.signal }), 200, {
+        // No `signal`, deliberately — see `renderComponent`. React's renderers add an `abort` listener
+        // to whatever signal they are given and only remove it if the abort fires, so passing the
+        // request's would leave one on a request-lifetime signal for a payload that is two fields and
+        // no component tree. There is nothing here worth aborting.
+        return c.body(renderToReadableStream({ root: null, redirect: signal.location } satisfies RscPayload), 200, {
           'content-type': 'text/x-component;charset=utf-8',
         });
       }
@@ -451,8 +467,7 @@ function buildApp(): Hono {
     if (loadNotFoundPage) {
       return renderComponent(c, await loadNotFoundPage(), { status: 404, isRsc, notFound: true });
     }
-    // Plain text, but still one of the two answers this URL gives depending on `Accept`.
-    return c.text('Not Found', 404, { vary: 'Accept' });
+    return plainNotFound(c);
   };
 
   for (const route of routes) {
@@ -517,7 +532,7 @@ function buildApp(): Hono {
     if (loadNotFoundPage && (isRsc || acceptsHtml(c))) {
       return runWithContext(c, async () => renderComponent(c, await loadNotFoundPage(), { status: 404, isRsc }));
     }
-    return c.text('Not Found', 404, { vary: 'Accept' });
+    return plainNotFound(c);
   });
 
   const loadErrorPage = routeConfig.error ? memoizePage(routeConfig.error, 'the error page') : null;
